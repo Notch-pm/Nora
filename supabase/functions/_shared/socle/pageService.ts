@@ -14,7 +14,7 @@
  * on les recopie sans les revérifier — le rendu joint sur `demarches`.
  */
 import type { PortalFailure } from "../domain/failure.ts";
-import type { GridColumns, HomePage, HomeSection } from "../domain/page.ts";
+import type { FooterColumns, GridColumns, HomePage, HomeSection, TexteSection } from "../domain/page.ts";
 import type { SocleClient } from "./socleClient.ts";
 
 export type PageResult =
@@ -31,6 +31,19 @@ function ids(value: unknown): string[] {
 
 function columns(value: unknown): GridColumns {
   return value === 2 || value === 4 ? value : 3;
+}
+
+function footerColumns(value: unknown): FooterColumns {
+  return value === 1 || value === 2 ? value : 3;
+}
+
+/** Une couleur est une valeur CSS injectée dans la page : `#rrggbb` ou le sombre par défaut. */
+const HEX_COLOR = /^#[0-9a-f]{6}$/;
+const DEFAULT_FOOTER_BACKGROUND = "#0f1f18";
+
+function background(value: unknown): string {
+  const lower = text(value).trim().toLowerCase();
+  return HEX_COLOR.test(lower) ? lower : DEFAULT_FOOTER_BACKGROUND;
 }
 
 function toSection(raw: unknown): HomeSection | null {
@@ -70,6 +83,23 @@ function toSection(raw: unknown): HomeSection | null {
         body: text(row.body),
         align: row.align === "center" ? "center" : "left",
       };
+    case "footer": {
+      const children: TexteSection[] = [];
+      if (Array.isArray(row.children)) {
+        for (const child of row.children) {
+          const section = toSection(child);
+          if (section && section.kind === "texte") children.push(section);
+        }
+      }
+      return {
+        id,
+        kind: "footer",
+        title,
+        background: background(row.background),
+        columns: footerColumns(row.columns),
+        children,
+      };
+    }
     default:
       return null;
   }

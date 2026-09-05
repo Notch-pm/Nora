@@ -6,7 +6,7 @@
  * résolution des raccourcis vivent ici, pour être vérifiés sans rendu.
  */
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
-import type { GridColumns } from "@fn/_shared/domain/page.ts";
+import type { FooterColumns, GridColumns } from "@fn/_shared/domain/page.ts";
 
 /**
  * Le Socle limite déjà les raccourcis à ce nombre au moment de la
@@ -85,4 +85,34 @@ const LG_COLUMNS_CLASS: Record<GridColumns, string> = {
 
 export function gridColumnsClass(columns: GridColumns): string {
   return `grid-cols-1 sm:grid-cols-2 ${LG_COLUMNS_CLASS[columns]}`;
+}
+
+/**
+ * Classes de grille d'un pied de page : une colonne sur mobile, puis les
+ * colonnes choisies. Table littérale — Tailwind ne compile que les classes
+ * qu'il lit telles quelles.
+ */
+const FOOTER_COLUMNS_CLASS: Record<FooterColumns, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-1 sm:grid-cols-2",
+  3: "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
+};
+
+export function footerColumnsClass(columns: FooterColumns): string {
+  return FOOTER_COLUMNS_CLASS[columns];
+}
+
+/**
+ * Le texte se lit-il en clair sur ce fond ? Luminance relative (sRGB, WCAG) :
+ * sous 0,4 le fond est sombre. Une couleur illisible est traitée comme sombre
+ * — le défaut du pied de page l'est.
+ */
+export function isDarkColor(hex: string): boolean {
+  if (!/^#[0-9a-f]{6}$/.test(hex)) return true;
+  const channel = (i: number) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+  return luminance < 0.4;
 }

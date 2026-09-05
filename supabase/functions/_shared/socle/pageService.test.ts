@@ -80,3 +80,41 @@ describe("getPublishedPage — absence et pannes", () => {
     expect(result).toEqual({ ok: false, reason: "socle_unavailable" });
   });
 });
+
+describe("getPublishedPage — pied de page", () => {
+  it("traduit le pied de page et ne garde que ses sous-blocs texte", async () => {
+    const body = {
+      ...PUBLISHED,
+      sections: [
+        {
+          id: "f",
+          kind: "footer",
+          title: "",
+          background: "#1F2937",
+          columns: 2,
+          children: [
+            { id: "c", kind: "texte", title: "Contact", body: "1 place", align: "left" },
+            { id: "x", kind: "carrousel" },
+          ],
+        },
+      ],
+    };
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body }));
+    if (!result.ok || !result.page) throw new Error("attendu une page");
+    expect(result.page.sections[0]).toEqual({
+      id: "f",
+      kind: "footer",
+      title: "",
+      background: "#1f2937",
+      columns: 2,
+      children: [{ id: "c", kind: "texte", title: "Contact", body: "1 place", align: "left" }],
+    });
+  });
+
+  it("ramène une couleur malformée au sombre par défaut", async () => {
+    const body = { ...PUBLISHED, sections: [{ id: "f", kind: "footer", background: "url(x)" }] };
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body }));
+    if (!result.ok || !result.page) throw new Error("attendu une page");
+    expect(result.page.sections[0]).toMatchObject({ background: "#0f1f18", columns: 3, children: [] });
+  });
+});

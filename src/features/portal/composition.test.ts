@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import {
-  filterDemarchesByQuery,
-  gridColumnsClass,
   MAX_SHORTCUTS,
+  filterDemarchesByQuery,
+  footerColumnsClass,
+  gridColumnsClass,
+  isDarkColor,
   orderDemarchesForSection,
   resolveShortcuts,
 } from "./composition.ts";
@@ -89,5 +91,20 @@ describe("gridColumnsClass", () => {
     expect(gridColumnsClass(2)).toBe("grid-cols-1 sm:grid-cols-2 lg:grid-cols-2");
     expect(gridColumnsClass(3)).toBe("grid-cols-1 sm:grid-cols-2 lg:grid-cols-3");
     expect(gridColumnsClass(4)).toBe("grid-cols-1 sm:grid-cols-2 lg:grid-cols-4");
+  });
+});
+
+describe("footerColumnsClass / isDarkColor", () => {
+  it("donne une grille responsive pour 1, 2 et 3 colonnes", () => {
+    expect(footerColumnsClass(1)).toBe("grid-cols-1");
+    expect(footerColumnsClass(2)).toContain("sm:grid-cols-2");
+    expect(footerColumnsClass(3)).toContain("lg:grid-cols-3");
+  });
+
+  it("choisit du texte clair sur fond sombre, sombre sur fond clair", () => {
+    expect(isDarkColor("#0f1f18")).toBe(true);
+    expect(isDarkColor("#ffffff")).toBe(false);
+    expect(isDarkColor("#ffcd57")).toBe(false);
+    expect(isDarkColor("n'importe quoi")).toBe(true);
   });
 });

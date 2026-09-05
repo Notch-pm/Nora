@@ -19,6 +19,7 @@ import { brandingStyle } from "./theme.ts";
 import { filterDemarchesByQuery } from "./composition.ts";
 import { CompteSection } from "./sections/CompteSection.tsx";
 import { DemarchesSection } from "./sections/DemarchesSection.tsx";
+import { FooterSection } from "./sections/FooterSection.tsx";
 import { RechercheSection } from "./sections/RechercheSection.tsx";
 import { TexteSection } from "./sections/TexteSection.tsx";
 
@@ -68,36 +69,54 @@ export function HomeComposition({
   const searchActive = hasRecherche && query.trim() !== "";
   const visibleDemarches = hasRecherche ? filterDemarchesByQuery(demarches, query) : demarches;
 
+  // Un pied de page en dernière position colle au bas de la page : pas de
+  // marge sous lui. Les autres sections vivent dans le conteneur centré.
+  const endsWithFooter = page.sections[page.sections.length - 1]?.kind === "footer";
+
   return (
-    <main className="min-h-screen bg-white text-slate-800" style={brandingStyle(branding)}>
+    <main
+      className={"flex min-h-screen flex-col bg-white text-slate-800 " + (endsWithFooter ? "" : "pb-8")}
+      style={brandingStyle(branding)}
+    >
       <PageHeader tenantName={tenant.name} logoUrl={branding?.logoUrl ?? null} />
-      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
+      <div className="flex flex-1 flex-col gap-6 pt-8">
         {page.sections.map((section) => {
-          switch (section.kind) {
-            case "recherche":
-              return (
-                <RechercheSection
-                  key={section.id}
-                  section={section}
-                  demarches={demarches}
-                  query={query}
-                  onQueryChange={setQuery}
-                />
-              );
-            case "demarches":
-              return (
-                <DemarchesSection
-                  key={section.id}
-                  section={section}
-                  demarches={visibleDemarches}
-                  searchActive={searchActive}
-                />
-              );
-            case "compte":
-              return <CompteSection key={section.id} section={section} />;
-            case "texte":
-              return <TexteSection key={section.id} section={section} />;
+          if (section.kind === "footer") {
+            return (
+              <div key={section.id} className="mt-auto">
+                <FooterSection section={section} />
+              </div>
+            );
           }
+          return (
+            <div key={section.id} className="mx-auto w-full max-w-5xl px-6">
+              {(() => {
+                switch (section.kind) {
+                  case "recherche":
+                    return (
+                      <RechercheSection
+                        section={section}
+                        demarches={demarches}
+                        query={query}
+                        onQueryChange={setQuery}
+                      />
+                    );
+                  case "demarches":
+                    return (
+                      <DemarchesSection
+                        section={section}
+                        demarches={visibleDemarches}
+                        searchActive={searchActive}
+                      />
+                    );
+                  case "compte":
+                    return <CompteSection section={section} />;
+                  case "texte":
+                    return <TexteSection section={section} />;
+                }
+              })()}
+            </div>
+          );
         })}
       </div>
     </main>

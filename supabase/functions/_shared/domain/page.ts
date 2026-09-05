@@ -56,7 +56,30 @@ export interface TexteSection {
   align: "left" | "center";
 }
 
-export type HomeSection = RechercheSection | DemarchesSection | CompteSection | TexteSection;
+export type FooterColumns = 1 | 2 | 3;
+
+/**
+ * Pied de page : pleine largeur, couleur de fond choisie, sous-blocs texte
+ * répartis sur une à trois colonnes dans l'ordre. Rendu hors du conteneur
+ * centré de la page.
+ */
+export interface FooterSection {
+  id: string;
+  kind: "footer";
+  /** En-tête facultatif, souvent vide. */
+  title: string;
+  /** `#rrggbb` minuscule, validé à la traduction. */
+  background: string;
+  columns: FooterColumns;
+  children: TexteSection[];
+}
+
+export type HomeSection =
+  | RechercheSection
+  | DemarchesSection
+  | CompteSection
+  | TexteSection
+  | FooterSection;
 
 export interface HomePage {
   /** Date de la publication servie (ISO 8601). */
