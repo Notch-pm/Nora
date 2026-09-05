@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import {
   MAX_SHORTCUTS,
+  endsWithFooter,
   filterDemarchesByQuery,
   footerColumnsClass,
   gridColumnsClass,
@@ -91,6 +92,14 @@ describe("gridColumnsClass", () => {
     expect(gridColumnsClass(2)).toBe("grid-cols-1 sm:grid-cols-2 lg:grid-cols-2");
     expect(gridColumnsClass(3)).toBe("grid-cols-1 sm:grid-cols-2 lg:grid-cols-3");
     expect(gridColumnsClass(4)).toBe("grid-cols-1 sm:grid-cols-2 lg:grid-cols-4");
+  });
+});
+
+describe("endsWithFooter", () => {
+  it("ne regarde que la dernière section", () => {
+    expect(endsWithFooter([{ kind: "texte" }, { kind: "footer" }])).toBe(true);
+    expect(endsWithFooter([{ kind: "footer" }, { kind: "texte" }])).toBe(false);
+    expect(endsWithFooter([])).toBe(false);
   });
 });
 

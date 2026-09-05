@@ -103,6 +103,14 @@ export function footerColumnsClass(columns: FooterColumns): string {
 }
 
 /**
+ * La page se termine-t-elle par un pied de page ? Alors il EST le bas de la
+ * page : collé au bord, aucune marge sous lui.
+ */
+export function endsWithFooter(sections: { kind: string }[]): boolean {
+  return sections[sections.length - 1]?.kind === "footer";
+}
+
+/**
  * Le texte se lit-il en clair sur ce fond ? Luminance relative (sRGB, WCAG) :
  * sous 0,4 le fond est sombre. Une couleur illisible est traitée comme sombre
  * — le défaut du pied de page l'est.

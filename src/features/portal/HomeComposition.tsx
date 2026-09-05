@@ -16,7 +16,7 @@ import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
 import { brandingStyle } from "./theme.ts";
-import { filterDemarchesByQuery } from "./composition.ts";
+import { endsWithFooter, filterDemarchesByQuery } from "./composition.ts";
 import { CompteSection } from "./sections/CompteSection.tsx";
 import { DemarchesSection } from "./sections/DemarchesSection.tsx";
 import { FooterSection } from "./sections/FooterSection.tsx";
@@ -69,13 +69,14 @@ export function HomeComposition({
   const searchActive = hasRecherche && query.trim() !== "";
   const visibleDemarches = hasRecherche ? filterDemarchesByQuery(demarches, query) : demarches;
 
-  // Un pied de page en dernière position colle au bas de la page : pas de
-  // marge sous lui. Les autres sections vivent dans le conteneur centré.
-  const endsWithFooter = page.sections[page.sections.length - 1]?.kind === "footer";
+  // Un pied de page en dernière position EST le bas de la page : il est poussé
+  // au bord (`mt-auto`) et rien ne le suit. Sans lui, la page garde une marge
+  // basse. Les autres sections vivent dans le conteneur centré.
+  const footerLast = endsWithFooter(page.sections);
 
   return (
     <main
-      className={"flex min-h-screen flex-col bg-white text-slate-800 " + (endsWithFooter ? "" : "pb-8")}
+      className={"flex min-h-screen flex-col bg-white text-slate-800 " + (footerLast ? "" : "pb-8")}
       style={brandingStyle(branding)}
     >
       <PageHeader tenantName={tenant.name} logoUrl={branding?.logoUrl ?? null} />
