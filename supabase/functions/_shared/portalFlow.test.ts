@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import { hostnameForRequest } from "./http/requestHostname.ts";
 import { getPublicDemarches } from "./socle/demarcheService.ts";
 import { getPublishedPage } from "./socle/pageService.ts";
+import { getBranding } from "./socle/brandingService.ts";
 import { resolveTenant } from "./socle/tenantService.ts";
 import type { SocleClient, SocleReply } from "./socle/socleClient.ts";
 
@@ -57,6 +58,15 @@ const ROUTES: Record<string, unknown> = {
   ],
   // Angers existe, mais n'a encore rien publié : cas normal, pas une erreur.
   [ANGERS_PROCEDURES]: [],
+  // Nantes a une charte ; Angers non (404 → couleurs par défaut, sans erreur).
+  ["/v1/organizations/" + NANTES + "/branding"]: {
+    organization_id: NANTES,
+    configured: true,
+    logo_url: "https://cdn.example/nantes.svg",
+    logo_white_url: null,
+    primary_color: "#1F8A5B",
+    secondary_color: null,
+  },
   // Nantes a composé sa page d'accueil ; Angers non (pas de route → 404).
   ["/v1/portal/page?tenant_id=" + NANTES + "&slug=accueil"]: {
     slug: "accueil",
@@ -106,7 +116,15 @@ async function visit(
   if (!demarches.ok) return { ok: false as const, reason: demarches.reason };
   const page = await getPublishedPage(resolution.tenant.id, socle);
   if (!page.ok) return { ok: false as const, reason: page.reason };
-  return { ok: true as const, tenant: resolution.tenant, demarches: demarches.demarches, page: page.page };
+  const branding = await getBranding(resolution.tenant.id, socle);
+  if (!branding.ok) return { ok: false as const, reason: branding.reason };
+  return {
+    ok: true as const,
+    tenant: resolution.tenant,
+    demarches: demarches.demarches,
+    page: page.page,
+    branding: branding.branding,
+  };
 }
 
 describe("1. domaine connu → tenant correctement identifié", () => {
@@ -201,6 +219,19 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
     expect(angers.page).toBeNull();
   });
 
+  it("sert la charte validée quand elle existe, et null sinon — sans erreur", async () => {
+    const nantes = await visit("https://nantes.edilumen.fr", fakeSocle());
+    const angers = await visit("https://angers.edilumen.fr", fakeSocle());
+    if (!nantes.ok || !angers.ok) throw new Error("attendu deux succès");
+    expect(nantes.branding).toEqual({
+      logoUrl: "https://cdn.example/nantes.svg",
+      logoWhiteUrl: null,
+      primaryColor: "#1f8a5b",
+      secondaryColor: null,
+    });
+    expect(angers.branding).toBeNull();
+  });
+
   it("demande les démarches du tenant RÉSOLU, jamais d'un autre", async () => {
     const asked: string[] = [];
     const inner = fakeSocle();
@@ -215,6 +246,7 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
       "/v1/portal/tenant?hostname=angers.edilumen.fr",
       ANGERS_PROCEDURES,
       "/v1/portal/page?tenant_id=" + ANGERS + "&slug=accueil",
+      "/v1/organizations/" + ANGERS + "/branding",
     ]);
   });
 });

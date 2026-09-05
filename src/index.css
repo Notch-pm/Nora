@@ -1,3 +1,11 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* La charte graphique de la collectivité, posée par HomeComposition quand
+   elle existe. Ces défauts sont ceux de la gamme : le vert d'Edilumen
+   (hsl(153 90% 32%)) et son jaune. */
+:root {
+  --brand-primary: #089b59;
+  --brand-secondary: #ffcd57;
+}

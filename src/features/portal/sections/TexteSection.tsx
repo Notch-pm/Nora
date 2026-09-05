@@ -8,7 +8,7 @@ export function TexteSection({ section }: { section: TexteSectionData }) {
   return (
     <section
       className={
-        "flex flex-col gap-1.5 rounded-xl bg-amber-100 px-6 py-4 " +
+        "flex flex-col gap-1.5 rounded-xl bg-[color:color-mix(in_srgb,var(--brand-secondary)_35%,white)] px-6 py-4 " +
         (section.align === "center" ? "items-center text-center" : "items-start text-left")
       }
     >

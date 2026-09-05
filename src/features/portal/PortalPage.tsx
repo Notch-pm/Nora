@@ -73,7 +73,14 @@ export function PortalPage() {
   // porte son propre en-tête, hors du `Shell` étroit ci-dessous, qui ne sert
   // plus alors qu'au repli.
   if (state.page !== null) {
-    return <HomeComposition tenant={state.tenant} demarches={state.demarches} page={state.page} />;
+    return (
+      <HomeComposition
+        tenant={state.tenant}
+        demarches={state.demarches}
+        page={state.page}
+        branding={state.branding}
+      />
+    );
   }
 
   return (

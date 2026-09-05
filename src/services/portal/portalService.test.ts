@@ -27,6 +27,7 @@ const SNAPSHOT = {
     },
   ],
   page: null,
+  branding: null,
 };
 
 function respond(status: number, body: unknown): Response {

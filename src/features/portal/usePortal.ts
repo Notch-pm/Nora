@@ -9,8 +9,10 @@ import { useEffect, useState } from "react";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
+import type { Branding } from "@fn/_shared/domain/branding.ts";
 import type { PortalLoadFailure } from "@/services/portal/portalClient.ts";
 import {
+  getBranding,
   getCurrentTenant,
   getHomePage,
   getPublicDemarches,
@@ -20,7 +22,7 @@ import {
 
 export type PortalState =
   | { status: "loading" }
-  | { status: "ready"; tenant: Tenant; demarches: Demarche[]; page: HomePage | null }
+  | { status: "ready"; tenant: Tenant; demarches: Demarche[]; page: HomePage | null; branding: Branding | null }
   | { status: "error"; reason: PortalLoadFailure };
 
 export function usePortal(): { state: PortalState; retry: () => void } {
@@ -33,9 +35,9 @@ export function usePortal(): { state: PortalState; retry: () => void } {
     let current = true;
     setState({ status: "loading" });
 
-    Promise.all([getCurrentTenant(), getPublicDemarches(), getHomePage()])
-      .then(([tenant, demarches, page]) => {
-        if (current) setState({ status: "ready", tenant, demarches, page });
+    Promise.all([getCurrentTenant(), getPublicDemarches(), getHomePage(), getBranding()])
+      .then(([tenant, demarches, page, branding]) => {
+        if (current) setState({ status: "ready", tenant, demarches, page, branding });
       })
       .catch((error: unknown) => {
         if (!current) return;

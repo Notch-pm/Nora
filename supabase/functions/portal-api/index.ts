@@ -20,6 +20,7 @@
  */
 import { getPublicDemarches } from "../_shared/socle/demarcheService.ts";
 import { getPublishedPage } from "../_shared/socle/pageService.ts";
+import { getBranding } from "../_shared/socle/brandingService.ts";
 import { resolveTenant } from "../_shared/socle/tenantService.ts";
 import { createSocleClient } from "../_shared/socle/socleClient.ts";
 import { withCache } from "../_shared/socle/cachedSocleClient.ts";
@@ -154,9 +155,19 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const page = await getPublishedPage(resolution.tenant.id, socle);
   if (!page.ok) return failure(page.reason);
 
+  // ── 5. La charte graphique, héritage déjà résolu par le Socle. `null` = le
+  //       portail garde ses couleurs par défaut ; ce n'est jamais une erreur.
+  const branding = await getBranding(resolution.tenant.id, socle);
+  if (!branding.ok) return failure(branding.reason);
+
   return json(
     200,
-    { tenant: resolution.tenant, demarches: demarches.demarches, page: page.page },
+    {
+      tenant: resolution.tenant,
+      demarches: demarches.demarches,
+      page: page.page,
+      branding: branding.branding,
+    },
     // Le catalogue d'une collectivité change à la journée, et une page publique
     // est servie à beaucoup de visiteurs : une minute de cache navigateur
     // épargne autant d'allers-retours, sans jamais montrer la veille.

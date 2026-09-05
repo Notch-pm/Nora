@@ -15,11 +15,13 @@ function DemarcheCard({ demarche, pinned }: { demarche: Demarche; pinned: boolea
     <li
       className={
         "flex flex-col gap-2 rounded-xl border p-4 " +
-        (pinned ? "border-[hsl(153_90%_32%)] bg-[hsl(153_90%_32%)]/5" : "border-slate-200")
+        (pinned
+          ? "border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_6%,white)]"
+          : "border-slate-200")
       }
     >
       {pinned && (
-        <span className="w-fit rounded-full bg-amber-300 px-2 py-0.5 text-[10.5px] font-extrabold text-amber-950">
+        <span className="w-fit rounded-full bg-[color:var(--brand-secondary)] px-2 py-0.5 text-[10.5px] font-extrabold text-slate-900">
           À la une
         </span>
       )}

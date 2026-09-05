@@ -25,6 +25,7 @@
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
+import type { Branding } from "@fn/_shared/domain/branding.ts";
 import { fetchPortal, type PortalLoad, type PortalLoadFailure } from "./portalClient.ts";
 
 /**
@@ -113,4 +114,9 @@ export async function getPublicDemarches(): Promise<Demarche[]> {
  */
 export async function getHomePage(): Promise<HomePage | null> {
   return (await snapshot()).page;
+}
+
+/** La charte graphique de la collectivité, ou `null` — couleurs par défaut. */
+export async function getBranding(): Promise<Branding | null> {
+  return (await snapshot()).branding;
 }

@@ -28,7 +28,7 @@ function UserIcon() {
 export function CompteSection({ section }: { section: CompteSectionData }) {
   return (
     <section className="flex flex-col items-stretch gap-4 rounded-xl bg-slate-900 px-6 py-5 sm:flex-row sm:items-center">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(153_82%_43%)]">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color:var(--brand-primary)]">
         <UserIcon />
       </div>
       <div className="flex flex-1 flex-col gap-0.5">

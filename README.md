@@ -31,9 +31,18 @@ portal-api  (edge function — détient SOCLE_API_KEY)
    │  2. GET /v1/portal/tenant?hostname=…      → { id, name, … }
    │  3. GET /v1/portal/procedures?tenant_id=… → démarches publiées
    │  4. GET /v1/portal/page?tenant_id=…       → page d'accueil publiée (404 = jamais publiée)
+   │  5. GET /v1/organizations/{id}/branding   → charte graphique, héritage résolu (décorative)
    ▼
 API publique du Socle
 ```
+
+La **charte graphique** (logo, couleur principale, couleur secondaire) vient
+du Socle, héritage déjà résolu. Elle est décorative : absente ou indisponible,
+le portail garde les couleurs de la gamme, il ne tombe pas en erreur. Les
+couleurs n'entrent que sous la forme `#rrggbb` et les logos qu'en `https` —
+ce sont des valeurs injectées dans la page, on ne les « nettoie » pas, on les
+écarte. Les composants ne connaissent que deux variables CSS,
+`--brand-primary` et `--brand-secondary`.
 
 La page d'accueil est **composée par la collectivité** dans l'éditeur CMS du
 Socle (sections typées, démarches à la une, recherche). Le portail ne rend que
