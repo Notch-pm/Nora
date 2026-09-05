@@ -24,6 +24,7 @@
  */
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
+import type { HomePage } from "@fn/_shared/domain/page.ts";
 import { fetchPortal, type PortalLoad, type PortalLoadFailure } from "./portalClient.ts";
 
 /**
@@ -104,4 +105,12 @@ export async function getCurrentTenant(): Promise<Tenant> {
  */
 export async function getPublicDemarches(): Promise<Demarche[]> {
   return (await snapshot()).demarches;
+}
+
+/**
+ * La page d'accueil composée par la collectivité, ou `null` si elle n'a
+ * jamais rien publié — auquel cas l'interface rend sa mise en page par défaut.
+ */
+export async function getHomePage(): Promise<HomePage | null> {
+  return (await snapshot()).page;
 }

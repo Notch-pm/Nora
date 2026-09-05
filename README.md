@@ -30,9 +30,16 @@ portal-api  (edge function — détient SOCLE_API_KEY)
    │  1. le domaine visité, déduit de l'en-tête Origin
    │  2. GET /v1/portal/tenant?hostname=…      → { id, name, … }
    │  3. GET /v1/portal/procedures?tenant_id=… → démarches publiées
+   │  4. GET /v1/portal/page?tenant_id=…       → page d'accueil publiée (404 = jamais publiée)
    ▼
 API publique du Socle
 ```
+
+La page d'accueil est **composée par la collectivité** dans l'éditeur CMS du
+Socle (sections typées, démarches à la une, recherche). Le portail ne rend que
+ce qui a été **publié** — le brouillon n'a pas de route — et retombe sur une
+liste de démarches quand rien ne l'a encore été. Une section que ce portail ne
+connaît pas est ignorée, pas rendue à moitié.
 
 ## Architecture
 

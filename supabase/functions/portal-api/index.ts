@@ -19,6 +19,7 @@
  * `_shared/` — c'est ce qui les rend testables sans lancer Deno.
  */
 import { getPublicDemarches } from "../_shared/socle/demarcheService.ts";
+import { getPublishedPage } from "../_shared/socle/pageService.ts";
 import { resolveTenant } from "../_shared/socle/tenantService.ts";
 import { createSocleClient } from "../_shared/socle/socleClient.ts";
 import { withCache } from "../_shared/socle/cachedSocleClient.ts";
@@ -148,9 +149,14 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const demarches = await getPublicDemarches(resolution.tenant.id, socle);
   if (!demarches.ok) return failure(demarches.reason);
 
+  // ── 4. La page d'accueil telle qu'elle a été publiée. `null` si la
+  //       collectivité n'a rien composé : le portail rend alors son défaut.
+  const page = await getPublishedPage(resolution.tenant.id, socle);
+  if (!page.ok) return failure(page.reason);
+
   return json(
     200,
-    { tenant: resolution.tenant, demarches: demarches.demarches },
+    { tenant: resolution.tenant, demarches: demarches.demarches, page: page.page },
     // Le catalogue d'une collectivité change à la journée, et une page publique
     // est servie à beaucoup de visiteurs : une minute de cache navigateur
     // épargne autant d'allers-retours, sans jamais montrer la veille.

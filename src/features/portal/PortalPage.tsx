@@ -11,6 +11,7 @@
  */
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import { errorMessageFor } from "./errorMessages.ts";
+import { HomeComposition } from "./HomeComposition.tsx";
 import { usePortal } from "./usePortal.ts";
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -66,6 +67,13 @@ export function PortalPage() {
         <p className="mt-8 text-xs text-slate-400">Code : {state.reason}</p>
       </Shell>
     );
+  }
+
+  // Une composition publiée existe : le portail la rend telle quelle. Elle
+  // porte son propre en-tête, hors du `Shell` étroit ci-dessous, qui ne sert
+  // plus alors qu'au repli.
+  if (state.page !== null) {
+    return <HomeComposition tenant={state.tenant} demarches={state.demarches} page={state.page} />;
   }
 
   return (

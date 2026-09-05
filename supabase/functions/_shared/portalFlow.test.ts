@@ -15,6 +15,7 @@
 import { describe, expect, it } from "vitest";
 import { hostnameForRequest } from "./http/requestHostname.ts";
 import { getPublicDemarches } from "./socle/demarcheService.ts";
+import { getPublishedPage } from "./socle/pageService.ts";
 import { resolveTenant } from "./socle/tenantService.ts";
 import type { SocleClient, SocleReply } from "./socle/socleClient.ts";
 
@@ -56,6 +57,16 @@ const ROUTES: Record<string, unknown> = {
   ],
   // Angers existe, mais n'a encore rien publié : cas normal, pas une erreur.
   [ANGERS_PROCEDURES]: [],
+  // Nantes a composé sa page d'accueil ; Angers non (pas de route → 404).
+  ["/v1/portal/page?tenant_id=" + NANTES + "&slug=accueil"]: {
+    slug: "accueil",
+    published_at: "2026-09-05T12:21:10Z",
+    version: 1,
+    sections: [
+      { id: "r", kind: "recherche", title: "Trouvez votre démarche", subtitle: "", placeholder: "Ex.", show_shortcuts: false, shortcuts: [] },
+      { id: "g", kind: "demarches", title: "Les plus demandées", columns: 3, pinned_first: true, pinned: ["d1"] },
+    ],
+  },
 };
 
 /** Socle simulé : sert la table, répond 404 sur tout le reste. */
@@ -93,7 +104,9 @@ async function visit(
   if (!resolution.ok) return { ok: false as const, reason: resolution.reason };
   const demarches = await getPublicDemarches(resolution.tenant.id, socle);
   if (!demarches.ok) return { ok: false as const, reason: demarches.reason };
-  return { ok: true as const, tenant: resolution.tenant, demarches: demarches.demarches };
+  const page = await getPublishedPage(resolution.tenant.id, socle);
+  if (!page.ok) return { ok: false as const, reason: page.reason };
+  return { ok: true as const, tenant: resolution.tenant, demarches: demarches.demarches, page: page.page };
 }
 
 describe("1. domaine connu → tenant correctement identifié", () => {
@@ -179,6 +192,15 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
     ]);
   });
 
+  it("sert la page composée quand elle existe, et null sinon — sans erreur", async () => {
+    const nantes = await visit("https://nantes.edilumen.fr", fakeSocle());
+    const angers = await visit("https://angers.edilumen.fr", fakeSocle());
+    if (!nantes.ok || !angers.ok) throw new Error("attendu deux succès");
+    expect(nantes.page?.sections.map((s) => s.kind)).toEqual(["recherche", "demarches"]);
+    // Angers n'a jamais publié : le portail rendra sa mise en page par défaut.
+    expect(angers.page).toBeNull();
+  });
+
   it("demande les démarches du tenant RÉSOLU, jamais d'un autre", async () => {
     const asked: string[] = [];
     const inner = fakeSocle();
@@ -192,6 +214,7 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
     expect(asked).toEqual([
       "/v1/portal/tenant?hostname=angers.edilumen.fr",
       ANGERS_PROCEDURES,
+      "/v1/portal/page?tenant_id=" + ANGERS + "&slug=accueil",
     ]);
   });
 });

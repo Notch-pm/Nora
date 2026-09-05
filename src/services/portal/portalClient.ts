@@ -14,11 +14,14 @@
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import type { PortalFailure } from "@fn/_shared/domain/failure.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
+import type { HomePage } from "@fn/_shared/domain/page.ts";
 
 /** Ce que le portail sait de la collectivité visitée, en un seul chargement. */
 export interface PortalSnapshot {
   tenant: Tenant;
   demarches: Demarche[];
+  /** La page d'accueil composée par la collectivité ; `null` = jamais publiée. */
+  page: HomePage | null;
 }
 
 /**
@@ -52,11 +55,17 @@ function readFailure(body: unknown): PortalLoadFailure {
 
 function readSnapshot(body: unknown): PortalSnapshot | null {
   if (typeof body !== "object" || body === null) return null;
-  const raw = body as { tenant?: unknown; demarches?: unknown };
+  const raw = body as { tenant?: unknown; demarches?: unknown; page?: unknown };
   const tenant = raw.tenant as Tenant | undefined;
   if (!tenant || typeof tenant.id !== "string" || typeof tenant.name !== "string") return null;
   if (!Array.isArray(raw.demarches)) return null;
-  return { tenant, demarches: raw.demarches as Demarche[] };
+  // Une page absente (serveur d'avant, ou jamais publiée) vaut « pas de
+  // composition » : le portail rend son défaut, il ne tombe pas en erreur.
+  const page =
+    typeof raw.page === "object" && raw.page !== null && Array.isArray((raw.page as HomePage).sections)
+      ? (raw.page as HomePage)
+      : null;
+  return { tenant, demarches: raw.demarches as Demarche[], page };
 }
 
 /**

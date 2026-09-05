@@ -26,6 +26,7 @@ const SNAPSHOT = {
       estimatedMinutes: 5,
     },
   ],
+  page: null,
 };
 
 function respond(status: number, body: unknown): Response {

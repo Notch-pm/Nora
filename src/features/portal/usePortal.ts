@@ -8,9 +8,11 @@
 import { useEffect, useState } from "react";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
+import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { PortalLoadFailure } from "@/services/portal/portalClient.ts";
 import {
   getCurrentTenant,
+  getHomePage,
   getPublicDemarches,
   PortalUnavailableError,
   resetPortalCache,
@@ -18,7 +20,7 @@ import {
 
 export type PortalState =
   | { status: "loading" }
-  | { status: "ready"; tenant: Tenant; demarches: Demarche[] }
+  | { status: "ready"; tenant: Tenant; demarches: Demarche[]; page: HomePage | null }
   | { status: "error"; reason: PortalLoadFailure };
 
 export function usePortal(): { state: PortalState; retry: () => void } {
@@ -31,9 +33,9 @@ export function usePortal(): { state: PortalState; retry: () => void } {
     let current = true;
     setState({ status: "loading" });
 
-    Promise.all([getCurrentTenant(), getPublicDemarches()])
-      .then(([tenant, demarches]) => {
-        if (current) setState({ status: "ready", tenant, demarches });
+    Promise.all([getCurrentTenant(), getPublicDemarches(), getHomePage()])
+      .then(([tenant, demarches, page]) => {
+        if (current) setState({ status: "ready", tenant, demarches, page });
       })
       .catch((error: unknown) => {
         if (!current) return;
