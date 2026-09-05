@@ -55,19 +55,30 @@ connaît pas est ignorée, pas rendue à moitié.
 ```
 src/
   services/portal/       Ce que l'interface consomme. Le SEUL fetch du navigateur.
-    portalClient.ts        appelle portal-api (jamais le Socle)
-    portalService.ts       getCurrentTenant() / getPublicDemarches(), mémoïsés
+    portalClient.ts        appelle portal-api (jamais le Socle) — un seul GET /v1/bootstrap
+    portalService.ts       getCurrentTenant() / getPublicDemarches() / getHomePage() /
+                           getBranding(), mémoïsés sur un même instantané
   features/portal/       Les écrans. Ne connaissent ni URL, ni Socle, ni domaine.
+    PortalPage.tsx         états (chargement, erreurs, repli en liste), puis la composition
+    HomeComposition.tsx    la page d'accueil composée ; possède l'état de recherche
+    sections/              un composant par kind : Recherche, Demarches, Compte, Texte, Footer
+    composition.ts         règles pures : filtre de recherche, ordre des épinglées, raccourcis,
+                           colonnes, luminance, « le pied de page final est le bas de la page »
+    theme.ts               la charte → variables CSS --brand-primary / --brand-secondary
+    errorMessages.ts       un message par PortalFailure
 
 supabase/functions/
   _shared/
-    domain/              Le modèle du PORTAIL — Tenant, Demarche, PortalFailure.
+    domain/              Le modèle du PORTAIL — Tenant, Demarche, HomePage, Branding, PortalFailure.
     socle/               Le seul code qui connaisse la forme des réponses du Socle.
       socleClient.ts       port HTTP + implémentation
       cachedSocleClient.ts décorateur de cache
       tenantService.ts     resolveTenant(hostname)
       demarcheService.ts   getPublicDemarches(tenantId)
+      pageService.ts       getPublishedPage(tenantId) — traduit, filtre, valide les couleurs
+      brandingService.ts   getBranding(tenantId) — décoratif, se dégrade en null
     http/                Mise en forme et détermination du nom d'hôte.
+    portalFlow.test.ts   le flux complet contre un Socle simulé
   portal-api/index.ts    Plomberie HTTP. Toutes les règles sont dans _shared/.
 ```
 
@@ -82,6 +93,28 @@ Deux frontières portent tout le découplage :
 
 Aucun composant d'interface n'appelle le Socle. Le navigateur n'a pas de clé, et
 n'a pas à en avoir.
+
+## La page d'accueil composée
+
+Ce que la collectivité compose dans l'éditeur du Socle arrive ici comme une
+liste ordonnée de sections typées. Règles de rendu, toutes dans
+`pageService.ts` (traduction) et `composition.ts` (rendu) :
+
+- **Publié seulement.** Le brouillon n'a pas de route. 404 = jamais publiée →
+  repli sur une liste de démarches, ce n'est pas une erreur.
+- **On ne garde que ce qu'on sait rendre.** `actus` (rien à afficher) et tout
+  kind inconnu sont ignorés, pas rendus à moitié : le Socle peut apprendre un
+  bloc avant ce portail.
+- **Les références sont déjà résolues.** `pinned` et `shortcuts` ne contiennent
+  que des démarches publiées, le Socle a écarté les autres.
+- **La recherche est réelle.** Le champ de la section `recherche` filtre les
+  grilles `demarches` de la page (normalisation sans accents ni casse) ; sans
+  section `recherche`, aucun filtre.
+- **Le pied de page final est le bas de la page.** Pleine largeur, hors du
+  conteneur centré, poussé au bord ; la page perd sa marge basse. Sa couleur
+  n'entre que sous la forme `#rrggbb`, le texte passe en clair ou en sombre
+  selon la luminance.
+- **Le bloc « Espace usager » est décoratif** tant qu'il n'y a pas de compte.
 
 ## Sécurité
 
@@ -137,6 +170,11 @@ d'onglet, **sans toucher au code**. Ce réglage n'a aucun effet sur un domaine
 réel : un visiteur d'`angers.edilumen.fr` ne peut pas être détourné, même si la
 variable traînait en production.
 
+⚠️ Aujourd'hui, aucun domaine réel n'existe : la variable est posée sur la
+fonction **déployée**, et la seule collectivité de test (ACCM) est servie par
+`laurentville.localhost:5175` ↔ `laurentville.edilumen.fr`. À retirer de la
+fonction déployée dès le premier domaine réel.
+
 ## Cache
 
 Deux caches, tous deux volontairement rudimentaires et coupables par
@@ -161,10 +199,26 @@ npm run build   # tsc -b puis build de production
 
 `supabase/functions/_shared/portalFlow.test.ts` couvre le flux complet contre un
 Socle simulé : domaine connu, domaine inconnu, démarches d'un tenant, tenant sans
-démarche publiée, Socle indisponible, et changement de hostname.
+démarche publiée, Socle indisponible, et changement de hostname. Les services
+(`pageService`, `brandingService`, cache) et les règles de rendu
+(`composition.ts`, `theme.ts`) ont chacun leurs tests, sans réseau.
 
 ## Ce qui n'est pas encore fait
 
-Personnalisation graphique par collectivité (le Socle la sert déjà, héritage
-résolu, sur `/v1/organizations/{id}/branding`), authentification usager, création
-de demandes, intégration Iris.
+Dans l'ordre prévu — le détail, les prérequis côté Socle et les questions
+ouvertes sont dans `docs/roadmap.md` du Socle, section « Portail usagers » :
+
+1. les démarches **pour de vrai** (page par démarche, formulaire depuis
+   `form_schema`, création de la demande vers Iris) ;
+2. le **multilingue** ;
+3. les **autres templates** (thème, autres pages que l'accueil, actualités) ;
+4. les démarches **hors compte** (confirmation par courriel, lien de suivi) ;
+5. les démarches **avec compte** (espace usager, rattaché au référentiel
+   `contacts` du Socle) ;
+6. la **création de compte** ;
+7. les **échanges** usager ↔ agent sur une demande ;
+8. les **pièces jointes** ;
+9. **FranceConnect** — à instruire (habilitation, périmètre).
+
+Transverse : accessibilité RGAA et mentions obligatoires d'un site public,
+premier domaine réel.
