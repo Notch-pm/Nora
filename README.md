@@ -29,7 +29,7 @@ Navigateur (nantes.edilumen.fr)
 portal-api  (edge function — détient SOCLE_API_KEY)
    │  1. le domaine visité, déduit de l'en-tête Origin
    │  2. GET /v1/portal/tenant?hostname=…      → { id, name, … }
-   │  3. GET /v1/portal/procedures?tenant_id=… → démarches publiées
+   │  3. GET /v1/portal/procedures?tenant_id=… → démarches publiées, avec qui les propose
    │  4. GET /v1/portal/page?tenant_id=…       → page d'accueil publiée (404 = jamais publiée)
    │  5. GET /v1/organizations/{id}/branding   → charte graphique, héritage résolu (décorative)
    ▼
@@ -62,8 +62,10 @@ src/
     PortalPage.tsx         états (chargement, erreurs, repli en liste), puis la composition
     HomeComposition.tsx    la page d'accueil composée ; possède l'état de recherche
     sections/              un composant par kind : Recherche, Demarches, Compte, Texte, Footer
-    composition.ts         règles pures : filtre de recherche, ordre des épinglées, raccourcis,
-                           colonnes, luminance, « le pied de page final est le bas de la page »
+                           + DemarcheCard (la carte, partagée avec le repli) et OrganizationFilter
+    composition.ts         règles pures : filtres (recherche, organisme), organismes du filtre,
+                           ordre des épinglées, raccourcis, colonnes, luminance, message de grille
+                           vide, « le pied de page final est le bas de la page »
     theme.ts               la charte → variables CSS --brand-primary / --brand-secondary
     errorMessages.ts       un message par PortalFailure
 
@@ -107,9 +109,19 @@ liste ordonnée de sections typées. Règles de rendu, toutes dans
   bloc avant ce portail.
 - **Les références sont déjà résolues.** `pinned` et `shortcuts` ne contiennent
   que des démarches publiées, le Socle a écarté les autres.
+- **Les démarches sont celles que l'arbre propose.** Le Socle ne sert que les
+  démarches en `production`, `externe`, visibles et dans leur période, **et
+  activées par au moins un organisme** de la collectivité (elle-même ou une
+  de ses communes / services). Chaque démarche porte `organizations` : la
+  carte nomme qui la propose, et un filtre « Organisme » (`OrganizationFilter`,
+  masqué s'il n'y a qu'un organisme) ne garde que ce qu'un organisme propose.
+  La liste du filtre est l'union des organismes du catalogue, la collectivité
+  visitée en tête puis par nom — un organisme qui ne propose rien n'y figure
+  pas.
 - **La recherche est réelle.** Le champ de la section `recherche` filtre les
   grilles `demarches` de la page (normalisation sans accents ni casse) ; sans
-  section `recherche`, aucun filtre.
+  section `recherche`, aucun filtre. Recherche et organisme se cumulent, et
+  valent pour toutes les grilles de la page.
 - **Le pied de page final est le bas de la page.** Pleine largeur, hors du
   conteneur centré, poussé au bord ; la page perd sa marge basse. Sa couleur
   n'entre que sous la forme `#rrggbb`, le texte passe en clair ou en sombre

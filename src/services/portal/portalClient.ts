@@ -70,7 +70,13 @@ function readSnapshot(body: unknown): PortalSnapshot | null {
       : null;
   const branding =
     typeof raw.branding === "object" && raw.branding !== null ? (raw.branding as Branding) : null;
-  return { tenant, demarches: raw.demarches as Demarche[], page, branding };
+  // Une démarche sans liste d'organismes (serveur d'avant) en reçoit une
+  // vide : les composants itèrent dessus sans avoir à douter de sa présence.
+  const demarches = (raw.demarches as Demarche[]).map((demarche) => ({
+    ...demarche,
+    organizations: Array.isArray(demarche.organizations) ? demarche.organizations : [],
+  }));
+  return { tenant, demarches, page, branding };
 }
 
 /**

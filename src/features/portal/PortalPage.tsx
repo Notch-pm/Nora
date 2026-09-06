@@ -1,17 +1,23 @@
 /**
  * Le portail, en une page.
  *
- * Délibérément minimal : cette étape valide le mécanisme
- * `domaine → collectivité → démarches`, pas l'interface finale. La charte
- * graphique par collectivité (le Socle la sert déjà, héritage résolu, sur
- * `/v1/organizations/{id}/branding`) viendra ensuite.
- *
  * Ce composant ne connaît ni le Socle, ni `portal-api`, ni le domaine visité :
- * il lit un état et l'affiche.
+ * il lit un état et l'affiche. Une composition publiée est rendue telle
+ * quelle (`HomeComposition`) ; sans elle, la liste de repli ci-dessous — les
+ * mêmes cartes, le même filtre par organisme, sans mise en page composée.
  */
+import { useState } from "react";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
+import type { Tenant } from "@fn/_shared/domain/tenant.ts";
+import {
+  emptyDemarchesMessage,
+  filterDemarchesByOrganization,
+  organizationsOffering,
+} from "./composition.ts";
 import { errorMessageFor } from "./errorMessages.ts";
 import { HomeComposition } from "./HomeComposition.tsx";
+import { DemarcheCard } from "./sections/DemarcheCard.tsx";
+import { OrganizationFilter } from "./sections/OrganizationFilter.tsx";
 import { usePortal } from "./usePortal.ts";
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -20,19 +26,42 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function DemarcheCard({ demarche }: { demarche: Demarche }) {
+/**
+ * La liste de repli, quand la collectivité n'a pas encore composé sa page
+ * d'accueil. Elle possède son propre filtre par organisme : il n'y a pas de
+ * page composée pour le porter.
+ */
+function DefaultCatalogue({ tenant, demarches }: { tenant: Tenant; demarches: Demarche[] }) {
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const organizations = organizationsOffering(demarches, tenant.id);
+  const visible = filterDemarchesByOrganization(demarches, organizationId);
+
   return (
-    <li className="rounded-lg border border-slate-200 p-4">
-      <h3 className="font-medium text-slate-900">{demarche.name}</h3>
-      {demarche.description !== null && (
-        <p className="mt-1 text-sm text-slate-600">{demarche.description}</p>
-      )}
-      {demarche.estimatedMinutes !== null && (
-        <p className="mt-2 text-xs text-slate-500">
-          Environ {demarche.estimatedMinutes} minutes
-        </p>
-      )}
-    </li>
+    <Shell>
+      <header className="border-b border-slate-200 pb-6">
+        <h1 className="text-2xl font-semibold text-slate-900">{tenant.name}</h1>
+        <p className="mt-1 text-sm text-slate-500">Démarches en ligne</p>
+      </header>
+
+      <div className="mt-8 flex flex-col gap-4">
+        <OrganizationFilter
+          organizations={organizations}
+          value={organizationId}
+          onChange={setOrganizationId}
+        />
+        {visible.length === 0 ? (
+          // Cas normal, pas une erreur : la collectivité existe, elle n'a
+          // simplement rien publié. Le dire clairement évite un ticket de support.
+          <p className="text-slate-600">{emptyDemarchesMessage(false, organizationId)}</p>
+        ) : (
+          <ul className="space-y-3">
+            {visible.map((demarche) => (
+              <DemarcheCard key={demarche.id} demarche={demarche} />
+            ))}
+          </ul>
+        )}
+      </div>
+    </Shell>
   );
 }
 
@@ -70,8 +99,7 @@ export function PortalPage() {
   }
 
   // Une composition publiée existe : le portail la rend telle quelle. Elle
-  // porte son propre en-tête, hors du `Shell` étroit ci-dessous, qui ne sert
-  // plus alors qu'au repli.
+  // porte son propre en-tête, hors du `Shell` étroit du repli.
   if (state.page !== null) {
     return (
       <HomeComposition
@@ -83,26 +111,5 @@ export function PortalPage() {
     );
   }
 
-  return (
-    <Shell>
-      <header className="border-b border-slate-200 pb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">{state.tenant.name}</h1>
-        <p className="mt-1 text-sm text-slate-500">Démarches en ligne</p>
-      </header>
-
-      {state.demarches.length === 0 ? (
-        // Cas normal, pas une erreur : la collectivité existe, elle n'a
-        // simplement rien publié. Le dire clairement évite un ticket de support.
-        <p className="mt-8 text-slate-600">
-          Aucune démarche n'est proposée en ligne pour le moment.
-        </p>
-      ) : (
-        <ul className="mt-8 space-y-3">
-          {state.demarches.map((demarche) => (
-            <DemarcheCard key={demarche.id} demarche={demarche} />
-          ))}
-        </ul>
-      )}
-    </Shell>
-  );
+  return <DefaultCatalogue tenant={state.tenant} demarches={state.demarches} />;
 }

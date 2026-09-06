@@ -1,10 +1,12 @@
 /**
  * La page d'accueil composée par la collectivité, rendue pour de vrai.
  *
- * Ce composant possède l'état de recherche : le champ de la section
- * `recherche` (s'il y en a une) filtre les démarches affichées par toutes
- * les sections `demarches` de la page. Sans section `recherche`, aucun filtre
- * ne s'applique — il n'y a nulle part où le saisir.
+ * Ce composant possède les deux filtres : la recherche — le champ de la
+ * section `recherche`, s'il y en a une — et l'organisme choisi, porté par
+ * l'en-tête de chaque grille. Tous deux valent pour toutes les sections
+ * `demarches` de la page ; un usager qui a choisi sa commune la garde d'une
+ * grille à l'autre. Sans section `recherche`, aucune recherche ne s'applique
+ * — il n'y a nulle part où la saisir.
  *
  * L'en-tête (pastille, nom de collectivité, nav, pilule « Mon compte ») est
  * décoratif à ce stade : aucune de ces pages n'existe encore, mieux vaut du
@@ -16,7 +18,12 @@ import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
 import { brandingStyle } from "./theme.ts";
-import { endsWithFooter, filterDemarchesByQuery } from "./composition.ts";
+import {
+  endsWithFooter,
+  filterDemarchesByOrganization,
+  filterDemarchesByQuery,
+  organizationsOffering,
+} from "./composition.ts";
 import { CompteSection } from "./sections/CompteSection.tsx";
 import { DemarchesSection } from "./sections/DemarchesSection.tsx";
 import { FooterSection } from "./sections/FooterSection.tsx";
@@ -64,10 +71,15 @@ export function HomeComposition({
   branding: Branding | null;
 }) {
   const [query, setQuery] = useState("");
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
 
   const hasRecherche = page.sections.some((section) => section.kind === "recherche");
   const searchActive = hasRecherche && query.trim() !== "";
-  const visibleDemarches = hasRecherche ? filterDemarchesByQuery(demarches, query) : demarches;
+  const organizations = organizationsOffering(demarches, tenant.id);
+  const visibleDemarches = filterDemarchesByOrganization(
+    hasRecherche ? filterDemarchesByQuery(demarches, query) : demarches,
+    organizationId,
+  );
 
   // Un pied de page en dernière position EST le bas de la page : il est poussé
   // au bord (`mt-auto`) et rien ne le suit. Sans lui, la page garde une marge
@@ -107,6 +119,9 @@ export function HomeComposition({
                       <DemarchesSection
                         section={section}
                         demarches={visibleDemarches}
+                        organizations={organizations}
+                        organizationId={organizationId}
+                        onOrganizationChange={setOrganizationId}
                         searchActive={searchActive}
                       />
                     );

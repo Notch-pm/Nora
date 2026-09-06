@@ -1,49 +1,33 @@
 /**
  * Grille de démarches.
  *
- * Reprend le contenu de carte de l'ancienne liste brute du portail (nom,
- * description, durée estimée) et ajoute la pastille « À la une » pour les
- * démarches épinglées par la collectivité. L'ordre et la classe de grille
+ * Une carte par démarche (`DemarcheCard`), la pastille « À la une » pour les
+ * démarches épinglées par la collectivité, et le filtre par organisme dans
+ * l'en-tête. L'ordre, la classe de grille, le filtre et le message d'absence
  * viennent de `composition.ts`, pour rester testables sans rendu.
  */
-import type { Demarche } from "@fn/_shared/domain/demarche.ts";
+import type { Demarche, DemarcheOrganization } from "@fn/_shared/domain/demarche.ts";
 import type { DemarchesSection as DemarchesSectionData } from "@fn/_shared/domain/page.ts";
-import { gridColumnsClass, orderDemarchesForSection } from "../composition.ts";
-
-function DemarcheCard({ demarche, pinned }: { demarche: Demarche; pinned: boolean }) {
-  return (
-    <li
-      className={
-        "flex flex-col gap-2 rounded-xl border p-4 " +
-        (pinned
-          ? "border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_6%,white)]"
-          : "border-slate-200")
-      }
-    >
-      {pinned && (
-        <span className="w-fit rounded-full bg-[color:var(--brand-secondary)] px-2 py-0.5 text-[10.5px] font-extrabold text-slate-900">
-          À la une
-        </span>
-      )}
-      <h3 className="font-medium text-slate-900">{demarche.name}</h3>
-      {demarche.description !== null && (
-        <p className="text-sm text-slate-600">{demarche.description}</p>
-      )}
-      {demarche.estimatedMinutes !== null && (
-        <p className="text-xs text-slate-500">Environ {demarche.estimatedMinutes} minutes</p>
-      )}
-    </li>
-  );
-}
+import { emptyDemarchesMessage, gridColumnsClass, orderDemarchesForSection } from "../composition.ts";
+import { DemarcheCard } from "./DemarcheCard.tsx";
+import { OrganizationFilter } from "./OrganizationFilter.tsx";
 
 export function DemarchesSection({
   section,
   demarches,
+  organizations,
+  organizationId,
+  onOrganizationChange,
   searchActive,
 }: {
   section: DemarchesSectionData;
-  /** Démarches déjà filtrées par la recherche (le cas échéant), non triées. */
+  /** Démarches déjà filtrées par la recherche et l'organisme (le cas échéant), non triées. */
   demarches: Demarche[];
+  /** Les organismes qui proposent au moins une démarche du catalogue complet. */
+  organizations: DemarcheOrganization[];
+  /** Organisme sélectionné, `null` = tous. Possédé par la page : il vaut pour toutes les grilles. */
+  organizationId: string | null;
+  onOrganizationChange: (organizationId: string | null) => void;
   /** Une recherche non vide est en cours : le message « rien trouvé » en dépend. */
   searchActive: boolean;
 }) {
@@ -52,12 +36,17 @@ export function DemarchesSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-bold text-slate-900">{section.title}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-bold text-slate-900">{section.title}</h2>
+        <OrganizationFilter
+          organizations={organizations}
+          value={organizationId}
+          onChange={onOrganizationChange}
+        />
+      </div>
       {ordered.length === 0 ? (
         <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-500">
-          {searchActive
-            ? "Aucune démarche ne correspond à votre recherche."
-            : "Aucune démarche n'est proposée en ligne pour le moment."}
+          {emptyDemarchesMessage(searchActive, organizationId)}
         </p>
       ) : (
         <ul className={"grid gap-3 " + gridColumnsClass(section.columns)}>

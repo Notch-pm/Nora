@@ -47,6 +47,15 @@ const ROUTES: Record<string, unknown> = {
       short_description: "Signalez un problème rencontré dans l'espace public.",
       user_description: "Le service voirie interviendra sous 5 jours ouvrés.",
       input_duration_minutes: 5,
+      // Proposée par la ville et par l'un de ses quartiers : le Socle sert
+      // les organismes dans l'ordre de l'arbre, le portail le conserve.
+      organizations: [
+        { id: NANTES, name: "Ville de Nantes" },
+        { id: "q-chantenay", name: "Mairie de quartier de Chantenay" },
+        // Illisibles : une puce sans nom ne nomme personne, elle est écartée.
+        { id: "sans-nom", name: "" },
+        "pas-un-objet",
+      ],
     },
     {
       id: "d2",
@@ -54,6 +63,7 @@ const ROUTES: Record<string, unknown> = {
       short_description: null,
       user_description: "Effectuez votre demande en ligne.",
       input_duration_minutes: null,
+      organizations: [{ id: NANTES, name: "Ville de Nantes" }],
     },
   ],
   // Angers existe, mais n'a encore rien publié : cas normal, pas une erreur.
@@ -198,6 +208,10 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
         name: "Signaler un problème de voirie",
         description: "Signalez un problème rencontré dans l'espace public.",
         estimatedMinutes: 5,
+        organizations: [
+          { id: NANTES, name: "Ville de Nantes" },
+          { id: "q-chantenay", name: "Mairie de quartier de Chantenay" },
+        ],
       },
       {
         id: "d2",
@@ -206,7 +220,25 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
         // la carte n'aurait aucun texte alors que la collectivité en a écrit un.
         description: "Effectuez votre demande en ligne.",
         estimatedMinutes: null,
+        organizations: [{ id: NANTES, name: "Ville de Nantes" }],
       },
+    ]);
+  });
+
+  it("affiche une démarche servie sans organismes — le portail ne décide pas qui la porte", async () => {
+    // Un Socle d'avant le champ `organizations`, ou une liste absente : la
+    // démarche est publiée, elle s'affiche ; la carte ne nomme simplement personne.
+    const socle = fakeSocle({
+      [NANTES_PROCEDURES]: {
+        kind: "ok",
+        body: [{ id: "d9", name: "Sans organisme", short_description: null, user_description: null }],
+      },
+    });
+    const result = await visit("https://nantes.edilumen.fr", socle);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.demarches).toEqual([
+      { id: "d9", name: "Sans organisme", description: null, estimatedMinutes: null, organizations: [] },
     ]);
   });
 

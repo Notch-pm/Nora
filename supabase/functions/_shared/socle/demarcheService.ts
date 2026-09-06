@@ -1,11 +1,13 @@
 /**
  * Démarches publiques d'une collectivité.
  *
- * Le portail ne décide PAS ce qui est publié. Les trois règles — paramétrage en
- * `production`, démarche `externe`, visibilité et période du bloc communication
- * — appartiennent au Socle, qui les applique dans `GET /v1/portal/procedures`.
- * Les recopier ici les ferait diverger le jour où le paramétrage évolue, et un
- * portail qui diverge publie ce qui ne devait pas l'être.
+ * Le portail ne décide PAS ce qui est publié. Les quatre règles — paramétrage
+ * en `production`, démarche `externe`, visibilité et période du bloc
+ * communication, activation par au moins un organisme de l'arbre de la
+ * collectivité — appartiennent au Socle, qui les applique dans
+ * `GET /v1/portal/procedures` et dit, pour chaque démarche, quels organismes
+ * la proposent. Les recopier ici les ferait diverger le jour où le paramétrage
+ * évolue, et un portail qui diverge publie ce qui ne devait pas l'être.
  *
  * Même raison pour le choix de la route : `GET /v1/procedures` sert la
  * configuration INTÉGRALE d'une démarche (`form_schema`, `knowledge_base`,
@@ -15,7 +17,7 @@
  * Avec `tenantService`, ce fichier est le seul à connaître la forme des
  * réponses du Socle : il traduit vers le modèle du portail (`domain/demarche`).
  */
-import type { Demarche } from "../domain/demarche.ts";
+import type { Demarche, DemarcheOrganization } from "../domain/demarche.ts";
 import type { PortalFailure } from "../domain/failure.ts";
 import type { SocleClient } from "./socleClient.ts";
 
@@ -27,6 +29,25 @@ function text(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * Les organismes qui proposent la démarche, dans l'ordre où le Socle les sert
+ * (celui de l'arbre). Une entrée sans identifiant ou sans nom est écartée —
+ * une puce vide sur une carte ne nomme personne — et une liste absente vaut
+ * « aucun » : le portail affiche la démarche, il ne décide pas qui la porte.
+ */
+function toOrganizations(raw: unknown): DemarcheOrganization[] {
+  if (!Array.isArray(raw)) return [];
+  const organizations: DemarcheOrganization[] = [];
+  for (const candidate of raw) {
+    if (typeof candidate !== "object" || candidate === null) continue;
+    const org = candidate as Record<string, unknown>;
+    const id = text(org.id);
+    const name = text(org.name);
+    if (id !== null && name !== null) organizations.push({ id, name });
+  }
+  return organizations;
 }
 
 /**
@@ -52,6 +73,7 @@ function toDemarche(raw: unknown): Demarche | null {
       typeof row.input_duration_minutes === "number" && Number.isFinite(row.input_duration_minutes)
         ? row.input_duration_minutes
         : null,
+    organizations: toOrganizations(row.organizations),
   };
 }
 

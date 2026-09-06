@@ -24,6 +24,7 @@ const SNAPSHOT = {
       name: "Signaler un problème de voirie",
       description: "Signalez un problème rencontré dans l'espace public.",
       estimatedMinutes: 5,
+      organizations: [{ id: "org-1", name: "Ville de Nantes" }],
     },
   ],
   page: null,

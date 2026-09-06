@@ -2,18 +2,79 @@ import { describe, expect, it } from "vitest";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import {
   MAX_SHORTCUTS,
+  emptyDemarchesMessage,
   endsWithFooter,
+  filterDemarchesByOrganization,
   filterDemarchesByQuery,
   footerColumnsClass,
   gridColumnsClass,
   isDarkColor,
   orderDemarchesForSection,
+  organizationsOffering,
   resolveShortcuts,
 } from "./composition.ts";
 
-function demarche(id: string, name: string, description: string | null = null): Demarche {
-  return { id, name, description, estimatedMinutes: null };
+const ACCM = { id: "accm", name: "ACCM" };
+const ARLES = { id: "arles", name: "Mairie d'Arles" };
+const CRAU = { id: "crau", name: "Mairie de Saint-Martin" };
+
+function demarche(
+  id: string,
+  name: string,
+  description: string | null = null,
+  organizations: Demarche["organizations"] = [ACCM],
+): Demarche {
+  return { id, name, description, estimatedMinutes: null, organizations };
 }
+
+describe("filterDemarchesByOrganization", () => {
+  const demarches = [
+    demarche("a", "Acte de naissance", null, [ACCM, ARLES]),
+    demarche("b", "Voirie", null, [CRAU]),
+  ];
+
+  it("ne garde que les démarches que l'organisme propose", () => {
+    expect(filterDemarchesByOrganization(demarches, "arles").map((d) => d.id)).toEqual(["a"]);
+    expect(filterDemarchesByOrganization(demarches, "crau").map((d) => d.id)).toEqual(["b"]);
+  });
+
+  it("aucun organisme choisi : rien n'est filtré", () => {
+    expect(filterDemarchesByOrganization(demarches, null)).toBe(demarches);
+  });
+
+  it("un organisme qui ne propose rien rend une liste vide, pas une erreur", () => {
+    expect(filterDemarchesByOrganization(demarches, "inconnu")).toEqual([]);
+  });
+});
+
+describe("organizationsOffering", () => {
+  it("dédoublonne, place la collectivité visitée en tête, puis les autres par nom", () => {
+    const demarches = [
+      demarche("a", "Acte de naissance", null, [CRAU, ARLES]),
+      demarche("b", "Voirie", null, [ARLES, ACCM]),
+    ];
+    expect(organizationsOffering(demarches, "accm").map((o) => o.id)).toEqual(["accm", "arles", "crau"]);
+  });
+
+  it("classe sans tenir compte de la casse ni des accents", () => {
+    const demarches = [
+      demarche("a", "A", null, [{ id: "e", name: "Éguilles" }, { id: "b", name: "beaucaire" }, { id: "f", name: "Fos" }]),
+    ];
+    expect(organizationsOffering(demarches, "accm").map((o) => o.id)).toEqual(["b", "e", "f"]);
+  });
+
+  it("un catalogue vide n'offre aucun organisme", () => {
+    expect(organizationsOffering([], "accm")).toEqual([]);
+  });
+});
+
+describe("emptyDemarchesMessage", () => {
+  it("la recherche prime, puis l'organisme, puis l'absence de publication", () => {
+    expect(emptyDemarchesMessage(true, "arles")).toMatch(/recherche/);
+    expect(emptyDemarchesMessage(false, "arles")).toMatch(/cet organisme/);
+    expect(emptyDemarchesMessage(false, null)).toMatch(/pour le moment/);
+  });
+});
 
 describe("orderDemarchesForSection", () => {
   it("remonte les démarches épinglées en tête quand pinnedFirst est vrai", () => {

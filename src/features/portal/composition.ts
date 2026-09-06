@@ -5,7 +5,7 @@
  * l'affichent, mais l'ordre des démarches, le filtre de recherche et la
  * résolution des raccourcis vivent ici, pour être vérifiés sans rendu.
  */
-import type { Demarche } from "@fn/_shared/domain/demarche.ts";
+import type { Demarche, DemarcheOrganization } from "@fn/_shared/domain/demarche.ts";
 import type { FooterColumns, GridColumns } from "@fn/_shared/domain/page.ts";
 
 /**
@@ -37,6 +37,56 @@ export function filterDemarchesByQuery(demarches: Demarche[], query: string): De
     const haystack = normalizeSearchText(`${demarche.name} ${demarche.description ?? ""}`);
     return haystack.includes(needle);
   });
+}
+
+/**
+ * Filtre par organisme : ne garde que les démarches que cet organisme
+ * propose. `null` — aucun organisme choisi — ne filtre rien.
+ */
+export function filterDemarchesByOrganization(
+  demarches: Demarche[],
+  organizationId: string | null,
+): Demarche[] {
+  if (organizationId === null) return demarches;
+  return demarches.filter((demarche) =>
+    demarche.organizations.some((org) => org.id === organizationId),
+  );
+}
+
+const organizationCollator = new Intl.Collator("fr", { sensitivity: "base" });
+
+/**
+ * Les organismes qui proposent au moins une démarche du catalogue,
+ * dédoublonnés : la collectivité visitée d'abord, puis les autres par nom.
+ * C'est la liste du filtre — un organisme qui ne propose rien n'y figure pas,
+ * l'usager n'y choisirait que du vide.
+ */
+export function organizationsOffering(
+  demarches: Demarche[],
+  tenantId: string,
+): DemarcheOrganization[] {
+  const byId = new Map<string, DemarcheOrganization>();
+  for (const demarche of demarches) {
+    for (const org of demarche.organizations) {
+      if (!byId.has(org.id)) byId.set(org.id, org);
+    }
+  }
+  return [...byId.values()].sort((a, b) => {
+    if (a.id === tenantId) return -1;
+    if (b.id === tenantId) return 1;
+    return organizationCollator.compare(a.name, b.name);
+  });
+}
+
+/**
+ * Ce que dit une grille vide. La recherche prime : c'est le geste le plus
+ * récent de l'usager, et c'est lui qu'il faut lui rendre. Puis l'organisme
+ * choisi ; sinon, rien n'est publié — et ce n'est pas une erreur.
+ */
+export function emptyDemarchesMessage(searchActive: boolean, organizationId: string | null): string {
+  if (searchActive) return "Aucune démarche ne correspond à votre recherche.";
+  if (organizationId !== null) return "Aucune démarche n'est proposée en ligne par cet organisme.";
+  return "Aucune démarche n'est proposée en ligne pour le moment.";
 }
 
 /**
