@@ -17,12 +17,23 @@
  * Avec `tenantService`, ce fichier est le seul à connaître la forme des
  * réponses du Socle : il traduit vers le modèle du portail (`domain/demarche`).
  */
-import type { Demarche, DemarcheOrganization } from "../domain/demarche.ts";
+import type {
+  Demarche,
+  DemarcheCategory,
+  DemarcheDetail,
+  DemarcheOrganization,
+} from "../domain/demarche.ts";
 import type { PortalFailure } from "../domain/failure.ts";
+import { parseFormSchema } from "../domain/formSchema.ts";
+import { parseRequesterConfig } from "../domain/requesterConfig.ts";
 import type { SocleClient } from "./socleClient.ts";
 
 export type DemarchesResult =
   | { ok: true; demarches: Demarche[] }
+  | { ok: false; reason: PortalFailure };
+
+export type DemarcheResult =
+  | { ok: true; demarche: DemarcheDetail }
   | { ok: false; reason: PortalFailure };
 
 function text(value: unknown): string | null {
@@ -114,4 +125,67 @@ export async function getPublicDemarches(
     .map(toDemarche)
     .filter((demarche): demarche is Demarche => demarche !== null);
   return { ok: true, demarches };
+}
+
+/** Catégorie de la démarche, ou `null`. Un libellé de plus, jamais bloquant. */
+function toCategory(raw: unknown): DemarcheCategory | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const row = raw as Record<string, unknown>;
+  const id = text(row.id);
+  const name = text(row.name);
+  return id !== null && name !== null ? { id, name } : null;
+}
+
+/**
+ * Une démarche PUBLIÉE, avec de quoi la remplir : le détail servi par
+ * `GET /v1/portal/procedures/{id}`.
+ *
+ * Le Socle applique les mêmes quatre règles de publication que pour la liste,
+ * et rend **404** pour tout le reste — démarche inconnue, en brouillon, hors
+ * période, ou qu'aucun organisme n'active. Le portail n'a donc rien à
+ * revérifier, et rien à révéler : `demarche_unavailable` dit « pas ici », pas
+ * « existe mais fermée ».
+ *
+ * Les deux schémas sont parsés ICI, à la frontière : les écrans reçoivent un
+ * `FormSchema` déjà nettoyé et un `RequesterConfig` complet, jamais du JSON
+ * dont il faudrait douter.
+ */
+export async function getPublicDemarche(
+  tenantId: string,
+  demarcheId: string,
+  socle: SocleClient,
+): Promise<DemarcheResult> {
+  const reply = await socle.get(
+    "/v1/portal/procedures/" +
+      encodeURIComponent(demarcheId) +
+      "?tenant_id=" +
+      encodeURIComponent(tenantId),
+  );
+  switch (reply.kind) {
+    case "not_found":
+      return { ok: false, reason: "demarche_unavailable" };
+    case "auth_failed":
+      return { ok: false, reason: "socle_misconfigured" };
+    case "unreachable":
+    case "unexpected":
+      return { ok: false, reason: "socle_unavailable" };
+  }
+
+  const demarche = toDemarche(reply.body);
+  // Sans identifiant ni intitulé, il n'y a rien à afficher : c'est le même
+  // écart que dans la liste, avec la même conséquence — la démarche n'existe
+  // pas pour ce portail.
+  if (demarche === null) return { ok: false, reason: "demarche_unavailable" };
+
+  const row = reply.body as Record<string, unknown>;
+  return {
+    ok: true,
+    demarche: {
+      ...demarche,
+      category: toCategory(row.category),
+      userDescription: text(row.user_description),
+      form: parseFormSchema(row.form_schema),
+      requester: parseRequesterConfig(row.requester_config),
+    },
+  };
 }

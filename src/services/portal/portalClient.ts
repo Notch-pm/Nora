@@ -11,7 +11,8 @@
  * ne peut pas réécrire. C'est ce qui rend inutile toute vérification côté
  * interface : il n'y a rien à falsifier.
  */
-import type { Demarche } from "@fn/_shared/domain/demarche.ts";
+import type { Demarche, DemarcheDetail } from "@fn/_shared/domain/demarche.ts";
+import type { DemandeReceipt, DemandeSubmission } from "@fn/_shared/domain/demande.ts";
 import type { PortalFailure } from "@fn/_shared/domain/failure.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
@@ -46,6 +47,10 @@ const KNOWN_FAILURES: readonly PortalLoadFailure[] = [
   "socle_unavailable",
   "socle_misconfigured",
   "not_configured",
+  "demarche_unavailable",
+  "submission_rejected",
+  "iris_unavailable",
+  "iris_misconfigured",
   "network",
 ];
 
@@ -105,4 +110,102 @@ export async function fetchPortal(): Promise<PortalLoad> {
   // à moitié. Une page au nom vide ment plus qu'un message d'erreur.
   if (snapshot === null) return { ok: false, reason: "socle_unavailable" };
   return { ok: true, snapshot };
+}
+
+/** Une démarche et la collectivité qui la propose, en un seul chargement. */
+export interface DemarcheSnapshot {
+  tenant: Tenant;
+  demarche: DemarcheDetail;
+  /** La charte graphique ; `null` = couleurs par défaut. Jamais bloquante. */
+  branding: Branding | null;
+}
+
+export type DemarcheLoad =
+  | { ok: true; snapshot: DemarcheSnapshot }
+  | { ok: false; reason: PortalLoadFailure };
+
+function readDemarcheSnapshot(body: unknown): DemarcheSnapshot | null {
+  if (typeof body !== "object" || body === null) return null;
+  const raw = body as { tenant?: unknown; demarche?: unknown; branding?: unknown };
+  const tenant = raw.tenant as Tenant | undefined;
+  if (!tenant || typeof tenant.id !== "string" || typeof tenant.name !== "string") return null;
+  const demarche = raw.demarche as DemarcheDetail | undefined;
+  if (!demarche || typeof demarche.id !== "string" || typeof demarche.name !== "string") return null;
+  const branding =
+    typeof raw.branding === "object" && raw.branding !== null ? (raw.branding as Branding) : null;
+  // Le serveur a déjà traduit ET parsé les deux schémas : c'est le modèle du
+  // portail qui arrive ici, pas du JSON du Socle. Le re-parser en ferait une
+  // seconde vérité, qui divergerait au premier type de champ ajouté.
+  return { tenant, demarche, branding };
+}
+
+/**
+ * Charge une démarche publiée, avec de quoi l'afficher et la remplir.
+ *
+ * Comme pour le reste, la collectivité n'est pas envoyée : `portal-api` la
+ * déduit du domaine visité. Un identifiant qui ne correspond à aucune démarche
+ * PUBLIÉE de cette collectivité rend `demarche_unavailable` — le même échec
+ * qu'un identifiant inventé, sans jamais révéler qu'une démarche existe mais
+ * n'est pas ouverte.
+ */
+export async function fetchDemarche(demarcheId: string): Promise<DemarcheLoad> {
+  const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
+  if (!baseUrl) return { ok: false, reason: "not_configured" };
+
+  let response: Response;
+  try {
+    response = await fetch(
+      baseUrl.replace(/\/+$/, "") + "/v1/demarches/" + encodeURIComponent(demarcheId),
+    );
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) return { ok: false, reason: readFailure(body) };
+
+  const snapshot = readDemarcheSnapshot(body);
+  if (snapshot === null) return { ok: false, reason: "socle_unavailable" };
+  return { ok: true, snapshot };
+}
+
+export type DemandeSend =
+  | { ok: true; receipt: DemandeReceipt }
+  | { ok: false; reason: PortalLoadFailure };
+
+/**
+ * Dépose une demande. La clé d'Iris n'est pas ici et n'y sera jamais : c'est
+ * `portal-api` qui la détient, revérifie que la démarche est publiée, et parle
+ * au système de traitement.
+ *
+ * ⚠️ `submissionId` doit être TIRÉ UNE FOIS et conservé pendant les rejeux :
+ * c'est lui qui rend un double envoi inoffensif. Le renvoyer après une coupure
+ * réseau est le geste normal — Iris rend alors la demande déjà créée, et
+ * l'usager voit le même accusé.
+ */
+export async function sendDemande(submission: DemandeSubmission): Promise<DemandeSend> {
+  const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
+  if (!baseUrl) return { ok: false, reason: "not_configured" };
+
+  let response: Response;
+  try {
+    response = await fetch(baseUrl.replace(/\/+$/, "") + "/v1/demandes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(submission),
+    });
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) return { ok: false, reason: readFailure(body) };
+
+  const receipt = (body as { receipt?: DemandeReceipt } | null)?.receipt;
+  // Une demande partie sans référence lisible ne peut pas être annoncée comme
+  // reçue : l'usager n'aurait aucun numéro à noter.
+  if (!receipt || typeof receipt.reference !== "string" || receipt.reference === "") {
+    return { ok: false, reason: "iris_unavailable" };
+  }
+  return { ok: true, receipt };
 }

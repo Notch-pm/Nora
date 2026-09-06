@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { hostnameForRequest } from "./http/requestHostname.ts";
-import { getPublicDemarches } from "./socle/demarcheService.ts";
+import { getPublicDemarche, getPublicDemarches } from "./socle/demarcheService.ts";
 import { getPublishedPage } from "./socle/pageService.ts";
 import { getBranding } from "./socle/brandingService.ts";
 import { resolveTenant } from "./socle/tenantService.ts";
@@ -376,5 +376,101 @@ describe("6. changement de hostname → changement de tenant", () => {
     if (!nantes.ok || !angers.ok) return;
     expect(nantes.tenant.name).toBe("Ville de Nantes");
     expect(angers.tenant.name).toBe("Ville d'Angers");
+  });
+});
+
+// --- Le flux jusqu'au formulaire -------------------------------------------
+
+const NANTES_DETAIL = "/v1/portal/procedures/d1?tenant_id=" + NANTES;
+
+/** Le détail servi par le Socle, tel que le contrat 1.12.0 le décrit. */
+const DETAIL = {
+  id: "d1",
+  name: "Signaler un problème de voirie",
+  short_description: "Signalez un problème rencontré dans l'espace public.",
+  user_description: "Le service voirie interviendra sous 5 jours ouvrés.",
+  input_duration_minutes: 5,
+  organizations: [{ id: NANTES, name: "Ville de Nantes" }],
+  category: { id: "cat-1", name: "Espace public" },
+  form_schema: {
+    version: 1,
+    content: [
+      { id: "f1", key: "localisation", type: "text", label: "Localisation", required: true },
+      { id: "f2", key: "signature", type: "signature", label: "Illisible pour ce portail" },
+    ],
+  },
+  requester_config: {
+    citoyen: { enabled: true, fields: { courriel: "obligatoire", nom_usuel: "visible" } },
+  },
+};
+
+/** Le flux d'une page de démarche, dans l'ordre où l'edge function l'exécute. */
+async function openDemarche(origin: string, demarcheId: string, socle: SocleClient) {
+  const hostname = hostnameForRequest(browserRequest(origin), NO_DEV);
+  const resolution = await resolveTenant(hostname, socle);
+  if (!resolution.ok) return { ok: false as const, reason: resolution.reason };
+  return await getPublicDemarche(resolution.tenant.id, demarcheId, socle);
+}
+
+describe("7. démarche connue → détail traduit et parsé", () => {
+  const socle = () => fakeSocle({ [NANTES_DETAIL]: { kind: "ok", body: DETAIL } });
+
+  it("traduit le détail dans le vocabulaire du portail", async () => {
+    const result = await openDemarche("https://nantes.edilumen.fr", "d1", socle());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.demarche.name).toBe("Signaler un problème de voirie");
+    expect(result.demarche.description).toBe("Signalez un problème rencontré dans l'espace public.");
+    // Le résumé et le descriptif usager restent DEUX champs sur la page d'une
+    // démarche : l'un annonce, l'autre explique.
+    expect(result.demarche.userDescription).toBe(
+      "Le service voirie interviendra sous 5 jours ouvrés.",
+    );
+    expect(result.demarche.category).toEqual({ id: "cat-1", name: "Espace public" });
+  });
+
+  it("parse le formulaire à la frontière, en écartant ce qu'il ne sait pas rendre", async () => {
+    // Les écrans reçoivent un schéma déjà nettoyé : ils n'ont jamais à douter
+    // de la forme de ce qu'ils affichent.
+    const result = await openDemarche("https://nantes.edilumen.fr", "d1", socle());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.demarche.form?.content).toHaveLength(1);
+    expect(result.demarche.requester.citoyen.enabled).toBe(true);
+    expect(result.demarche.requester.citoyen.fields.courriel).toBe("obligatoire");
+    // Un champ que la collectivité n'a pas ouvert reste masqué par défaut.
+    expect(result.demarche.requester.citoyen.fields.adresse).toBe("masque");
+  });
+
+  it("une démarche non publiée est introuvable — jamais « existe mais fermée »", async () => {
+    // Le Socle rend 404 pour une démarche en brouillon, hors période, interne
+    // ou qu'aucun organisme n'active. Le portail ne dit rien de plus : ce
+    // serait renseigner sur le paramétrage d'une collectivité.
+    const result = await openDemarche("https://nantes.edilumen.fr", "inconnue", fakeSocle());
+    expect(result).toEqual({ ok: false, reason: "demarche_unavailable" });
+  });
+
+  it("une démarche sans formulaire s'affiche quand même", async () => {
+    const sansFormulaire = fakeSocle({
+      [NANTES_DETAIL]: { kind: "ok", body: { ...DETAIL, form_schema: null, requester_config: null } },
+    });
+    const result = await openDemarche("https://nantes.edilumen.fr", "d1", sansFormulaire);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.demarche.form).toBeNull();
+    // Aucun public ouvert : la démarche se dépose sans identité, et le portail
+    // le dit à l'usager plutôt que d'inventer une question.
+    expect(result.demarche.requester.citoyen.enabled).toBe(false);
+  });
+
+  it("un Socle éteint reste une panne, pas une démarche absente", async () => {
+    const result = await getPublicDemarche(NANTES, "d1", downSocle);
+    expect(result).toEqual({ ok: false, reason: "socle_unavailable" });
+  });
+
+  it("une clé refusée est une panne de configuration, pas un refus à l'usager", async () => {
+    const refuse = fakeSocle({ [NANTES_DETAIL]: { kind: "auth_failed" } });
+    const result = await openDemarche("https://nantes.edilumen.fr", "d1", refuse);
+    expect(result).toEqual({ ok: false, reason: "socle_misconfigured" });
   });
 });

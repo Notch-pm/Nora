@@ -69,6 +69,37 @@ const MESSAGES: Record<PortalLoadFailure, ErrorMessage> = {
   // Le seul message qui s'adresse à un exploitant plutôt qu'à un usager : en
   // production il ne devrait jamais s'afficher, et s'il s'affiche, il faut
   // qu'il dise quoi faire.
+  demarche_unavailable: {
+    title: "Cette démarche n'est plus proposée",
+    detail:
+      "Elle a peut-être été retirée du portail, ou sa période de publication est terminée. " +
+      "Retournez à l'accueil pour voir les démarches disponibles.",
+    // Ce n'est pas une panne : réessayer donnerait le même résultat.
+    retryable: false,
+  },
+  submission_rejected: {
+    title: "Votre demande n'a pas pu être enregistrée",
+    detail:
+      "Le service qui reçoit les demandes l'a refusée. Merci de contacter votre collectivité, " +
+      "qui pourra la prendre par un autre moyen.",
+    // Renvoyer à l'identique serait refusé de la même façon.
+    retryable: false,
+  },
+  iris_unavailable: {
+    title: "Votre demande n'a pas pu être envoyée",
+    detail:
+      "Le service qui reçoit les demandes n'a pas répondu. Vos réponses sont toujours à " +
+      "l'écran : réessayez dans quelques instants. Si elle est déjà partie, ce second envoi " +
+      "ne créera pas de doublon.",
+    retryable: true,
+  },
+  iris_misconfigured: {
+    title: "Votre demande n'a pas pu être envoyée",
+    detail:
+      "Le service qui reçoit les demandes n'a pas répondu. Vos réponses sont toujours à " +
+      "l'écran : réessayez dans quelques instants.",
+    retryable: true,
+  },
   not_configured: {
     title: "Portail non configuré",
     detail:

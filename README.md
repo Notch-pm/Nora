@@ -26,14 +26,21 @@ Socle, dans `organization_domains`.
 Navigateur (nantes.edilumen.fr)
    │  aucune clé, aucun identifiant de tenant
    ▼
-portal-api  (edge function — détient SOCLE_API_KEY)
+portal-api  (edge function — détient SOCLE_API_KEY et IRIS_API_KEY)
    │  1. le domaine visité, déduit de l'en-tête Origin
    │  2. GET /v1/portal/tenant?hostname=…      → { id, name, … }
    │  3. GET /v1/portal/procedures?tenant_id=… → démarches publiées, avec qui les propose
-   │  4. GET /v1/portal/page?tenant_id=…       → page d'accueil publiée (404 = jamais publiée)
-   │  5. GET /v1/organizations/{id}/branding   → charte graphique, héritage résolu (décorative)
+   │  4. GET /v1/portal/procedures/{id}?…      → une démarche + form_schema + requester_config
+   │  5. GET /v1/portal/page?tenant_id=…       → page d'accueil publiée (404 = jamais publiée)
+   │  6. GET /v1/organizations/{id}/branding   → charte graphique, héritage résolu (décorative)
    ▼
 API publique du Socle
+
+portal-api
+   │  au dépôt d'une demande, après avoir REVÉRIFIÉ la démarche au catalogue publié
+   │  POST /v1/requests  → { created, request: { reference, status, … } }
+   ▼
+API d'ingestion d'Iris (requests-api)
 ```
 
 La **charte graphique** (logo, couleur principale, couleur secondaire) vient
@@ -58,9 +65,10 @@ src/
     portalClient.ts        appelle portal-api (jamais le Socle) — un seul GET /v1/bootstrap
     portalService.ts       getCurrentTenant() / getPublicDemarches() / getHomePage() /
                            getBranding(), mémoïsés sur un même instantané
-  features/portal/       Les écrans. Ne connaissent ni URL, ni Socle, ni domaine.
+  features/portal/       L'accueil. Ne connaît ni URL, ni Socle, ni domaine.
     PortalPage.tsx         états (chargement, erreurs, repli en liste), puis la composition
     HomeComposition.tsx    la page d'accueil composée ; possède l'état de recherche
+    PageHeader.tsx         l'en-tête, partagé avec les pages d'une démarche
     sections/              un composant par kind : Recherche, Demarches, Compte, Texte, Footer
                            + DemarcheCard (la carte, partagée avec le repli) et OrganizationFilter
     composition.ts         règles pures : filtres (recherche, organisme), organismes du filtre,
@@ -68,17 +76,30 @@ src/
                            vide, « le pied de page final est le bas de la page »
     theme.ts               la charte → variables CSS --brand-primary / --brand-secondary
     errorMessages.ts       un message par PortalFailure
+  features/demarche/     La démarche : la lire, la remplir, la déposer.
+    DemarchePage.tsx       la présentation (descriptif, durée, organismes, pièces attendues)
+    FormulairePage.tsx     le formulaire, le dépôt, l'accusé
+    FormFields.tsx         un contrôle par type de champ — le rendu de référence côté usager
+    RequesterSection.tsx   « Vos informations », piloté par requester_config
+    DemarcheShell.tsx      le cadre commun (charte, en-tête, chargement, erreur)
+    formulaire.ts          règles pures : visibilité, obligation, validation, form_data, identité
+    useDemarche.ts         le chargement d'une démarche
 
 supabase/functions/
   _shared/
-    domain/              Le modèle du PORTAIL — Tenant, Demarche, HomePage, Branding, PortalFailure.
+    domain/              Le modèle du PORTAIL — Tenant, Demarche, HomePage, Branding, PortalFailure,
+                         Demande, plus les deux MIROIRS du schéma possédé par le Socle :
+                         formSchema.ts + conditions.ts (lecture tolérante) et requesterConfig.ts.
     socle/               Le seul code qui connaisse la forme des réponses du Socle.
       socleClient.ts       port HTTP + implémentation
       cachedSocleClient.ts décorateur de cache
       tenantService.ts     resolveTenant(hostname)
-      demarcheService.ts   getPublicDemarches(tenantId)
+      demarcheService.ts   getPublicDemarches(tenantId) / getPublicDemarche(tenantId, id)
       pageService.ts       getPublishedPage(tenantId) — traduit, filtre, valide les couleurs
       brandingService.ts   getBranding(tenantId) — décoratif, se dégrade en null
+    iris/                Le seul code qui connaisse la forme de l'API d'ingestion d'Iris.
+      irisClient.ts        port HTTP + implémentation
+      demandeService.ts    submitDemande() — l'enveloppe, et rien d'autre
     http/                Mise en forme et détermination du nom d'hôte.
     portalFlow.test.ts   le flux complet contre un Socle simulé
   portal-api/index.ts    Plomberie HTTP. Toutes les règles sont dans _shared/.
@@ -128,6 +149,244 @@ liste ordonnée de sections typées. Règles de rendu, toutes dans
   selon la luminance.
 - **Le bloc « Espace usager » est décoratif** tant qu'il n'y a pas de compte.
 
+## Une démarche, pour de vrai
+
+Une démarche se lit, puis se remplit, puis se dépose. Deux écrans, et un seul aller-retour
+chacun : `/demarches/{id}` la présente, `/demarches/{id}/formulaire` la fait remplir. Le
+découpage est délibéré — l'usager sait ce qu'on va lui demander avant de s'engager, et le
+formulaire a ensuite l'écran pour lui seul.
+
+- **Le Socle possède le formulaire, le portail le rend.** `form_schema` et `requester_config`
+  arrivent par `GET /v1/portal/procedures/{id}` (contrat 1.12.0). Les deux modules qui les lisent
+  (`domain/formSchema.ts` + `conditions.ts`, `domain/requesterConfig.ts`) sont des **miroirs
+  volontaires** du Socle, épinglés par les tests des deux côtés : une edge function ne peut rien
+  importer de son application, et un paquet partagé coûterait plus cher que deux fichiers
+  d'accord. L'implémentation de référence reste son `FormPreview` ; ici la saisie est réelle.
+- **La lecture du schéma est tolérante, nœud par nœud.** Un champ dont le type est inconnu, sans
+  clé machine, ou une liste de choix sans choix est écarté ; le reste du formulaire s'affiche.
+  Même parti que pour les sections de la page composée — on ne rend pas à moitié, mais on ne perd
+  pas tout pour un nœud.
+- **On saisit par `id`, on dépose par `key`.** Les conditions (`visibleIf`, `requiredIf`)
+  s'évaluent sur l'identifiant du champ ; `form_data` est indexé par sa **clé machine**, la seule
+  qu'un agent lise. Confondre les deux produirait des demandes illisibles.
+- **Un champ masqué n'existe pas.** Il n'est ni affiché, ni validé, ni déposé. Une réponse à une
+  question qu'on a cessé de poser n'est pas une réponse.
+- **Le portail ne demande que ce que la collectivité demande.** Les publics de « Vos
+  informations » et leurs champs viennent tous de `requester_config` (défaut du Socle : public
+  fermé, champ masqué). Aucun public ouvert = la demande part **sans identité**, et l'écran le
+  dit — l'anonymat devient un choix de la collectivité, pas un oubli du portail.
+- **Les pièces justificatives sont montrées, jamais bloquantes.** Le worker de copie d'Iris n'est
+  pas actif : une URL signée expirerait avant d'être lue. Le champ apparaît avec ses formats et
+  son nombre de fichiers, désactivé, et ne retient aucun envoi.
+- **La complétude n'est pas vérifiée côté serveur.** C'est le parti d'Iris — « la complétude est
+  un problème d'instruction, pas un motif de rejet » — et le portail ne décide pas l'inverse pour
+  lui. La saisie est guidée dans le navigateur ; ce qui arrive incomplet est qualifié par un
+  agent.
+
+### Le dépôt
+
+`POST /v1/demandes` sur `portal-api`, qui traduit vers l'enveloppe d'ingestion d'Iris. Trois
+vérifications, toutes **côté serveur**, parce qu'aucune ne peut être déléguée à un navigateur :
+
+1. **la collectivité** vient du domaine visité (`Origin`), jamais du corps de la requête ;
+2. **la démarche est revérifiée** au catalogue publié avant l'envoi — sans quoi le portail
+   deviendrait un moyen de déposer sur une démarche en brouillon ou fermée ;
+3. **l'organisme destinataire** doit faire partie de ceux qui proposent la démarche.
+
+S'y ajoute un filtrage : seules les clés que le formulaire déclare (et celles de l'identité du
+Socle) sont déposées. Une enveloppe fabriquée à la main ne peut pas glisser de champs inventés
+dans une demande, où un agent les lirait comme des réponses de l'usager.
+
+**Le rejeu est inoffensif.** `external_id` et `idempotency_key` portent le même identifiant, tiré
+une fois par le navigateur à l'ouverture du formulaire. Iris rend alors la demande existante
+(`200`, `created: false`) au lieu d'en créer une seconde : le double-clic et le renvoi après
+coupure réseau sont couverts par le contrat, pas par un verrou côté portail. L'accusé affiché est
+le même.
+
+**Les clés de l'identité ne sont pas traduites.** `courriel`, `nom_usuel`, `siret`… partent telles
+que le Socle les nomme : Iris les lit ainsi (`_shared/identity/declared.ts`) pour rapprocher
+l'usager du référentiel, ou créer sa fiche. Écrire une correspondance ici en ferait une troisième
+vérité, qui divergerait au premier champ ajouté.
+
+## Raccordement à Iris
+
+Iris n'a **aucune logique propre à un émetteur** : le portail y est une *source enregistrée*, au
+même titre qu'un connecteur courrier. Le raccordement est donc du **provisioning**, pas du code —
+rien à déployer, quatre étapes en base et deux secrets.
+
+Le principe tient en une phrase : **la clé n'existe en clair qu'à un seul endroit**, les secrets de
+`portal-api`. Iris n'en garde que l'empreinte SHA-256 et rehache ce qu'il reçoit à chaque appel.
+D'où l'ordre des étapes — générer, poser l'empreinte, poser le clair.
+
+| Où | Quoi |
+| --- | --- |
+| Iris — `integration_credentials.key_hash` | l'empreinte SHA-256, 64 caractères hexadécimaux |
+| Nora — secret `IRIS_API_KEY` | la clé en clair |
+
+### 0. Vérifier que la collectivité existe dans Iris
+
+**À ne pas sauter.** Iris travaille sur son propre miroir du référentiel, alimenté par
+`sync-socle-referentiel`. Si la racine n'y figure pas, les deux `insert … select` de l'étape 2
+n'insèrent **rien et ne lèvent aucune erreur** — un `INSERT 0` silencieux. L'échec ne se manifeste
+qu'au premier dépôt, sous la forme d'un « clé inconnue » qui désigne une tout autre cause.
+
+```sql
+select id, name, socle_org_id
+from organizations
+where socle_org_id = '<uuid racine Socle>';
+```
+
+Zéro ligne → lancer `sync-socle-referentiel` avant toute chose.
+
+### 1. Générer la clé
+
+Hors de tout dépôt et de toute conversation — la sortie contient un secret :
+
+```bash
+node -e "const c=require('crypto');const k='irs_'+c.randomBytes(24).toString('hex');console.log('clé      :',k);console.log('préfixe  :',k.slice(0,12));console.log('sha256   :',c.createHash('sha256').update(k).digest('hex'))"
+```
+
+Trois sorties, trois destinations : le **sha256** et le **préfixe** vont en base (étape 2), la
+**clé** va dans les secrets (étape 3). Le préfixe ne sert qu'à repérer une clé dans une liste, il
+n'ouvre rien — c'est un champ d'affichage.
+
+### 2. Déclarer la source et la clé dans Iris
+
+⚠️ **Remplacer réellement les `<…>`.** Rien ici n'est validé : une empreinte valant littéralement
+`<sha256>` s'insère sans broncher, et se paie d'un « clé inconnue » à la première demande.
+
+```sql
+insert into integration_sources (organization_id, code, name, status)
+select id, 'portail-citoyen', 'Portail usagers (Nora)', 'active'
+from organizations where socle_org_id = '<uuid racine Socle>'
+on conflict (organization_id, code) do nothing;
+
+insert into integration_credentials
+  (integration_source_id, name, key_prefix, key_hash, scopes, expires_at)
+select s.id, 'Nora — production', '<12 premiers caractères>', '<sha256 hexadécimal>',
+       array['requests:write'], now() + interval '12 months'
+from integration_sources s
+join organizations o on o.id = s.organization_id
+where s.code = 'portail-citoyen'
+  and o.socle_org_id = '<uuid racine Socle>';
+```
+
+Les deux doivent répondre `INSERT 0 1`. Un `INSERT 0 0` renvoie à l'étape 0.
+
+⚠️ Le code **`portail-citoyen`** n'est pas décoratif : `portal-api` l'envoie comme `source_system`,
+et Iris refuse en **403** si les deux diffèrent. `IRIS_SOURCE_SYSTEM` permet d'en changer — à
+condition de changer les deux.
+
+### 3. Poser les secrets sur `portal-api`
+
+Par le tableau de bord Supabase (*Edge Functions → Secrets*) ou par la CLI, depuis le dépôt Nora :
+
+```bash
+supabase secrets set \
+  IRIS_API_URL=https://<ref-iris>.supabase.co/functions/v1/requests-api \
+  IRIS_API_KEY=<la clé irs_…>
+```
+
+Pas de redéploiement nécessaire : `portal-api` lit `Deno.env` à chaque requête, le changement prend
+effet au prochain démarrage du worker.
+
+⚠️ **Regénérer une clé, c'est deux gestes** — mettre à jour `key_hash` en base *et* reposer
+`IRIS_API_KEY`. N'en faire qu'un laisse le portail avec une clé qu'Iris ne connaît plus, et le
+symptôme est le même que si rien n'avait été fait.
+
+Sans les deux secrets `IRIS_*`, tout le portail fonctionne **sauf** le dépôt, qui répond
+« portail non configuré » : la consultation ne dépend pas du système de traitement.
+
+### Vérifier
+
+Trois sondes, de la plus locale à la plus complète.
+
+**1. L'empreinte a-t-elle la bonne forme ?** Un SHA-256 fait 64 caractères hexadécimaux ; un
+gabarit oublié en fait 8.
+
+```sql
+select key_prefix, length(key_hash) as longueur, key_hash ~ '^[0-9a-f]{64}$' as forme_valide
+from integration_credentials c
+join integration_sources s on s.id = c.integration_source_id
+where s.code = 'portail-citoyen';
+```
+
+**2. Iris accepte-t-il la clé ?** Depuis un terminal — la commande porte le secret, elle n'a rien à
+faire dans un journal partagé :
+
+```bash
+curl -s -i -X POST "https://<ref-iris>.supabase.co/functions/v1/requests-api/v1/requests" -H "Authorization: Bearer irs_…" -H "Content-Type: application/json" -d "{}"
+```
+
+Une erreur de **validation** (400/422) est le bon signe : l'authentification est passée, seul le
+corps vide est refusé. Un 401/403 se lit dans le tableau ci-dessous.
+
+**3. Le portail dépose-t-il ?** `POST /v1/demandes` sur `portal-api`, avec l'en-tête `Origin` du
+domaine de la collectivité. Il répond `not_configured` sans secrets, une erreur de validation avec.
+
+| Réponse d'Iris | Cause |
+| --- | --- |
+| 401 « Clé d'intégration inconnue » | `key_hash` ne correspond pas à la clé posée sur Nora |
+| 401 « expirée » / « révoquée » | `expires_at` dépassé, ou `revoked_at` renseigné |
+| 403 « Intégration suspendue » | `integration_sources.status` ≠ `'active'` |
+| 403 « source_system ne correspond pas » | le `code` de la source ≠ `IRIS_SOURCE_SYSTEM` |
+| 403 sur la racine | la collectivité du domaine visité n'est pas celle de la clé — voir « Plusieurs portails » |
+
+⚠️ Le portail traduit **tous** ces cas en `iris_misconfigured`, dont le message invite l'usager à
+« réessayer dans quelques instants ». C'est trompeur pour une panne de paramétrage, qui ne se
+résoudra pas d'elle-même. À revoir le jour où l'on distinguera l'indisponible du mal configuré.
+
+### Ce qu'Iris enregistre
+
+Une demande déposée porte `source = 'portail-citoyen'`, la racine Socle de la collectivité,
+l'organisme destinataire s'il a été choisi, `external_ref` = l'identifiant de dépôt, et un
+`form_data` réduit aux seules clés que le formulaire déclare.
+
+L'identité part **non traduite** dans `requester_snapshot.declared` — `courriel`, `nom_usuel`,
+`siret`… tels que le Socle les nomme. Iris tente de la rapprocher de son référentiel `contacts`,
+puis de créer une fiche. S'il n'y parvient pas, il **n'échoue pas** : la demande est enregistrée
+avec `identity_status = 'non_rapprochee'` et l'anomalie `usager_a_creer_dans_socle`, qu'un agent
+traite à l'instruction. Un Socle muet ne doit jamais faire perdre une demande.
+
+## Plusieurs portails, ou un portail multi-collectivités ?
+
+C'est la **question ouverte la plus structurante** du portail, et elle n'est pas tranchée.
+
+En l'état, l'instance est **multi-collectivités en lecture** et **mono-collectivité en dépôt** :
+
+| | Multi-tenant ? | Pourquoi |
+| --- | --- | --- |
+| Lire — accueil, démarches, formulaire | **oui** | la collectivité vient du domaine visité, et la clé Socle est une clé *plateforme* : elle résout tous les domaines |
+| Déposer — `POST /v1/demandes` | **non** | la clé Iris est liée à UNE source, elle-même liée à UN tenant ; Iris rejette en 403 toute enveloppe dont la racine diffère |
+
+Un dépôt depuis un domaine porté par une **sous-organisation** bute sur la même règle.
+
+Deux directions, qui ne coûtent pas la même chose :
+
+**A — une instance, un registre de clés par collectivité.** `portal-api` choisit la clé Iris
+d'après le tenant qu'il vient de résoudre. La promesse « une instance sert toutes les
+collectivités » tient alors de bout en bout, et ajouter une collectivité reste une ligne dans
+`organization_domains`. Prix : il faut un endroit où ranger N secrets — les secrets d'edge function
+sont plats — donc une table chiffrée côté Socle, ou un secret unique portant un JSON, et une
+rotation à instruire collectivité par collectivité.
+
+**B — un déploiement par collectivité.** Chaque portail a ses propres secrets, donc sa propre clé
+Iris, et le problème disparaît sans écrire une ligne. Prix : N déploiements à tenir à jour, N
+domaines à configurer, et surtout le multi-tenant du portail devient inutile — la résolution par
+`Origin`, `PORTAL_DEV_DOMAIN_SUFFIX`, le cache par hostname perdent leur raison d'être. Ce qui est
+aujourd'hui le cœur de l'architecture deviendrait du code mort.
+
+Trois questions à trancher avant d'écrire quoi que ce soit :
+
+- une collectivité aura-t-elle un jour **plusieurs domaines** (une marque par commune membre) ?
+- le portail reste-t-il **une application déployée**, ou devient-il un gabarit qu'on instancie ?
+- Iris peut-il délivrer une clé **plateforme** couvrant plusieurs tenants, comme le Socle en a une ?
+  C'est le point de bascule : si oui, l'option A se réduit à presque rien, et B perd son seul
+  avantage.
+
+Tant que la question n'est pas tranchée, **une seule collectivité peut déposer**. Les autres
+consultent et remplissent normalement ; leur dépôt échoue sur l'autorisation d'Iris.
+
 ## Sécurité
 
 Le nom d'hôte est une donnée **non fiable**, et il est déterminé **côté serveur**.
@@ -159,9 +418,14 @@ Secrets serveur (jamais dans un fichier `VITE_*`) :
 supabase link --project-ref <ref>
 supabase secrets set \
   SOCLE_API_URL=https://<ref-socle>.supabase.co/functions/v1/public-api \
-  SOCLE_API_KEY=<clé plateforme, scope read>
+  SOCLE_API_KEY=<clé plateforme, scope read> \
+  IRIS_API_URL=https://<ref-iris>.supabase.co/functions/v1/requests-api \
+  IRIS_API_KEY=<clé d'intégration irs_…, scope requests:write>
 supabase functions deploy portal-api
 ```
+
+Sans les deux secrets `IRIS_*`, tout le portail fonctionne **sauf** le dépôt, qui répond
+« portail non configuré » : la consultation ne dépend pas du système de traitement.
 
 La clé doit être une clé **plateforme** du Socle (sans organisation rattachée) :
 le portail sert toutes les collectivités, une clé liée à une seule n'en
@@ -213,24 +477,29 @@ npm run build   # tsc -b puis build de production
 Socle simulé : domaine connu, domaine inconnu, démarches d'un tenant, tenant sans
 démarche publiée, Socle indisponible, et changement de hostname. Les services
 (`pageService`, `brandingService`, cache) et les règles de rendu
-(`composition.ts`, `theme.ts`) ont chacun leurs tests, sans réseau.
+(`composition.ts`, `theme.ts`, `formulaire.ts`) ont chacun leurs tests, sans réseau. La lecture
+tolérante du `form_schema` et du `requester_config` est épinglée côté portail
+(`domain/*.test.ts`), et l'enveloppe déposée dans Iris l'est contre un Iris simulé
+(`iris/demandeService.test.ts`) — c'est un port, il se remplace par une table de réponses.
 
 ## Ce qui n'est pas encore fait
 
 Dans l'ordre prévu — le détail, les prérequis côté Socle et les questions
 ouvertes sont dans `docs/roadmap.md` du Socle, section « Portail usagers » :
 
-1. les démarches **pour de vrai** (page par démarche, formulaire depuis
-   `form_schema`, création de la demande vers Iris) ;
-2. le **multilingue** ;
-3. les **autres templates** (thème, autres pages que l'accueil, actualités) ;
-4. les démarches **hors compte** (confirmation par courriel, lien de suivi) ;
-5. les démarches **avec compte** (espace usager, rattaché au référentiel
+1. le **multilingue** ;
+2. les **autres templates** (thème, autres pages que l'accueil, actualités) ;
+3. les démarches **hors compte** : la demande part déjà, il lui manque son après —
+   confirmation par courriel et lien de suivi signé, donc le statut d'une demande
+   consultable depuis le portail ;
+4. les démarches **avec compte** (espace usager, rattaché au référentiel
    `contacts` du Socle) ;
-6. la **création de compte** ;
-7. les **échanges** usager ↔ agent sur une demande ;
-8. les **pièces jointes** ;
-9. **FranceConnect** — à instruire (habilitation, périmètre).
+5. la **création de compte** ;
+6. les **échanges** usager ↔ agent sur une demande ;
+7. les **pièces jointes** (le formulaire les annonce déjà, le dépôt reste à faire) ;
+8. **FranceConnect** — à instruire (habilitation, périmètre).
 
 Transverse : accessibilité RGAA et mentions obligatoires d'un site public,
-premier domaine réel.
+premier domaine réel, et surtout **le multi-collectivités du dépôt** — voir
+« Plusieurs portails, ou un portail multi-collectivités ? ». C'est un choix
+d'architecture, pas une tâche : il conditionne si cette instance reste unique.

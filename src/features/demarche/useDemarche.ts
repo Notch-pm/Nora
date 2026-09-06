@@ -1,0 +1,51 @@
+/**
+ * État de chargement d'une démarche, pour les composants.
+ *
+ * Contrairement à `usePortal`, ce hook ne passe pas par le service mémoïsé :
+ * un instantané est propre à UNE démarche, et deux démarches consultées à la
+ * suite ne partagent rien. Le cache utile est ici celui du navigateur, que
+ * `portal-api` autorise par son en-tête.
+ */
+import { useEffect, useState } from "react";
+import {
+  fetchDemarche,
+  type DemarcheSnapshot,
+  type PortalLoadFailure,
+} from "@/services/portal/portalClient.ts";
+
+export type DemarcheState =
+  | { status: "loading" }
+  | { status: "ready"; snapshot: DemarcheSnapshot }
+  | { status: "error"; reason: PortalLoadFailure };
+
+export function useDemarche(demarcheId: string): { state: DemarcheState; retry: () => void } {
+  const [state, setState] = useState<DemarcheState>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    // Un chargement obsolète ne doit pas écraser l'état d'un plus récent — le
+    // cas se produit dès qu'on change de démarche pendant que la première
+    // requête court.
+    let current = true;
+    setState({ status: "loading" });
+
+    fetchDemarche(demarcheId)
+      .then((result) => {
+        if (!current) return;
+        setState(
+          result.ok
+            ? { status: "ready", snapshot: result.snapshot }
+            : { status: "error", reason: result.reason },
+        );
+      })
+      .catch(() => {
+        if (current) setState({ status: "error", reason: "network" });
+      });
+
+    return () => {
+      current = false;
+    };
+  }, [demarcheId, attempt]);
+
+  return { state, retry: () => setAttempt((n) => n + 1) };
+}

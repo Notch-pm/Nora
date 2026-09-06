@@ -17,6 +17,9 @@ export interface DemarcheOrganization {
   name: string;
 }
 
+import type { FormSchema } from "./formSchema.ts";
+import type { RequesterConfig } from "./requesterConfig.ts";
+
 export interface Demarche {
   id: string;
   /** Intitulé de la démarche. */
@@ -33,4 +36,33 @@ export interface Demarche {
    * adosse.
    */
   organizations: DemarcheOrganization[];
+}
+
+/** Catégorie d'une démarche : de quoi la situer, rien de plus. */
+export interface DemarcheCategory {
+  id: string;
+  name: string;
+}
+
+/**
+ * La démarche telle qu'on l'AFFICHE et qu'on la REMPLIT — ce que sert
+ * `/v1/portal/procedures/{id}` du Socle, déjà traduit et déjà parsé.
+ *
+ * Les deux schémas arrivent ici sous leur forme du portail : `form` est un
+ * `FormSchema` lu avec tolérance (les nœuds illisibles sont tombés en chemin),
+ * `requester` un paramétrage complet aux valeurs par défaut du Socle. Les
+ * écrans n'ont donc jamais à douter de la forme de ce qu'ils reçoivent.
+ */
+export interface DemarcheDetail extends Demarche {
+  category: DemarcheCategory | null;
+  /**
+   * Le descriptif rédigé POUR l'usager, en entier. Distinct de `description`,
+   * qui est le résumé de la carte (et qui retombe déjà sur celui-ci quand la
+   * collectivité n'a pas écrit de résumé). Sur la page d'une démarche, les
+   * deux se lisent l'un après l'autre — d'où deux champs et non un.
+   */
+  userDescription: string | null;
+  /** `null` = démarche sans formulaire : elle s'affiche, sans saisie. */
+  form: FormSchema | null;
+  requester: RequesterConfig;
 }

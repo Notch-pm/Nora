@@ -17,7 +17,15 @@ export type PortalFailure =
   /** La clé du portail est refusée par le Socle — panne de configuration. */
   | "socle_misconfigured"
   /** Le portail lui-même n'a pas sa configuration (secrets absents). */
-  | "not_configured";
+  | "not_configured"
+  /** La démarche demandée n'est pas (ou plus) au catalogue publié. */
+  | "demarche_unavailable"
+  /** Le dépôt a été refusé : l'enveloppe est invalide, ou la démarche fermée. */
+  | "submission_rejected"
+  /** Iris est injoignable, ou a répondu quelque chose d'inattendu. */
+  | "iris_unavailable"
+  /** La clé du portail est refusée par Iris — panne de configuration. */
+  | "iris_misconfigured";
 
 /**
  * Statut HTTP d'un échec.
@@ -36,8 +44,17 @@ export function httpStatusForFailure(failure: PortalFailure): number {
     case "unknown_domain":
     case "tenant_unavailable":
       return 404;
+    case "demarche_unavailable":
+      return 404;
+    case "submission_rejected":
+      // 422 et non 400 : l'enveloppe était bien formée, c'est son CONTENU que
+      // le système de traitement refuse. La distinction se lit dans les
+      // journaux le jour où un formulaire se met à échouer en masse.
+      return 422;
     case "socle_unavailable":
     case "socle_misconfigured":
+    case "iris_unavailable":
+    case "iris_misconfigured":
       return 502;
     case "not_configured":
       return 503;
