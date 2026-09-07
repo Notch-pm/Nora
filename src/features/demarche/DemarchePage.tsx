@@ -10,15 +10,20 @@
  * « pièce justificative ») : la collectivité les a paramétrées une fois, elles
  * n'ont pas à être ressaisies ailleurs pour être annoncées ici.
  */
+import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { allFields } from "@fn/_shared/domain/formSchema.ts";
 import { DemarcheError, DemarcheLoading, DemarcheShell } from "./DemarcheShell.tsx";
 import { useDemarche } from "./useDemarche.ts";
+import { useLanguage } from "@/i18n/LanguageLayout.tsx";
+import { localizedPath } from "@/i18n/localizedPath.ts";
+
 
 function BackToHome({ subtle = false }: { subtle?: boolean }) {
+  const { lang } = useLanguage();
   return (
     <Link
-      to="/"
+      to={localizedPath(lang, "/")}
       className={
         subtle
           ? "text-sm font-semibold text-[color:var(--brand-primary)] hover:underline"
@@ -32,7 +37,14 @@ function BackToHome({ subtle = false }: { subtle?: boolean }) {
 
 export function DemarchePage() {
   const { demarcheId = "" } = useParams();
-  const { state, retry } = useDemarche(demarcheId);
+  const { lang, serve } = useLanguage();
+  const { state, retry } = useDemarche(demarcheId, lang);
+
+  // Le serveur a tranché la langue : l'adresse s'y aligne (voir `PortalPage`).
+  const served = state.status === "ready" ? state.snapshot.lang : null;
+  useEffect(() => {
+    if (served !== null) serve(served);
+  }, [served, serve]);
 
   if (state.status === "loading") return <DemarcheLoading />;
   if (state.status === "error") {
@@ -50,7 +62,7 @@ export function DemarchePage() {
       : allFields(demarche.form).filter((field) => field.type === "attachment");
 
   return (
-    <DemarcheShell tenantName={tenant.name} branding={branding}>
+    <DemarcheShell tenantName={tenant.name} branding={branding} languages={tenant.languages}>
       <nav className="mb-6">
         <BackToHome subtle />
       </nav>
@@ -133,7 +145,7 @@ export function DemarchePage() {
           </p>
         ) : (
           <Link
-            to={"/demarches/" + encodeURIComponent(demarche.id) + "/formulaire"}
+            to={localizedPath(lang, "/demarches/" + encodeURIComponent(demarche.id) + "/formulaire")}
             className="inline-flex rounded-lg bg-[color:var(--brand-primary)] px-5 py-3 text-sm font-bold text-white hover:opacity-90"
           >
             Commencer la démarche

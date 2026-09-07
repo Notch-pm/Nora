@@ -6,7 +6,7 @@
  * quelle (`HomeComposition`) ; sans elle, la liste de repli ci-dessous — les
  * mêmes cartes, le même filtre par organisme, sans mise en page composée.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import {
@@ -19,6 +19,7 @@ import { HomeComposition } from "./HomeComposition.tsx";
 import { DemarcheCard } from "./sections/DemarcheCard.tsx";
 import { OrganizationFilter } from "./sections/OrganizationFilter.tsx";
 import { usePortal } from "./usePortal.ts";
+import { useLanguage } from "@/i18n/LanguageLayout.tsx";
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -66,7 +67,16 @@ function DefaultCatalogue({ tenant, demarches }: { tenant: Tenant; demarches: De
 }
 
 export function PortalPage() {
-  const { state, retry } = usePortal();
+  const { lang, serve } = useLanguage();
+  const { state, retry } = usePortal(lang);
+
+  // ⚠️ LE SERVEUR A TRANCHÉ : l'adresse doit dire ce qui est affiché. Une
+  // langue mémorisée mais désactivée depuis revient au français ici, et le
+  // préfixe se pose quand la langue venait de la mémoire et non de l'adresse.
+  const served = state.status === "ready" ? state.lang : null;
+  useEffect(() => {
+    if (served !== null) serve(served);
+  }, [served, serve]);
 
   if (state.status === "loading") {
     return (

@@ -15,6 +15,7 @@
  */
 import type { Tenant } from "../domain/tenant.ts";
 import type { PortalFailure } from "../domain/failure.ts";
+import { parseLanguages } from "../domain/languages.ts";
 import { normalizeHostname } from "../http/hostname.ts";
 import type { SocleClient } from "./socleClient.ts";
 
@@ -38,6 +39,10 @@ function toTenant(body: unknown, hostname: string): Tenant | null {
     slug: typeof raw.slug === "string" && raw.slug !== "" ? raw.slug : null,
     // Le domaine servi par le Socle fait foi ; le nôtre n'était qu'une entrée.
     hostname: typeof raw.hostname === "string" && raw.hostname !== "" ? raw.hostname : hostname,
+    // Les langues de la collectivité (héritage déjà résolu par le Socle). Un
+    // Socle d'avant le contrat 1.11.0, ou une réponse abîmée, rendent `["fr"]` :
+    // un portail monolingue, jamais un portail sans langue.
+    languages: parseLanguages(raw.languages),
   };
 }
 

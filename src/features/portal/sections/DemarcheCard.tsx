@@ -8,9 +8,13 @@
  * que la cible au doigt soit la carte et non trois mots.
  */
 import { Link } from "react-router-dom";
+import { useLanguage } from "@/i18n/LanguageLayout.tsx";
+import { localizedPath } from "@/i18n/localizedPath.ts";
+
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 
 export function DemarcheCard({ demarche, pinned = false }: { demarche: Demarche; pinned?: boolean }) {
+  const { lang } = useLanguage();
   return (
     <li
       className={
@@ -27,7 +31,7 @@ export function DemarcheCard({ demarche, pinned = false }: { demarche: Demarche;
       )}
       <h3 className="font-medium text-slate-900">
         <Link
-          to={"/demarches/" + encodeURIComponent(demarche.id)}
+          to={localizedPath(lang, "/demarches/" + encodeURIComponent(demarche.id))}
           className="after:absolute after:inset-0 hover:underline focus-visible:underline"
         >
           {demarche.name}

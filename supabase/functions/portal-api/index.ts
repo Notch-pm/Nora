@@ -33,6 +33,7 @@ import { hostnameForRequest } from "../_shared/http/requestHostname.ts";
 import { allFields } from "../_shared/domain/formSchema.ts";
 import { AUDIENCES } from "../_shared/domain/requesterConfig.ts";
 import type { Tenant } from "../_shared/domain/tenant.ts";
+import { resolveLang } from "../_shared/domain/languages.ts";
 import { httpStatusForFailure, type PortalFailure } from "../_shared/domain/failure.ts";
 
 /**
@@ -169,7 +170,11 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
-  const path = new URL(request.url).pathname.replace(/^\/portal-api/, "") || "/";
+  const url = new URL(request.url);
+  const path = url.pathname.replace(/^\/portal-api/, "") || "/";
+  // La langue SOUHAITÉE par le visiteur. Elle n'est pas encore la langue
+  // servie : c'est le tenant, une fois résolu, qui dit ce qu'il a activé.
+  const askedLang = url.searchParams.get("lang");
 
   const socleUrl = Deno.env.get("SOCLE_API_URL");
   const socleKey = Deno.env.get("SOCLE_API_KEY");
@@ -189,7 +194,13 @@ Deno.serve(async (request: Request): Promise<Response> => {
     const tenant = resolved.tenant;
 
     // Ce que cette collectivité publie. Une liste vide est un succès.
-    const demarches = await getPublicDemarches(tenant.id, socle);
+    // ⚠️ C'EST LE SERVEUR QUI TRANCHE LA LANGUE, et il la renvoie. Une langue
+    // mémorisée puis désactivée par la collectivité, un préfixe d'URL inventé :
+    // tous retombent sur le français, et la réponse dit lequel a été servi pour
+    // que l'adresse cesse de mentir au visiteur.
+    const lang = resolveLang(askedLang, tenant.languages);
+
+    const demarches = await getPublicDemarches(tenant.id, socle, lang);
     if (!demarches.ok) return failure(demarches.reason);
 
     // La page d'accueil telle qu'elle a été publiée. `null` si la collectivité
@@ -204,7 +215,13 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
     return json(
       200,
-      { tenant, demarches: demarches.demarches, page: page.page, branding: branding.branding },
+      {
+        lang,
+        tenant,
+        demarches: demarches.demarches,
+        page: page.page,
+        branding: branding.branding,
+      },
       // Le catalogue d'une collectivité change à la journée, et une page
       // publique est servie à beaucoup de visiteurs : une minute de cache
       // navigateur épargne autant d'allers-retours, sans montrer la veille.
@@ -223,7 +240,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
     const resolved = await tenantOf(request, socle);
     if (!resolved.ok) return resolved.response;
 
-    const result = await getPublicDemarche(resolved.tenant.id, demarcheId, socle);
+    const lang = resolveLang(askedLang, resolved.tenant.languages);
+    const result = await getPublicDemarche(resolved.tenant.id, demarcheId, socle, lang);
     if (!result.ok) return failure(result.reason);
 
     // La charte voyage avec la démarche : la page doit être aux couleurs de la
@@ -233,6 +251,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return json(
       200,
       {
+        lang,
         tenant: resolved.tenant,
         demarche: result.demarche,
         branding: branding.ok ? branding.branding : null,

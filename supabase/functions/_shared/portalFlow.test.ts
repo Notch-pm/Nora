@@ -15,6 +15,7 @@
 import { describe, expect, it } from "vitest";
 import { hostnameForRequest } from "./http/requestHostname.ts";
 import { getPublicDemarche, getPublicDemarches } from "./socle/demarcheService.ts";
+import { resolveLang } from "./domain/languages.ts";
 import { getPublishedPage } from "./socle/pageService.ts";
 import { getBranding } from "./socle/brandingService.ts";
 import { resolveTenant } from "./socle/tenantService.ts";
@@ -33,6 +34,7 @@ const ROUTES: Record<string, unknown> = {
     name: "Ville de Nantes",
     slug: "nantes",
     hostname: "nantes.edilumen.fr",
+    languages: ["fr", "en", "br"],
   },
   "/v1/portal/tenant?hostname=angers.edilumen.fr": {
     id: ANGERS,
@@ -47,6 +49,9 @@ const ROUTES: Record<string, unknown> = {
       short_description: "Signalez un problème rencontré dans l'espace public.",
       user_description: "Le service voirie interviendra sous 5 jours ouvrés.",
       input_duration_minutes: 5,
+      // Traduite en anglais, intitulé SEULEMENT : le résumé doit rester
+      // français sans emporter l'intitulé traduit.
+      translations: { en: { name: "Report a road problem" } },
       // Proposée par la ville et par l'un de ses quartiers : le Socle sert
       // les organismes dans l'ordre de l'arbre, le portail le conserve.
       organizations: [
@@ -118,11 +123,13 @@ async function visit(
   origin: string | null,
   socle: SocleClient,
   dev: { suffix: string | null; fallback: string | null } = NO_DEV,
+  askedLang: string | null = null,
 ) {
   const hostname = hostnameForRequest(browserRequest(origin), dev);
   const resolution = await resolveTenant(hostname, socle);
   if (!resolution.ok) return { ok: false as const, reason: resolution.reason };
-  const demarches = await getPublicDemarches(resolution.tenant.id, socle);
+  const lang = resolveLang(askedLang, resolution.tenant.languages);
+  const demarches = await getPublicDemarches(resolution.tenant.id, socle, lang);
   if (!demarches.ok) return { ok: false as const, reason: demarches.reason };
   const page = await getPublishedPage(resolution.tenant.id, socle);
   if (!page.ok) return { ok: false as const, reason: page.reason };
@@ -130,6 +137,7 @@ async function visit(
   if (!branding.ok) return { ok: false as const, reason: branding.reason };
   return {
     ok: true as const,
+    lang,
     tenant: resolution.tenant,
     demarches: demarches.demarches,
     page: page.page,
@@ -147,6 +155,7 @@ describe("1. domaine connu → tenant correctement identifié", () => {
       name: "Ville de Nantes",
       slug: "nantes",
       hostname: "nantes.edilumen.fr",
+      languages: ["fr", "en", "br"],
     });
   });
 
@@ -405,11 +414,17 @@ const DETAIL = {
 };
 
 /** Le flux d'une page de démarche, dans l'ordre où l'edge function l'exécute. */
-async function openDemarche(origin: string, demarcheId: string, socle: SocleClient) {
+async function openDemarche(
+  origin: string,
+  demarcheId: string,
+  socle: SocleClient,
+  askedLang: string | null = null,
+) {
   const hostname = hostnameForRequest(browserRequest(origin), NO_DEV);
   const resolution = await resolveTenant(hostname, socle);
   if (!resolution.ok) return { ok: false as const, reason: resolution.reason };
-  return await getPublicDemarche(resolution.tenant.id, demarcheId, socle);
+  const lang = resolveLang(askedLang, resolution.tenant.languages);
+  return await getPublicDemarche(resolution.tenant.id, demarcheId, socle, lang);
 }
 
 describe("7. démarche connue → détail traduit et parsé", () => {
@@ -464,7 +479,7 @@ describe("7. démarche connue → détail traduit et parsé", () => {
   });
 
   it("un Socle éteint reste une panne, pas une démarche absente", async () => {
-    const result = await getPublicDemarche(NANTES, "d1", downSocle);
+    const result = await getPublicDemarche(NANTES, "d1", downSocle, "fr");
     expect(result).toEqual({ ok: false, reason: "socle_unavailable" });
   });
 
@@ -472,5 +487,60 @@ describe("7. démarche connue → détail traduit et parsé", () => {
     const refuse = fakeSocle({ [NANTES_DETAIL]: { kind: "auth_failed" } });
     const result = await openDemarche("https://nantes.edilumen.fr", "d1", refuse);
     expect(result).toEqual({ ok: false, reason: "socle_misconfigured" });
+  });
+});
+
+/**
+ * La langue du visiteur, de bout en bout.
+ *
+ * ⚠️ C'est le SERVEUR qui tranche : il ne sert que ce que la collectivité a
+ * activé, et il renvoie la langue servie. Sans ce clamp, une langue mémorisée
+ * dans un navigateur puis désactivée par la collectivité continuerait d'être
+ * demandée indéfiniment, et l'adresse mentirait sur ce qui est affiché.
+ */
+describe("9. la langue du visiteur", () => {
+  it("sert les textes traduits quand la collectivité a activé la langue", async () => {
+    const result = await visit("https://nantes.edilumen.fr", fakeSocle(), NO_DEV, "en");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.lang).toBe("en");
+    expect(result.demarches[0].name).toBe("Report a road problem");
+  });
+
+  it("replie CHAQUE champ séparément : intitulé traduit, résumé français", () => {
+    // Le contraire — replier la langue entière parce qu'un champ manque —
+    // masquerait un intitulé que la collectivité a bel et bien traduit.
+    return visit("https://nantes.edilumen.fr", fakeSocle(), NO_DEV, "en").then((result) => {
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.demarches[0].description).toBe(
+        "Signalez un problème rencontré dans l'espace public.",
+      );
+    });
+  });
+
+  it("ramène au français une langue que la collectivité n'a pas activée", async () => {
+    const result = await visit("https://nantes.edilumen.fr", fakeSocle(), NO_DEV, "de");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.lang).toBe("fr");
+    expect(result.demarches[0].name).toBe("Signaler un problème de voirie");
+  });
+
+  it("ignore un préfixe d'URL inventé", async () => {
+    const result = await visit("https://nantes.edilumen.fr", fakeSocle(), NO_DEV, "xyz!");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.lang).toBe("fr");
+  });
+
+  it("rend une collectivité sans réglage monolingue, jamais sans langue", async () => {
+    // Angers n'a pas de `languages` dans la réponse simulée (Socle d'avant le
+    // contrat 1.11.0, ou réglage jamais touché).
+    const result = await visit("https://angers.edilumen.fr", fakeSocle(), NO_DEV, "en");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.tenant.languages).toEqual(["fr"]);
+    expect(result.lang).toBe("fr");
   });
 });

@@ -63,7 +63,11 @@ export function HomeComposition({
       className={"flex min-h-screen flex-col bg-white text-slate-800 " + (footerLast ? "" : "pb-8")}
       style={brandingStyle(branding)}
     >
-      <PageHeader tenantName={tenant.name} logoUrl={branding?.logoUrl ?? null} />
+      <PageHeader
+        tenantName={tenant.name}
+        logoUrl={branding?.logoUrl ?? null}
+        languages={tenant.languages}
+      />
       <div className="flex flex-1 flex-col gap-6 pt-8">
         {page.sections.map((section) => {
           if (section.kind === "footer") {

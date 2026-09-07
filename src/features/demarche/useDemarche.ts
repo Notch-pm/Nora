@@ -18,7 +18,10 @@ export type DemarcheState =
   | { status: "ready"; snapshot: DemarcheSnapshot }
   | { status: "error"; reason: PortalLoadFailure };
 
-export function useDemarche(demarcheId: string): { state: DemarcheState; retry: () => void } {
+export function useDemarche(
+  demarcheId: string,
+  lang: string,
+): { state: DemarcheState; retry: () => void } {
   const [state, setState] = useState<DemarcheState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
 
@@ -29,7 +32,7 @@ export function useDemarche(demarcheId: string): { state: DemarcheState; retry: 
     let current = true;
     setState({ status: "loading" });
 
-    fetchDemarche(demarcheId)
+    fetchDemarche(demarcheId, lang)
       .then((result) => {
         if (!current) return;
         setState(
@@ -45,7 +48,7 @@ export function useDemarche(demarcheId: string): { state: DemarcheState; retry: 
     return () => {
       current = false;
     };
-  }, [demarcheId, attempt]);
+  }, [demarcheId, lang, attempt]);
 
   return { state, retry: () => setAttempt((n) => n + 1) };
 }

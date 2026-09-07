@@ -52,6 +52,12 @@ function ttlMs(): number {
 }
 
 interface Cached {
+  /**
+   * ⚠️ LA LANGUE FAIT PARTIE DE LA CLÉ. Sans elle, basculer en anglais
+   * servirait l'instantané français pendant toute la durée du cache : le
+   * sélecteur semblerait cassé, alors que seule la mémoire serait en cause.
+   */
+  lang: string;
   load: Promise<PortalLoad>;
   at: number;
 }
@@ -65,15 +71,17 @@ let cached: Cached | null = null;
  * la ferait durer une minute de plus que sa cause, et un visiteur qui recharge
  * après un rétablissement verrait encore l'erreur.
  */
-export function loadPortal(): Promise<PortalLoad> {
+export function loadPortal(lang: string): Promise<PortalLoad> {
   const ttl = ttlMs();
-  if (cached !== null && ttl > 0 && Date.now() - cached.at < ttl) return cached.load;
+  if (cached !== null && cached.lang === lang && ttl > 0 && Date.now() - cached.at < ttl) {
+    return cached.load;
+  }
 
-  const load = fetchPortal().then((result) => {
+  const load = fetchPortal(lang).then((result) => {
     if (!result.ok) cached = null;
     return result;
   });
-  cached = { load, at: Date.now() };
+  cached = { lang, load, at: Date.now() };
   return load;
 }
 
@@ -82,8 +90,8 @@ export function resetPortalCache(): void {
   cached = null;
 }
 
-async function snapshot() {
-  const result = await loadPortal();
+async function snapshot(lang: string) {
+  const result = await loadPortal(lang);
   if (!result.ok) throw new PortalUnavailableError(result.reason);
   return result.snapshot;
 }
@@ -94,8 +102,16 @@ async function snapshot() {
  * Elle est déterminée par le DOMAINE, côté serveur. L'interface ne la choisit
  * pas, ne la reçoit pas en paramètre, et ne peut pas en demander une autre.
  */
-export async function getCurrentTenant(): Promise<Tenant> {
-  return (await snapshot()).tenant;
+export async function getCurrentTenant(lang: string): Promise<Tenant> {
+  return (await snapshot(lang)).tenant;
+}
+
+/**
+ * La langue réellement servie. Le serveur la décide — voir
+ * `PortalSnapshot.lang` — et l'interface s'y aligne.
+ */
+export async function getServedLanguage(lang: string): Promise<string> {
+  return (await snapshot(lang)).lang;
 }
 
 /**
@@ -104,19 +120,19 @@ export async function getCurrentTenant(): Promise<Tenant> {
  * Une liste vide est une réponse normale : la collectivité n'a encore rien
  * publié. Ce n'est pas une erreur, et l'interface doit le dire comme tel.
  */
-export async function getPublicDemarches(): Promise<Demarche[]> {
-  return (await snapshot()).demarches;
+export async function getPublicDemarches(lang: string): Promise<Demarche[]> {
+  return (await snapshot(lang)).demarches;
 }
 
 /**
  * La page d'accueil composée par la collectivité, ou `null` si elle n'a
  * jamais rien publié — auquel cas l'interface rend sa mise en page par défaut.
  */
-export async function getHomePage(): Promise<HomePage | null> {
-  return (await snapshot()).page;
+export async function getHomePage(lang: string): Promise<HomePage | null> {
+  return (await snapshot(lang)).page;
 }
 
 /** La charte graphique de la collectivité, ou `null` — couleurs par défaut. */
-export async function getBranding(): Promise<Branding | null> {
-  return (await snapshot()).branding;
+export async function getBranding(lang: string): Promise<Branding | null> {
+  return (await snapshot(lang)).branding;
 }

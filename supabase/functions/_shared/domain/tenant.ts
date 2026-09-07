@@ -16,4 +16,12 @@ export interface Tenant {
   slug: string | null;
   /** Domaine par lequel la collectivité a été reconnue (forme canonique). */
   hostname: string;
+  /**
+   * Les langues dans lesquelles la collectivité s'adresse à ses usagers, codes
+   * BCP 47, **français toujours compris et toujours en tête**. C'est de quoi
+   * bâtir le sélecteur de langue — et rien d'autre : qu'une langue soit
+   * activée ne dit pas que tout est traduit dedans, le repli sur le français se
+   * fait texte par texte.
+   */
+  languages: string[];
 }

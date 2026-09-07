@@ -26,6 +26,7 @@ import type {
 import type { PortalFailure } from "../domain/failure.ts";
 import { parseFormSchema } from "../domain/formSchema.ts";
 import { parseRequesterConfig } from "../domain/requesterConfig.ts";
+import { localizedText } from "../domain/languages.ts";
 import type { SocleClient } from "./socleClient.ts";
 
 export type DemarchesResult =
@@ -69,17 +70,25 @@ function toOrganizations(raw: unknown): DemarcheOrganization[] {
  * `description` : le résumé court d'abord, le descriptif usager à défaut. Aucun
  * des deux n'est obligatoire au paramétrage — la collectivité qui n'a rempli
  * que le second doit tout de même avoir quelque chose à afficher.
+ *
+ * ⚠️ LA LANGUE EST RÉSOLUE ICI, à la frontière, et pas dans les écrans : plus
+ * loin, `name` est un intitulé à afficher, pas un français dont il faudrait
+ * chercher la traduction. C'est ce qui fait que la recherche du portail
+ * (`filterDemarchesByQuery`) cherche dans ce que l'usager LIT, sans une ligne
+ * de plus. Le repli se fait champ par champ : un intitulé traduit sans son
+ * résumé reste un intitulé traduit.
  */
-function toDemarche(raw: unknown): Demarche | null {
+function toDemarche(raw: unknown, lang: string): Demarche | null {
   if (typeof raw !== "object" || raw === null) return null;
   const row = raw as Record<string, unknown>;
   const id = text(row.id);
-  const name = text(row.name);
+  const name = localizedText(text(row.name), row.translations, lang, "name");
   if (id === null || name === null) return null;
   return {
     id,
     name,
-    description: text(row.short_description) ?? text(row.user_description),
+    description: localizedText(text(row.short_description), row.translations, lang, "short_description")
+      ?? localizedText(text(row.user_description), row.translations, lang, "user_description"),
     estimatedMinutes:
       typeof row.input_duration_minutes === "number" && Number.isFinite(row.input_duration_minutes)
         ? row.input_duration_minutes
@@ -103,6 +112,7 @@ function toDemarche(raw: unknown): Demarche | null {
 export async function getPublicDemarches(
   tenantId: string,
   socle: SocleClient,
+  lang: string,
 ): Promise<DemarchesResult> {
   const reply = await socle.get(
     "/v1/portal/procedures?tenant_id=" + encodeURIComponent(tenantId),
@@ -122,17 +132,17 @@ export async function getPublicDemarches(
 
   if (!Array.isArray(reply.body)) return { ok: false, reason: "socle_unavailable" };
   const demarches = reply.body
-    .map(toDemarche)
+    .map((raw) => toDemarche(raw, lang))
     .filter((demarche): demarche is Demarche => demarche !== null);
   return { ok: true, demarches };
 }
 
 /** Catégorie de la démarche, ou `null`. Un libellé de plus, jamais bloquant. */
-function toCategory(raw: unknown): DemarcheCategory | null {
+function toCategory(raw: unknown, lang: string): DemarcheCategory | null {
   if (typeof raw !== "object" || raw === null) return null;
   const row = raw as Record<string, unknown>;
   const id = text(row.id);
-  const name = text(row.name);
+  const name = localizedText(text(row.name), row.translations, lang, "name");
   return id !== null && name !== null ? { id, name } : null;
 }
 
@@ -154,6 +164,7 @@ export async function getPublicDemarche(
   tenantId: string,
   demarcheId: string,
   socle: SocleClient,
+  lang: string,
 ): Promise<DemarcheResult> {
   const reply = await socle.get(
     "/v1/portal/procedures/" +
@@ -171,7 +182,7 @@ export async function getPublicDemarche(
       return { ok: false, reason: "socle_unavailable" };
   }
 
-  const demarche = toDemarche(reply.body);
+  const demarche = toDemarche(reply.body, lang);
   // Sans identifiant ni intitulé, il n'y a rien à afficher : c'est le même
   // écart que dans la liste, avec la même conséquence — la démarche n'existe
   // pas pour ce portail.
@@ -182,8 +193,13 @@ export async function getPublicDemarche(
     ok: true,
     demarche: {
       ...demarche,
-      category: toCategory(row.category),
-      userDescription: text(row.user_description),
+      category: toCategory(row.category, lang),
+      userDescription: localizedText(
+        text(row.user_description),
+        row.translations,
+        lang,
+        "user_description",
+      ),
       form: parseFormSchema(row.form_schema),
       requester: parseRequesterConfig(row.requester_config),
     },

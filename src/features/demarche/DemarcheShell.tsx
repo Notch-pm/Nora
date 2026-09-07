@@ -16,9 +16,12 @@ import { brandingStyle } from "@/features/portal/theme.ts";
 export function DemarcheShell({
   tenantName,
   branding,
+  languages,
   children,
 }: {
   tenantName: string | null;
+  /** Les langues de la collectivité, pour le sélecteur de l'en-tête. */
+  languages?: readonly string[];
   branding: Branding | null;
   children: ReactNode;
 }) {
@@ -29,7 +32,11 @@ export function DemarcheShell({
     >
       {/* Tant que la collectivité n'est pas connue, l'en-tête reste neutre :
           mieux vaut une barre vide qu'un nom qui change sous les yeux. */}
-      <PageHeader tenantName={tenantName ?? ""} logoUrl={branding?.logoUrl ?? null} />
+      <PageHeader
+        tenantName={tenantName ?? ""}
+        logoUrl={branding?.logoUrl ?? null}
+        languages={languages}
+      />
       <div className="mx-auto w-full max-w-3xl flex-1 px-6 pt-8">{children}</div>
     </main>
   );

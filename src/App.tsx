@@ -13,14 +13,28 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { DemarchePage } from "@/features/demarche/DemarchePage.tsx";
 import { FormulairePage } from "@/features/demarche/FormulairePage.tsx";
 import { PortalPage } from "@/features/portal/PortalPage.tsx";
+import { LanguageLayout } from "@/i18n/LanguageLayout.tsx";
 
 export function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<PortalPage />} />
-        <Route path="/demarches/:demarcheId" element={<DemarchePage />} />
-        <Route path="/demarches/:demarcheId/formulaire" element={<FormulairePage />} />
+        {/* Les trois écrans, deux fois : sans préfixe (le français, langue
+            pivot — toutes les adresses déjà partagées continuent de marcher) et
+            sous un préfixe de langue. ⚠️ `:lang` est un joker d'UN segment :
+            `/demarches/{id}` en a deux et ne peut pas le confondre, et
+            `LanguageLayout` écarte de toute façon ce que la collectivité n'a pas
+            activé. */}
+        <Route element={<LanguageLayout />}>
+          <Route path="/" element={<PortalPage />} />
+          <Route path="/demarches/:demarcheId" element={<DemarchePage />} />
+          <Route path="/demarches/:demarcheId/formulaire" element={<FormulairePage />} />
+        </Route>
+        <Route path=":lang" element={<LanguageLayout />}>
+          <Route index element={<PortalPage />} />
+          <Route path="demarches/:demarcheId" element={<DemarchePage />} />
+          <Route path="demarches/:demarcheId/formulaire" element={<FormulairePage />} />
+        </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

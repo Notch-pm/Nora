@@ -16,16 +16,25 @@ import {
   getCurrentTenant,
   getHomePage,
   getPublicDemarches,
+  getServedLanguage,
   PortalUnavailableError,
   resetPortalCache,
 } from "@/services/portal/portalService.ts";
 
 export type PortalState =
   | { status: "loading" }
-  | { status: "ready"; tenant: Tenant; demarches: Demarche[]; page: HomePage | null; branding: Branding | null }
+  | {
+    status: "ready";
+    /** La langue réellement servie — pas forcément celle demandée. */
+    lang: string;
+    tenant: Tenant;
+    demarches: Demarche[];
+    page: HomePage | null;
+    branding: Branding | null;
+  }
   | { status: "error"; reason: PortalLoadFailure };
 
-export function usePortal(): { state: PortalState; retry: () => void } {
+export function usePortal(lang: string): { state: PortalState; retry: () => void } {
   const [state, setState] = useState<PortalState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
 
@@ -35,9 +44,15 @@ export function usePortal(): { state: PortalState; retry: () => void } {
     let current = true;
     setState({ status: "loading" });
 
-    Promise.all([getCurrentTenant(), getPublicDemarches(), getHomePage(), getBranding()])
-      .then(([tenant, demarches, page, branding]) => {
-        if (current) setState({ status: "ready", tenant, demarches, page, branding });
+    Promise.all([
+      getCurrentTenant(lang),
+      getPublicDemarches(lang),
+      getHomePage(lang),
+      getBranding(lang),
+      getServedLanguage(lang),
+    ])
+      .then(([tenant, demarches, page, branding, served]) => {
+        if (current) setState({ status: "ready", lang: served, tenant, demarches, page, branding });
       })
       .catch((error: unknown) => {
         if (!current) return;
@@ -50,7 +65,7 @@ export function usePortal(): { state: PortalState; retry: () => void } {
     return () => {
       current = false;
     };
-  }, [attempt]);
+  }, [attempt, lang]);
 
   return {
     state,

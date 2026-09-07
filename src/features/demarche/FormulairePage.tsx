@@ -16,8 +16,10 @@
  * coupure inoffensifs : Iris rend alors la demande déjà créée au lieu d'en
  * créer une seconde.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useLanguage } from "@/i18n/LanguageLayout.tsx";
+import { localizedPath } from "@/i18n/localizedPath.ts";
 import type { FormValues } from "@fn/_shared/domain/conditions.ts";
 import { isSection } from "@fn/_shared/domain/formSchema.ts";
 import type { DemandeReceipt } from "@fn/_shared/domain/demande.ts";
@@ -50,6 +52,7 @@ function newSubmissionId(): string {
 
 /** L'accusé de dépôt. Ce que l'usager doit pouvoir noter avant de fermer. */
 function Receipt({ receipt, demarcheName }: { receipt: DemandeReceipt; demarcheName: string }) {
+  const { lang } = useLanguage();
   return (
     <section className="rounded-xl border border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_6%,white)] p-6">
       <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
@@ -65,7 +68,7 @@ function Receipt({ receipt, demarcheName }: { receipt: DemandeReceipt; demarcheN
         en ligne et la confirmation par courriel arriveront prochainement.
       </p>
       <Link
-        to="/"
+        to={localizedPath(lang, "/")}
         className="mt-6 inline-flex rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
       >
         Retour à l'accueil
@@ -91,7 +94,14 @@ function ErrorSummary({ count }: { count: number }) {
 
 export function FormulairePage() {
   const { demarcheId = "" } = useParams();
-  const { state, retry } = useDemarche(demarcheId);
+  const { lang, serve } = useLanguage();
+  const { state, retry } = useDemarche(demarcheId, lang);
+
+  // Le serveur a tranché la langue : l'adresse s'y aligne (voir `PortalPage`).
+  const served = state.status === "ready" ? state.snapshot.lang : null;
+  useEffect(() => {
+    if (served !== null) serve(served);
+  }, [served, serve]);
 
   const [values, setValues] = useState<FormValues>({});
   const [requesterValues, setRequesterValues] = useState<Record<string, string>>({});
@@ -126,7 +136,7 @@ export function FormulairePage() {
     return (
       <DemarcheError reason={state.reason} onRetry={retry}>
         <Link
-          to="/"
+          to={localizedPath(lang, "/")}
           className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
         >
           Retour à l'accueil
@@ -138,11 +148,11 @@ export function FormulairePage() {
   const { tenant, branding } = state.snapshot;
   const detail = state.snapshot.demarche;
   const schema = detail.form;
-  const backToDemarche = "/demarches/" + encodeURIComponent(detail.id);
+  const backToDemarche = localizedPath(lang, "/demarches/" + encodeURIComponent(detail.id));
 
   if (receipt !== null) {
     return (
-      <DemarcheShell tenantName={tenant.name} branding={branding}>
+      <DemarcheShell tenantName={tenant.name} branding={branding} languages={tenant.languages}>
         <Receipt receipt={receipt} demarcheName={detail.name} />
       </DemarcheShell>
     );
@@ -152,7 +162,7 @@ export function FormulairePage() {
   // présentation, qui explique quoi faire.
   if (schema === null) {
     return (
-      <DemarcheShell tenantName={tenant.name} branding={branding}>
+      <DemarcheShell tenantName={tenant.name} branding={branding} languages={tenant.languages}>
         <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">{detail.name}</h1>
         <p className="mt-3 text-slate-600">
           Cette démarche ne peut pas encore être remplie en ligne.
@@ -234,7 +244,7 @@ export function FormulairePage() {
     Object.keys(errors).length + Object.keys(requesterErrors).length + (organizationError ? 1 : 0);
 
   return (
-    <DemarcheShell tenantName={tenant.name} branding={branding}>
+    <DemarcheShell tenantName={tenant.name} branding={branding} languages={tenant.languages}>
       <nav className="mb-6">
         <Link
           to={backToDemarche}

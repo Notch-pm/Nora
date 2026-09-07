@@ -20,6 +20,12 @@ import type { Branding } from "@fn/_shared/domain/branding.ts";
 
 /** Ce que le portail sait de la collectivité visitée, en un seul chargement. */
 export interface PortalSnapshot {
+  /**
+   * La langue RÉELLEMENT servie — pas forcément celle demandée. Le serveur
+   * clampe sur ce que la collectivité a activé ; l'interface s'y aligne pour
+   * que l'adresse dise ce qui est affiché.
+   */
+  lang: string;
   tenant: Tenant;
   demarches: Demarche[];
   /** La page d'accueil composée par la collectivité ; `null` = jamais publiée. */
@@ -63,7 +69,13 @@ function readFailure(body: unknown): PortalLoadFailure {
 
 function readSnapshot(body: unknown): PortalSnapshot | null {
   if (typeof body !== "object" || body === null) return null;
-  const raw = body as { tenant?: unknown; demarches?: unknown; page?: unknown; branding?: unknown };
+  const raw = body as {
+    lang?: unknown;
+    tenant?: unknown;
+    demarches?: unknown;
+    page?: unknown;
+    branding?: unknown;
+  };
   const tenant = raw.tenant as Tenant | undefined;
   if (!tenant || typeof tenant.id !== "string" || typeof tenant.name !== "string") return null;
   if (!Array.isArray(raw.demarches)) return null;
@@ -81,7 +93,10 @@ function readSnapshot(body: unknown): PortalSnapshot | null {
     ...demarche,
     organizations: Array.isArray(demarche.organizations) ? demarche.organizations : [],
   }));
-  return { tenant, demarches, page, branding };
+  // Un serveur d'avant le multilingue ne dit pas la langue : c'est le français,
+  // et tout s'affiche comme avant.
+  const lang = typeof raw.lang === "string" && raw.lang !== "" ? raw.lang : "fr";
+  return { lang, tenant, demarches, page, branding };
 }
 
 /**
@@ -91,13 +106,15 @@ function readSnapshot(body: unknown): PortalSnapshot | null {
  * pas un secret : c'est l'adresse d'une API publique. Les secrets (URL et clé
  * du Socle) vivent dans l'edge function, hors du bundle.
  */
-export async function fetchPortal(): Promise<PortalLoad> {
+export async function fetchPortal(lang: string): Promise<PortalLoad> {
   const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
   if (!baseUrl) return { ok: false, reason: "not_configured" };
 
   let response: Response;
   try {
-    response = await fetch(baseUrl.replace(/\/+$/, "") + "/v1/bootstrap");
+    response = await fetch(
+      baseUrl.replace(/\/+$/, "") + "/v1/bootstrap?lang=" + encodeURIComponent(lang),
+    );
   } catch {
     return { ok: false, reason: "network" };
   }
@@ -114,6 +131,8 @@ export async function fetchPortal(): Promise<PortalLoad> {
 
 /** Une démarche et la collectivité qui la propose, en un seul chargement. */
 export interface DemarcheSnapshot {
+  /** La langue réellement servie — voir `PortalSnapshot.lang`. */
+  lang: string;
   tenant: Tenant;
   demarche: DemarcheDetail;
   /** La charte graphique ; `null` = couleurs par défaut. Jamais bloquante. */
@@ -126,7 +145,7 @@ export type DemarcheLoad =
 
 function readDemarcheSnapshot(body: unknown): DemarcheSnapshot | null {
   if (typeof body !== "object" || body === null) return null;
-  const raw = body as { tenant?: unknown; demarche?: unknown; branding?: unknown };
+  const raw = body as { lang?: unknown; tenant?: unknown; demarche?: unknown; branding?: unknown };
   const tenant = raw.tenant as Tenant | undefined;
   if (!tenant || typeof tenant.id !== "string" || typeof tenant.name !== "string") return null;
   const demarche = raw.demarche as DemarcheDetail | undefined;
@@ -136,7 +155,8 @@ function readDemarcheSnapshot(body: unknown): DemarcheSnapshot | null {
   // Le serveur a déjà traduit ET parsé les deux schémas : c'est le modèle du
   // portail qui arrive ici, pas du JSON du Socle. Le re-parser en ferait une
   // seconde vérité, qui divergerait au premier type de champ ajouté.
-  return { tenant, demarche, branding };
+  const lang = typeof raw.lang === "string" && raw.lang !== "" ? raw.lang : "fr";
+  return { lang, tenant, demarche, branding };
 }
 
 /**
@@ -148,14 +168,18 @@ function readDemarcheSnapshot(body: unknown): DemarcheSnapshot | null {
  * qu'un identifiant inventé, sans jamais révéler qu'une démarche existe mais
  * n'est pas ouverte.
  */
-export async function fetchDemarche(demarcheId: string): Promise<DemarcheLoad> {
+export async function fetchDemarche(demarcheId: string, lang: string): Promise<DemarcheLoad> {
   const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
   if (!baseUrl) return { ok: false, reason: "not_configured" };
 
   let response: Response;
   try {
     response = await fetch(
-      baseUrl.replace(/\/+$/, "") + "/v1/demarches/" + encodeURIComponent(demarcheId),
+      baseUrl.replace(/\/+$/, "") +
+        "/v1/demarches/" +
+        encodeURIComponent(demarcheId) +
+        "?lang=" +
+        encodeURIComponent(lang),
     );
   } catch {
     return { ok: false, reason: "network" };
