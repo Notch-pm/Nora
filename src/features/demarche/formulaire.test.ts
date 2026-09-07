@@ -90,7 +90,7 @@ describe("validation", () => {
 
   it("vérifie la forme d'une adresse électronique", () => {
     const errors = validateForm(SCHEMA, { "f-motif": "voirie", "f-courriel": "pas-une-adresse" });
-    expect(errors["f-courriel"]).toMatch(/adresse/);
+    expect(errors["f-courriel"]).toEqual({ key: "validation.email" });
     expect(validateForm(SCHEMA, { "f-motif": "voirie", "f-courriel": "a@b.fr" })).toEqual({});
   });
 
@@ -160,9 +160,9 @@ describe("identité du requérant", () => {
 
   it("réclame les champs obligatoires et vérifie le courriel", () => {
     expect(Object.keys(validateRequester(fields, {}))).toEqual(["nom_usuel", "courriel"]);
-    expect(validateRequester(fields, { nom_usuel: "Dupont", courriel: "x" }).courriel).toMatch(
-      /adresse/,
-    );
+    expect(validateRequester(fields, { nom_usuel: "Dupont", courriel: "x" }).courriel).toEqual({
+      key: "validation.email",
+    });
   });
 
   it("dépose l'identité aux clés du Socle, sans les champs laissés vides", () => {

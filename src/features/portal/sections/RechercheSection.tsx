@@ -9,6 +9,7 @@
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import type { RechercheSection as RechercheSectionData } from "@fn/_shared/domain/page.ts";
 import { resolveShortcuts } from "../composition.ts";
+import { useT } from "@/i18n/LanguageLayout.tsx";
 
 function SearchIcon() {
   return (
@@ -40,7 +41,9 @@ export function RechercheSection({
   onQueryChange: (query: string) => void;
 }) {
   const shortcuts = resolveShortcuts(section.shortcuts, demarches);
-  const label = section.placeholder.trim() !== "" ? section.placeholder : "Rechercher une démarche";
+  const t = useT();
+  const label =
+    section.placeholder.trim() !== "" ? section.placeholder : t("search.placeholder");
 
   return (
     <section className="flex flex-col items-center gap-3.5 py-2">

@@ -15,12 +15,13 @@ import { Link, useParams } from "react-router-dom";
 import { allFields } from "@fn/_shared/domain/formSchema.ts";
 import { DemarcheError, DemarcheLoading, DemarcheShell } from "./DemarcheShell.tsx";
 import { useDemarche } from "./useDemarche.ts";
-import { useLanguage } from "@/i18n/LanguageLayout.tsx";
+import { useLanguage, useT, useTn } from "@/i18n/LanguageLayout.tsx";
 import { localizedPath } from "@/i18n/localizedPath.ts";
 
 
 function BackToHome({ subtle = false }: { subtle?: boolean }) {
   const { lang } = useLanguage();
+  const t = useT();
   return (
     <Link
       to={localizedPath(lang, "/")}
@@ -30,7 +31,7 @@ function BackToHome({ subtle = false }: { subtle?: boolean }) {
           : "rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
       }
     >
-      Retour à l'accueil
+      {t("demarche.backHome")}
     </Link>
   );
 }
@@ -38,6 +39,8 @@ function BackToHome({ subtle = false }: { subtle?: boolean }) {
 export function DemarchePage() {
   const { demarcheId = "" } = useParams();
   const { lang, serve } = useLanguage();
+  const t = useT();
+  const tn = useTn();
   const { state, retry } = useDemarche(demarcheId, lang);
 
   // Le serveur a tranché la langue : l'adresse s'y aligne (voir `PortalPage`).
@@ -82,14 +85,18 @@ export function DemarchePage() {
       <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-3 border-y border-slate-200 py-4">
         {demarche.estimatedMinutes !== null && (
           <div>
-            <dt className="text-xs font-bold uppercase tracking-wide text-slate-500">Durée</dt>
-            <dd className="text-sm text-slate-800">Environ {demarche.estimatedMinutes} minutes</dd>
+            <dt className="text-xs font-bold uppercase tracking-wide text-slate-500">
+              {t("demarche.duration")}
+            </dt>
+            <dd className="text-sm text-slate-800">
+              {t("card.duration", { n: demarche.estimatedMinutes })}
+            </dd>
           </div>
         )}
         {demarche.organizations.length > 0 && (
           <div>
             <dt className="text-xs font-bold uppercase tracking-wide text-slate-500">
-              {demarche.organizations.length > 1 ? "Organismes" : "Organisme"}
+              {tn("demarche.organizations", demarche.organizations.length)}
             </dt>
             <dd className="text-sm text-slate-800">
               {demarche.organizations.map((org) => org.name).join(" · ")}
@@ -108,7 +115,7 @@ export function DemarchePage() {
 
       {attachments.length > 0 && (
         <section className="mt-8">
-          <h2 className="text-lg font-bold text-slate-900">Pièces à fournir</h2>
+          <h2 className="text-lg font-bold text-slate-900">{t("demarche.attachments")}</h2>
           <ul className="mt-3 flex flex-col gap-2">
             {attachments.map((field) => (
               <li key={field.id} className="flex gap-2 text-sm text-slate-700">
@@ -127,10 +134,7 @@ export function DemarchePage() {
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-sm text-slate-500">
-            Le dépôt des pièces n'est pas encore ouvert : votre collectivité vous les demandera
-            après l'envoi de votre demande.
-          </p>
+          <p className="mt-3 text-sm text-slate-500">{t("demarche.attachmentsLater")}</p>
         </section>
       )}
 
@@ -140,15 +144,14 @@ export function DemarchePage() {
           // publiée, sa saisie n'est simplement pas encore paramétrée. Le dire
           // vaut mieux qu'un bouton qui mène à une page vide.
           <p className="rounded-lg border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-600">
-            Cette démarche ne peut pas encore être remplie en ligne. Rapprochez-vous de votre
-            collectivité pour l'effectuer.
+            {t("demarche.notOnline")}
           </p>
         ) : (
           <Link
             to={localizedPath(lang, "/demarches/" + encodeURIComponent(demarche.id) + "/formulaire")}
             className="inline-flex rounded-lg bg-[color:var(--brand-primary)] px-5 py-3 text-sm font-bold text-white hover:opacity-90"
           >
-            Commencer la démarche
+            {t("demarche.start")}
           </Link>
         )}
       </div>

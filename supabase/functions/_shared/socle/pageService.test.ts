@@ -20,7 +20,7 @@ const PUBLISHED = {
 
 describe("getPublishedPage — traduction", () => {
   it("traduit dans le vocabulaire du portail et ne garde que ce qu'il sait rendre", async () => {
-    const result = await getPublishedPage("t1", replying({ kind: "ok", body: PUBLISHED }));
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body: PUBLISHED }), "fr");
     expect(result.ok).toBe(true);
     if (!result.ok || !result.page) return;
     expect(result.page.publishedAt).toBe("2026-09-05T12:21:10Z");
@@ -39,7 +39,7 @@ describe("getPublishedPage — traduction", () => {
 
   it("vide les raccourcis quand ils sont masqués — le rendu n'a pas à connaître le commutateur", async () => {
     const body = { ...PUBLISHED, sections: [{ ...PUBLISHED.sections[0], show_shortcuts: false }] };
-    const result = await getPublishedPage("t1", replying({ kind: "ok", body }));
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body }), "fr");
     if (!result.ok || !result.page) throw new Error("attendu une page");
     expect(result.page.sections[0]).toMatchObject({ kind: "recherche", shortcuts: [] });
   });
@@ -52,22 +52,22 @@ describe("getPublishedPage — traduction", () => {
         return { kind: "not_found" };
       },
     };
-    await getPublishedPage("8f1e0d3a-0000-4000-8000-000000000001", socle);
+    await getPublishedPage("8f1e0d3a-0000-4000-8000-000000000001", socle, "fr");
     expect(asked).toEqual(["/v1/portal/page?tenant_id=8f1e0d3a-0000-4000-8000-000000000001&slug=accueil"]);
   });
 });
 
 describe("getPublishedPage — absence et pannes", () => {
   it("rend `page: null` sur 404 — jamais publiée n'est pas une erreur", async () => {
-    expect(await getPublishedPage("t1", replying({ kind: "not_found" }))).toEqual({ ok: true, page: null });
+    expect(await getPublishedPage("t1", replying({ kind: "not_found" }), "fr")).toEqual({ ok: true, page: null });
   });
 
   it("distingue la clé refusée d'une panne", async () => {
-    expect(await getPublishedPage("t1", replying({ kind: "auth_failed" }))).toEqual({
+    expect(await getPublishedPage("t1", replying({ kind: "auth_failed" }), "fr")).toEqual({
       ok: false,
       reason: "socle_misconfigured",
     });
-    expect(await getPublishedPage("t1", replying({ kind: "unreachable" }))).toEqual({
+    expect(await getPublishedPage("t1", replying({ kind: "unreachable" }), "fr")).toEqual({
       ok: false,
       reason: "socle_unavailable",
     });
@@ -76,7 +76,7 @@ describe("getPublishedPage — absence et pannes", () => {
   it("traite une réponse sans date de publication comme illisible", async () => {
     // Un 200 sans `published_at` n'est pas une page publiée : plutôt une
     // indisponibilité qu'une page rendue sans savoir de quand elle date.
-    const result = await getPublishedPage("t1", replying({ kind: "ok", body: { sections: [] } }));
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body: { sections: [] } }), "fr");
     expect(result).toEqual({ ok: false, reason: "socle_unavailable" });
   });
 });
@@ -99,7 +99,7 @@ describe("getPublishedPage — pied de page", () => {
         },
       ],
     };
-    const result = await getPublishedPage("t1", replying({ kind: "ok", body }));
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body }), "fr");
     if (!result.ok || !result.page) throw new Error("attendu une page");
     expect(result.page.sections[0]).toEqual({
       id: "f",
@@ -113,8 +113,95 @@ describe("getPublishedPage — pied de page", () => {
 
   it("ramène une couleur malformée au sombre par défaut", async () => {
     const body = { ...PUBLISHED, sections: [{ id: "f", kind: "footer", background: "url(x)" }] };
-    const result = await getPublishedPage("t1", replying({ kind: "ok", body }));
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body }), "fr");
     if (!result.ok || !result.page) throw new Error("attendu une page");
     expect(result.page.sections[0]).toMatchObject({ background: "#0f1f18", columns: 3, children: [] });
+  });
+});
+
+/**
+ * Les textes de la page dans la langue du visiteur (contrat 1.14.0).
+ *
+ * ⚠️ Résolus ICI, à la frontière : plus loin, `section.title` est un titre à
+ * afficher. C'est ce qui laisse `domain/page.ts` et les écrans inchangés.
+ */
+describe("getPublishedPage — la langue du visiteur", () => {
+  const TRADUITE = {
+    slug: "accueil",
+    published_at: "2026-09-05T12:21:10Z",
+    version: 1,
+    sections: [
+      {
+        id: "t",
+        kind: "texte",
+        title: "Nos horaires",
+        body: "Du lundi au vendredi.",
+        align: "left",
+        // Le titre est traduit, le paragraphe non : le repli se voit.
+        translations: { en: { title: "Opening hours" } },
+      },
+      {
+        id: "f",
+        kind: "footer",
+        title: "",
+        background: "#0f1f18",
+        columns: 3,
+        children: [
+          {
+            id: "c",
+            kind: "texte",
+            title: "Contact",
+            body: "1 place de la Mairie",
+            align: "left",
+            translations: { en: { title: "Contact us" } },
+          },
+        ],
+      },
+    ],
+  };
+
+  it("sert les textes traduits", async () => {
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body: TRADUITE }), "en");
+    expect(result.ok).toBe(true);
+    if (!result.ok || !result.page) return;
+    expect(result.page.sections[0].title).toBe("Opening hours");
+  });
+
+  it("replie CHAQUE champ séparément", async () => {
+    // Replier la langue entière parce que le paragraphe manque masquerait un
+    // titre que la collectivité a bel et bien traduit.
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body: TRADUITE }), "en");
+    expect(result.ok).toBe(true);
+    if (!result.ok || !result.page) return;
+    const texte = result.page.sections[0];
+    expect(texte.kind).toBe("texte");
+    if (texte.kind !== "texte") return;
+    expect(texte.body).toBe("Du lundi au vendredi.");
+  });
+
+  it("traduit aussi les sous-blocs du pied de page", async () => {
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body: TRADUITE }), "en");
+    expect(result.ok).toBe(true);
+    if (!result.ok || !result.page) return;
+    const footer = result.page.sections[1];
+    expect(footer.kind).toBe("footer");
+    if (footer.kind !== "footer") return;
+    expect(footer.children[0].title).toBe("Contact us");
+    expect(footer.children[0].body).toBe("1 place de la Mairie");
+  });
+
+  it("rend le français quand la langue n'a rien de traduit", async () => {
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body: TRADUITE }), "br");
+    expect(result.ok).toBe(true);
+    if (!result.ok || !result.page) return;
+    expect(result.page.sections[0].title).toBe("Nos horaires");
+  });
+
+  it("ne se laisse pas abîmer par une page servie sans traductions", async () => {
+    // Un Socle d'avant le contrat 1.14.0 : rien ne change, tout est français.
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body: PUBLISHED }), "en");
+    expect(result.ok).toBe(true);
+    if (!result.ok || !result.page) return;
+    expect(result.page.sections[0].kind).toBe("recherche");
   });
 });

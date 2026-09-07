@@ -11,7 +11,7 @@
  * La nav et « Mon compte » restent décoratifs tant qu'aucune de ces pages
  * n'existe — mieux vaut du gris inerte qu'un lien mort.
  */
-import { useLanguage } from "@/i18n/LanguageLayout.tsx";
+import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { languageName } from "@/i18n/languageNames.ts";
 
 export function PageHeader({
@@ -28,6 +28,7 @@ export function PageHeader({
   languages?: readonly string[];
 }) {
   const { lang, setLang } = useLanguage();
+  const t = useT();
 
   return (
     <header className="border-b border-slate-200">
@@ -46,8 +47,8 @@ export function PageHeader({
         <div className="flex-1" />
         {/* Décoratif : ces pages n'existent pas encore, ce ne sont pas des liens. */}
         <div className="hidden items-center gap-4 sm:flex" aria-hidden="true">
-          <span className="text-sm text-slate-500">Démarches</span>
-          <span className="text-sm text-slate-500">Contact</span>
+          <span className="text-sm text-slate-500">{t("header.demarches")}</span>
+          <span className="text-sm text-slate-500">{t("header.contact")}</span>
         </div>
         {/* ⚠️ Visible sur TOUS les formats, contrairement à la nav : c'est le
             seul élément qu'un visiteur qui ne lit pas le français doit pouvoir
@@ -56,7 +57,7 @@ export function PageHeader({
           <LanguageSelector languages={languages} value={lang} onChange={setLang} />
         ) : null}
         <span className="rounded-full border border-[color:var(--brand-primary)] px-3 py-1.5 text-sm font-semibold text-[color:var(--brand-primary)]">
-          Mon compte
+          {t("header.account")}
         </span>
       </div>
     </header>
@@ -85,11 +86,12 @@ function LanguageSelector({
   value: string;
   onChange: (next: string) => void;
 }) {
+  const t = useT();
   return (
     <label className="flex items-center gap-1.5">
       {/* La langue est lisible dans le contrôle lui-même : l'étiquette est là
           pour les lecteurs d'écran, pas pour occuper la barre. */}
-      <span className="sr-only">Langue</span>
+      <span className="sr-only">{t("header.language")}</span>
       <select
         value={languages.includes(value) ? value : languages[0]}
         onChange={(event) => onChange(event.target.value)}

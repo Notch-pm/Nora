@@ -17,6 +17,8 @@ import * as React from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { isRtl } from "@fn/_shared/domain/languages.ts";
 import { localizedPath, PIVOT_LANGUAGE, splitLangPath } from "./localizedPath.ts";
+import { t, tn } from "./t.ts";
+import type { StringKey } from "./strings.ts";
 
 interface LanguageState {
   /** La langue demandée — celle dans laquelle on charge. */
@@ -35,6 +37,31 @@ const LanguageContext = React.createContext<LanguageState>({
 
 export function useLanguage(): LanguageState {
   return React.useContext(LanguageContext);
+}
+
+/**
+ * Traduit un texte de l'interface dans la langue courante.
+ *
+ * `t` reste PURE et prend la langue en argument — c'est ce qui se teste. Ce
+ * hook n'est que le raccourci des composants, pour ne pas faire descendre
+ * `lang` à travers chaque niveau de rendu.
+ */
+export function useT(): (key: StringKey, params?: Record<string, string | number>) => string {
+  const { lang } = useLanguage();
+  return React.useCallback(
+    (key: StringKey, params?: Record<string, string | number>) => t(lang, key, params),
+    [lang],
+  );
+}
+
+/** Le pluriel, dans la langue courante (voir `tn`). */
+export function useTn(): (base: string, count: number, params?: Record<string, string | number>) => string {
+  const { lang } = useLanguage();
+  return React.useCallback(
+    (base: string, count: number, params: Record<string, string | number> = {}) =>
+      tn(lang, base, count, params),
+    [lang],
+  );
 }
 
 const STORAGE_KEY = "nora.lang";

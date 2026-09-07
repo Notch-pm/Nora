@@ -131,7 +131,7 @@ async function visit(
   const lang = resolveLang(askedLang, resolution.tenant.languages);
   const demarches = await getPublicDemarches(resolution.tenant.id, socle, lang);
   if (!demarches.ok) return { ok: false as const, reason: demarches.reason };
-  const page = await getPublishedPage(resolution.tenant.id, socle);
+  const page = await getPublishedPage(resolution.tenant.id, socle, lang);
   if (!page.ok) return { ok: false as const, reason: page.reason };
   const branding = await getBranding(resolution.tenant.id, socle);
   if (!branding.ok) return { ok: false as const, reason: branding.reason };

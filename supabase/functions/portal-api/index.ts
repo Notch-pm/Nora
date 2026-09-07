@@ -205,7 +205,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
     // La page d'accueil telle qu'elle a été publiée. `null` si la collectivité
     // n'a rien composé : le portail rend alors son défaut.
-    const page = await getPublishedPage(tenant.id, socle);
+    const page = await getPublishedPage(tenant.id, socle, lang);
     if (!page.ok) return failure(page.reason);
 
     // La charte graphique, héritage déjà résolu par le Socle. `null` = le

@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import {
-  emptyDemarchesMessage,
+  emptyDemarchesKey,
   filterDemarchesByOrganization,
   organizationsOffering,
 } from "./composition.ts";
@@ -19,7 +19,7 @@ import { HomeComposition } from "./HomeComposition.tsx";
 import { DemarcheCard } from "./sections/DemarcheCard.tsx";
 import { OrganizationFilter } from "./sections/OrganizationFilter.tsx";
 import { usePortal } from "./usePortal.ts";
-import { useLanguage } from "@/i18n/LanguageLayout.tsx";
+import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -33,6 +33,7 @@ function Shell({ children }: { children: React.ReactNode }) {
  * page composée pour le porter.
  */
 function DefaultCatalogue({ tenant, demarches }: { tenant: Tenant; demarches: Demarche[] }) {
+  const t = useT();
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const organizations = organizationsOffering(demarches, tenant.id);
   const visible = filterDemarchesByOrganization(demarches, organizationId);
@@ -41,7 +42,7 @@ function DefaultCatalogue({ tenant, demarches }: { tenant: Tenant; demarches: De
     <Shell>
       <header className="border-b border-slate-200 pb-6">
         <h1 className="text-2xl font-semibold text-slate-900">{tenant.name}</h1>
-        <p className="mt-1 text-sm text-slate-500">Démarches en ligne</p>
+        <p className="mt-1 text-sm text-slate-500">{t("page.title")}</p>
       </header>
 
       <div className="mt-8 flex flex-col gap-4">
@@ -53,7 +54,7 @@ function DefaultCatalogue({ tenant, demarches }: { tenant: Tenant; demarches: De
         {visible.length === 0 ? (
           // Cas normal, pas une erreur : la collectivité existe, elle n'a
           // simplement rien publié. Le dire clairement évite un ticket de support.
-          <p className="text-slate-600">{emptyDemarchesMessage(false, organizationId)}</p>
+          <p className="text-slate-600">{t(emptyDemarchesKey(false, organizationId))}</p>
         ) : (
           <ul className="space-y-3">
             {visible.map((demarche) => (
@@ -68,6 +69,7 @@ function DefaultCatalogue({ tenant, demarches }: { tenant: Tenant; demarches: De
 
 export function PortalPage() {
   const { lang, serve } = useLanguage();
+  const t = useT();
   const { state, retry } = usePortal(lang);
 
   // ⚠️ LE SERVEUR A TRANCHÉ : l'adresse doit dire ce qui est affiché. Une
@@ -81,13 +83,13 @@ export function PortalPage() {
   if (state.status === "loading") {
     return (
       <Shell>
-        <p className="text-slate-500">Chargement…</p>
+        <p className="text-slate-500">{t("page.loading")}</p>
       </Shell>
     );
   }
 
   if (state.status === "error") {
-    const message = errorMessageFor(state.reason);
+    const message = errorMessageFor(state.reason, lang);
     return (
       <Shell>
         <h1 className="text-xl font-semibold text-slate-900">{message.title}</h1>
@@ -98,12 +100,12 @@ export function PortalPage() {
             onClick={retry}
             className="mt-6 rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
           >
-            Réessayer
+            {t("page.retry")}
           </button>
         )}
         {/* Le code d'erreur n'est pas décoratif : c'est ce qu'un usager peut
             citer au support, et ce qu'on cherche dans les journaux. */}
-        <p className="mt-8 text-xs text-slate-400">Code : {state.reason}</p>
+        <p className="mt-8 text-xs text-slate-400">{t("page.errorCode", { code: state.reason })}</p>
       </Shell>
     );
   }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import {
   MAX_SHORTCUTS,
-  emptyDemarchesMessage,
+  emptyDemarchesKey,
   endsWithFooter,
   filterDemarchesByOrganization,
   filterDemarchesByQuery,
@@ -68,11 +68,13 @@ describe("organizationsOffering", () => {
   });
 });
 
-describe("emptyDemarchesMessage", () => {
+describe("emptyDemarchesKey", () => {
   it("la recherche prime, puis l'organisme, puis l'absence de publication", () => {
-    expect(emptyDemarchesMessage(true, "arles")).toMatch(/recherche/);
-    expect(emptyDemarchesMessage(false, "arles")).toMatch(/cet organisme/);
-    expect(emptyDemarchesMessage(false, null)).toMatch(/pour le moment/);
+    // Un CODE, pas une phrase : ce module reste pur et ignore la langue du
+    // visiteur — c'est l'écran qui rend le texte.
+    expect(emptyDemarchesKey(true, "arles")).toBe("empty.search");
+    expect(emptyDemarchesKey(false, "arles")).toBe("empty.organization");
+    expect(emptyDemarchesKey(false, null)).toBe("empty.none");
   });
 });
 

@@ -17,7 +17,7 @@ describe("errorMessageFor", () => {
     // Un cas manquant produirait un écran vide, au moment précis où l'usager a
     // besoin qu'on lui parle.
     for (const failure of ALL) {
-      const message = errorMessageFor(failure);
+      const message = errorMessageFor(failure, "fr");
       expect(message.title, failure).toBeTruthy();
       expect(message.detail, failure).toBeTruthy();
     }
@@ -26,13 +26,13 @@ describe("errorMessageFor", () => {
   it("ne propose de réessayer que quand cela peut aboutir", () => {
     // Un domaine qui n'existe pas n'existera pas davantage au rechargement :
     // proposer « réessayer » ferait tourner l'usager en rond.
-    expect(errorMessageFor("unknown_domain").retryable).toBe(false);
-    expect(errorMessageFor("invalid_hostname").retryable).toBe(false);
-    expect(errorMessageFor("not_configured").retryable).toBe(false);
+    expect(errorMessageFor("unknown_domain", "fr").retryable).toBe(false);
+    expect(errorMessageFor("invalid_hostname", "fr").retryable).toBe(false);
+    expect(errorMessageFor("not_configured", "fr").retryable).toBe(false);
 
-    expect(errorMessageFor("socle_unavailable").retryable).toBe(true);
-    expect(errorMessageFor("tenant_unavailable").retryable).toBe(true);
-    expect(errorMessageFor("network").retryable).toBe(true);
+    expect(errorMessageFor("socle_unavailable", "fr").retryable).toBe(true);
+    expect(errorMessageFor("tenant_unavailable", "fr").retryable).toBe(true);
+    expect(errorMessageFor("network", "fr").retryable).toBe(true);
   });
 
   it("ne parle jamais au visiteur du Socle, d'une clé ni d'un tenant", () => {
@@ -40,7 +40,7 @@ describe("errorMessageFor", () => {
     // l'aiderait pas. Le vocabulaire interne reste dans le code d'erreur.
     for (const failure of ALL) {
       if (failure === "not_configured") continue; // Seul message destiné à un exploitant.
-      const { title, detail } = errorMessageFor(failure);
+      const { title, detail } = errorMessageFor(failure, "fr");
       expect((title + " " + detail).toLowerCase(), failure).not.toMatch(
         /socle|tenant|clé api|api key|token/,
       );
@@ -50,8 +50,8 @@ describe("errorMessageFor", () => {
   it("ne laisse pas croire à un refus d'accès quand la clé est en cause", () => {
     // `socle_misconfigured` est une panne d'exploitation. Écrire « accès
     // refusé » ferait croire à l'usager qu'il n'a pas le droit d'être là.
-    const message = errorMessageFor("socle_misconfigured");
-    expect(message).toEqual(errorMessageFor("socle_unavailable"));
+    const message = errorMessageFor("socle_misconfigured", "fr");
+    expect(message).toEqual(errorMessageFor("socle_unavailable", "fr"));
     expect((message.title + message.detail).toLowerCase()).not.toMatch(/refus|interdit|droit/);
   });
 });

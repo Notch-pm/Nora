@@ -482,22 +482,75 @@ tolérante du `form_schema` et du `requester_config` est épinglée côté porta
 (`domain/*.test.ts`), et l'enveloppe déposée dans Iris l'est contre un Iris simulé
 (`iris/demandeService.test.ts`) — c'est un port, il se remplace par une table de réponses.
 
+## La langue du visiteur
+
+Une collectivité choisit au Socle les langues dans lesquelles elle s'adresse à
+ses usagers. Le portail en fait un sélecteur — dans l'en-tête, donc sur les trois
+écrans — et sert ce que la personne a choisi. Il n'apparaît qu'au-delà d'une
+langue, et chaque langue y est écrite **dans sa propre langue** (« English »,
+« العربية », « brezhoneg ») : quelqu'un qui ne lit pas le français ne cherche pas
+« Anglais ».
+
+**La langue est dans l'adresse**, et le français n'a pas de préfixe : `/`,
+`/en`, `/en/demarches/{id}`. Une page publique se partage et s'indexe ; et le
+français est la langue pivot, pas une traduction — c'est la même règle qu'au
+Socle, où `translations` n'a jamais de clé `fr`. Toutes les adresses déjà
+partagées continuent donc de fonctionner. La langue est aussi mémorisée dans le
+navigateur pour la visite suivante ; il n'y a **aucune détection automatique**
+(`navigator.language` dirait la langue du téléphone, pas celle qu'on veut lire
+sur le site de sa mairie).
+
+⚠️ **Ce qui est demandé n'est pas ce qui est servi.** `portal-api` reçoit
+`?lang=`, le clampe sur ce que la collectivité a activé, et **renvoie la langue
+servie** ; l'interface remet alors l'adresse d'accord avec ce qui est affiché.
+Sans ça, une langue mémorisée puis désactivée par la collectivité serait
+redemandée à chaque visite, et l'adresse mentirait.
+
+**La langue est résolue à la frontière**, dans `socle/*.ts` : plus loin,
+`demarche.name` est un intitulé à afficher, pas un français dont il faudrait
+chercher la traduction. Le repli se fait **champ par champ** — une démarche peut
+avoir son intitulé traduit sans son résumé, c'est le cas normal.
+
+### Deux périmètres, et ce que voit un usager
+
+|  | Qui écrit | Couverture |
+|---|---|---|
+| Textes de la **collectivité** (démarches, catégories, blocs de la page d'accueil) | l'agent, au Socle, qui les relit | les 65 langues du catalogue |
+| Textes de l'**outil** (boutons, messages, étiquettes) | l'éditeur, dans `src/i18n/strings.ts` | `COVERED_LANGUAGES` (11) |
+
+Dans une langue **non couverte** — breton, shimaoré… — l'usager lit **sa
+collectivité dans sa langue** et **l'outil en français**. C'est assumé : personne
+ici ne peut rédiger ni relire du drehu, et ce que la collectivité n'a pas écrit
+ne s'invente pas. Le repli est **par clé**, jamais par langue : une langue
+couverte à 90 % affiche les 10 % restants en français, on ne rebascule pas tout
+le portail parce qu'une clé manque.
+
+⚠️ Les traductions du dictionnaire sont **de qualité machine** tant qu'un
+locuteur ne les a pas relues. Elles sont versionnées : une modification est une
+revue de code, avec son diff. Elles ne passent **pas** par `translate-labels` du
+Socle — cette fonction est adossée au crédit d'UNE collectivité ; le chrome de
+l'outil est une dépense d'éditeur.
+
+⚠️ `dir="rtl"` est posé pour l'arabe et les autres écritures de droite à gauche.
+Il corrige le **texte** et la **saisie**, pas le **placement** : les utilitaires
+Tailwind sont physiques (`ml-`, `text-left`) et ne se miroitent pas. Le miroir
+complet de la mise en page est un chantier à mener avec le RGAA.
+
 ## Ce qui n'est pas encore fait
 
 Dans l'ordre prévu — le détail, les prérequis côté Socle et les questions
 ouvertes sont dans `docs/roadmap.md` du Socle, section « Portail usagers » :
 
-1. le **multilingue** ;
-2. les **autres templates** (thème, autres pages que l'accueil, actualités) ;
-3. les démarches **hors compte** : la demande part déjà, il lui manque son après —
+1. les **autres templates** (thème, autres pages que l'accueil, actualités) ;
+2. les démarches **hors compte** : la demande part déjà, il lui manque son après —
    confirmation par courriel et lien de suivi signé, donc le statut d'une demande
    consultable depuis le portail ;
-4. les démarches **avec compte** (espace usager, rattaché au référentiel
+3. les démarches **avec compte** (espace usager, rattaché au référentiel
    `contacts` du Socle) ;
-5. la **création de compte** ;
-6. les **échanges** usager ↔ agent sur une demande ;
-7. les **pièces jointes** (le formulaire les annonce déjà, le dépôt reste à faire) ;
-8. **FranceConnect** — à instruire (habilitation, périmètre).
+4. la **création de compte** ;
+5. les **échanges** usager ↔ agent sur une demande ;
+6. les **pièces jointes** (le formulaire les annonce déjà, le dépôt reste à faire) ;
+7. **FranceConnect** — à instruire (habilitation, périmètre).
 
 Transverse : accessibilité RGAA et mentions obligatoires d'un site public,
 premier domaine réel, et surtout **le multi-collectivités du dépôt** — voir

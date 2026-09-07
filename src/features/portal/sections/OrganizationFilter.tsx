@@ -6,6 +6,7 @@
  * filtrerait rien, et un sélecteur à une entrée est une question sans objet.
  */
 import type { DemarcheOrganization } from "@fn/_shared/domain/demarche.ts";
+import { useT } from "@/i18n/LanguageLayout.tsx";
 
 export function OrganizationFilter({
   organizations,
@@ -17,16 +18,17 @@ export function OrganizationFilter({
   value: string | null;
   onChange: (organizationId: string | null) => void;
 }) {
+  const t = useT();
   if (organizations.length < 2) return null;
   return (
     <label className="flex items-center gap-2 text-sm text-slate-600">
-      <span className="font-medium">Organisme</span>
+      <span className="font-medium">{t("filter.organization")}</span>
       <select
         value={value ?? ""}
         onChange={(event) => onChange(event.target.value === "" ? null : event.target.value)}
         className="h-9 max-w-[260px] rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-800 focus:border-[color:var(--brand-primary)] focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-primary)]"
       >
-        <option value="">Tous les organismes</option>
+        <option value="">{t("filter.allOrganizations")}</option>
         {organizations.map((org) => (
           <option key={org.id} value={org.id}>
             {org.name}

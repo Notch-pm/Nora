@@ -83,10 +83,13 @@ export function organizationsOffering(
  * récent de l'usager, et c'est lui qu'il faut lui rendre. Puis l'organisme
  * choisi ; sinon, rien n'est publié — et ce n'est pas une erreur.
  */
-export function emptyDemarchesMessage(searchActive: boolean, organizationId: string | null): string {
-  if (searchActive) return "Aucune démarche ne correspond à votre recherche.";
-  if (organizationId !== null) return "Aucune démarche n'est proposée en ligne par cet organisme.";
-  return "Aucune démarche n'est proposée en ligne pour le moment.";
+export function emptyDemarchesKey(
+  searchActive: boolean,
+  organizationId: string | null,
+): "empty.search" | "empty.organization" | "empty.none" {
+  if (searchActive) return "empty.search";
+  if (organizationId !== null) return "empty.organization";
+  return "empty.none";
 }
 
 /**

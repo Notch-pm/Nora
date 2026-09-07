@@ -26,9 +26,21 @@ import { isSection } from "@fn/_shared/domain/formSchema.ts";
 import type { RequesterField } from "@fn/_shared/domain/requesterConfig.ts";
 
 /** Erreurs de saisie, indexées par `id` de champ (ou clé de champ requérant). */
-export type FieldErrors = Record<string, string>;
+/**
+ * Une erreur de saisie : un CODE et ses paramètres, pas une phrase.
+ *
+ * ⚠️ Ce module est pur et le reste : il ne connaît ni la langue du visiteur, ni
+ * le dictionnaire. C'est l'écran qui rend la phrase (`t(lang, e.key, e.params)`),
+ * et les tests assertent sur des codes — plus robustes que sur de la prose.
+ */
+export interface FieldError {
+  key: "validation.required" | "validation.email" | "validation.number" | "validation.maxLength";
+  params?: Record<string, string | number>;
+}
 
-const REQUIRED_MESSAGE = "Cette information est obligatoire.";
+export type FieldErrors = Record<string, FieldError>;
+
+const REQUIRED: FieldError = { key: "validation.required" };
 
 /** Vrai si la valeur saisie ne dit rien : vide, blanche, ou aucun choix. */
 export function isBlank(value: unknown): boolean {
@@ -91,7 +103,7 @@ export function isFieldRequired(field: Field, values: FormValues): boolean {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 /** Une erreur pour ce champ, ou `null`. Le premier motif rencontré suffit. */
-function fieldError(field: Field, values: FormValues): string | null {
+function fieldError(field: Field, values: FormValues): FieldError | null {
   const value = values[field.id];
 
   // Les pièces ne bloquent pas : leur dépôt n'existe pas encore, et refuser
@@ -99,14 +111,14 @@ function fieldError(field: Field, values: FormValues): string | null {
   if (field.type === "attachment") return null;
 
   if (isBlank(value)) {
-    return isFieldRequired(field, values) ? REQUIRED_MESSAGE : null;
+    return isFieldRequired(field, values) ? REQUIRED : null;
   }
 
   if (field.type === "email" && typeof value === "string" && !EMAIL_RE.test(value.trim())) {
-    return "Cette adresse électronique n'est pas valide.";
+    return { key: "validation.email" };
   }
   if (field.type === "number" && typeof value === "string" && !Number.isFinite(Number(value))) {
-    return "Un nombre est attendu.";
+    return { key: "validation.number" };
   }
   if (
     typeof value === "string" &&
@@ -114,7 +126,7 @@ function fieldError(field: Field, values: FormValues): string | null {
     typeof field.maxLength === "number" &&
     value.trim().length > field.maxLength
   ) {
-    return field.maxLength + " caractères au maximum.";
+    return { key: "validation.maxLength", params: { n: field.maxLength } };
   }
   return null;
 }
@@ -165,11 +177,11 @@ export function validateRequester(
   for (const field of fields) {
     const value = values[field.key];
     if (isBlank(value)) {
-      if (field.required) errors[field.key] = REQUIRED_MESSAGE;
+      if (field.required) errors[field.key] = REQUIRED;
       continue;
     }
     if (field.key === "courriel" && !EMAIL_RE.test(value.trim())) {
-      errors[field.key] = "Cette adresse électronique n'est pas valide.";
+      errors[field.key] = { key: "validation.email" };
     }
   }
   return errors;

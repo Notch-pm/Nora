@@ -8,13 +8,14 @@
  * que la cible au doigt soit la carte et non trois mots.
  */
 import { Link } from "react-router-dom";
-import { useLanguage } from "@/i18n/LanguageLayout.tsx";
+import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { localizedPath } from "@/i18n/localizedPath.ts";
 
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 
 export function DemarcheCard({ demarche, pinned = false }: { demarche: Demarche; pinned?: boolean }) {
   const { lang } = useLanguage();
+  const t = useT();
   return (
     <li
       className={
@@ -26,7 +27,7 @@ export function DemarcheCard({ demarche, pinned = false }: { demarche: Demarche;
     >
       {pinned && (
         <span className="w-fit rounded-full bg-[color:var(--brand-secondary)] px-2 py-0.5 text-[10.5px] font-extrabold text-slate-900">
-          À la une
+          {t("card.pinned")}
         </span>
       )}
       <h3 className="font-medium text-slate-900">
@@ -41,12 +42,12 @@ export function DemarcheCard({ demarche, pinned = false }: { demarche: Demarche;
         <p className="text-sm text-slate-600">{demarche.description}</p>
       )}
       {demarche.estimatedMinutes !== null && (
-        <p className="text-xs text-slate-500">Environ {demarche.estimatedMinutes} minutes</p>
+        <p className="text-xs text-slate-500">{t("card.duration", { n: demarche.estimatedMinutes })}</p>
       )}
       {demarche.organizations.length > 0 && (
         <ul
           className="mt-auto flex flex-wrap gap-1 pt-1"
-          aria-label="Organismes proposant cette démarche"
+          aria-label={t("card.organizations")}
         >
           {demarche.organizations.map((org) => (
             <li

@@ -7,6 +7,7 @@
  * explicitement à qui pose la souris dessus.
  */
 import type { CompteSection as CompteSectionData } from "@fn/_shared/domain/page.ts";
+import { useT } from "@/i18n/LanguageLayout.tsx";
 
 function UserIcon() {
   return (
@@ -26,6 +27,7 @@ function UserIcon() {
 }
 
 export function CompteSection({ section }: { section: CompteSectionData }) {
+  const t = useT();
   return (
     <section className="flex flex-col items-stretch gap-4 rounded-xl bg-slate-900 px-6 py-5 sm:flex-row sm:items-center">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color:var(--brand-primary)]">
@@ -38,11 +40,11 @@ export function CompteSection({ section }: { section: CompteSectionData }) {
       <button
         type="button"
         disabled
-        title="Bientôt disponible"
+        title={t("compte.soon")}
         aria-disabled="true"
         className="shrink-0 cursor-not-allowed whitespace-nowrap rounded-[10px] bg-white px-4 py-2.5 text-center text-sm font-bold text-slate-900 opacity-60"
       >
-        Se connecter
+        {t("compte.signIn")}
       </button>
     </section>
   );

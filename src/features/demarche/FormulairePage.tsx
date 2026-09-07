@@ -18,7 +18,8 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useLanguage } from "@/i18n/LanguageLayout.tsx";
+import { useLanguage, useT, useTn } from "@/i18n/LanguageLayout.tsx";
+import { errorText } from "@/i18n/t.ts";
 import { localizedPath } from "@/i18n/localizedPath.ts";
 import type { FormValues } from "@fn/_shared/domain/conditions.ts";
 import { isSection } from "@fn/_shared/domain/formSchema.ts";
@@ -53,25 +54,23 @@ function newSubmissionId(): string {
 /** L'accusé de dépôt. Ce que l'usager doit pouvoir noter avant de fermer. */
 function Receipt({ receipt, demarcheName }: { receipt: DemandeReceipt; demarcheName: string }) {
   const { lang } = useLanguage();
+  const t = useT();
   return (
     <section className="rounded-xl border border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_6%,white)] p-6">
       <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
-        {receipt.created ? "Votre demande est enregistrée" : "Votre demande était déjà enregistrée"}
+        {t(receipt.created ? "receipt.title" : "receipt.titleAgain")}
       </h1>
       <p className="mt-2 text-slate-700">{demarcheName}</p>
       <p className="mt-6 text-sm font-semibold uppercase tracking-wide text-slate-500">
-        Votre référence
+        {t("receipt.reference")}
       </p>
       <p className="mt-1 text-2xl font-black tracking-tight text-slate-900">{receipt.reference}</p>
-      <p className="mt-4 text-sm text-slate-600">
-        Notez cette référence : elle identifie votre demande auprès de votre collectivité. Le suivi
-        en ligne et la confirmation par courriel arriveront prochainement.
-      </p>
+      <p className="mt-4 text-sm text-slate-600">{t("receipt.note")}</p>
       <Link
         to={localizedPath(lang, "/")}
         className="mt-6 inline-flex rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
       >
-        Retour à l'accueil
+        {t("demarche.backHome")}
       </Link>
     </section>
   );
@@ -79,15 +78,14 @@ function Receipt({ receipt, demarcheName }: { receipt: DemandeReceipt; demarcheN
 
 /** Le récapitulatif des erreurs, en tête : le motif RGAA d'un formulaire long. */
 function ErrorSummary({ count }: { count: number }) {
+  const tn = useTn();
   return (
     <div
       role="alert"
       tabIndex={-1}
       className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800"
     >
-      {count > 1
-        ? count + " informations doivent être corrigées avant l'envoi."
-        : "Une information doit être corrigée avant l'envoi."}
+      {tn("form.errors", count)}
     </div>
   );
 }
@@ -95,6 +93,7 @@ function ErrorSummary({ count }: { count: number }) {
 export function FormulairePage() {
   const { demarcheId = "" } = useParams();
   const { lang, serve } = useLanguage();
+  const t = useT();
   const { state, retry } = useDemarche(demarcheId, lang);
 
   // Le serveur a tranché la langue : l'adresse s'y aligne (voir `PortalPage`).
@@ -139,7 +138,7 @@ export function FormulairePage() {
           to={localizedPath(lang, "/")}
           className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
         >
-          Retour à l'accueil
+          {t("demarche.backHome")}
         </Link>
       </DemarcheError>
     );
@@ -171,7 +170,7 @@ export function FormulairePage() {
           to={backToDemarche}
           className="mt-6 inline-flex rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
         >
-          Revenir à la démarche
+          {t("demarche.back")}
         </Link>
       </DemarcheShell>
     );
@@ -214,7 +213,7 @@ export function FormulairePage() {
 
     setErrors(formErrors);
     setRequesterErrors(identityErrors);
-    setOrganizationError(missingOrganization ? "Choisissez l'organisme concerné." : null);
+    setOrganizationError(missingOrganization ? t("form.chooseOrganization") : null);
     if (
       Object.keys(formErrors).length > 0 ||
       Object.keys(identityErrors).length > 0 ||
@@ -250,7 +249,7 @@ export function FormulairePage() {
           to={backToDemarche}
           className="text-sm font-semibold text-[color:var(--brand-primary)] hover:underline"
         >
-          Revenir à la démarche
+          {t("demarche.back")}
         </Link>
       </nav>
 
@@ -264,8 +263,8 @@ export function FormulairePage() {
             role="alert"
             className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800"
           >
-            <p className="font-semibold">{errorMessageFor(sendFailure).title}</p>
-            <p className="mt-1">{errorMessageFor(sendFailure).detail}</p>
+            <p className="font-semibold">{errorMessageFor(sendFailure, lang).title}</p>
+            <p className="mt-1">{errorMessageFor(sendFailure, lang).detail}</p>
           </div>
         )}
 
@@ -274,7 +273,7 @@ export function FormulairePage() {
         {mustChooseOrganization && (
           <div className="flex flex-col gap-1.5">
             <label htmlFor="organisme" className="text-sm font-semibold text-slate-900">
-              Organisme concerné
+              {t("form.organization")}
               <span className="ml-1 text-red-600" aria-hidden="true">
                 *
               </span>
@@ -323,7 +322,7 @@ export function FormulairePage() {
                   value={values[field.id]}
                   onChange={(value) => setValue(field.id, value)}
                   required={isFieldRequired(field, values)}
-                  error={errors[field.id] ?? null}
+                  error={errorText(lang, errors[field.id])}
                 />
               ))}
             </section>
@@ -334,7 +333,7 @@ export function FormulairePage() {
               value={values[node.id]}
               onChange={(value) => setValue(node.id, value)}
               required={isFieldRequired(node, values)}
-              error={errors[node.id] ?? null}
+              error={errorText(lang, errors[node.id])}
             />
           ),
         )}
@@ -361,8 +360,7 @@ export function FormulairePage() {
           // part sans identité. C'est son choix, pas un oubli du portail — mais
           // l'usager doit le savoir avant d'envoyer.
           <p className="rounded-lg border border-dashed border-slate-300 px-4 py-4 text-sm text-slate-600">
-            Cette démarche est déposée sans vos coordonnées : votre collectivité ne pourra pas vous
-            répondre directement.
+            {t("form.noRequester")}
           </p>
         )}
 
@@ -372,11 +370,9 @@ export function FormulairePage() {
             disabled={sending}
             className="rounded-lg bg-[color:var(--brand-primary)] px-5 py-3 text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
           >
-            {sending ? "Envoi en cours…" : "Envoyer ma demande"}
+            {t(sending ? "form.submitting" : "form.submit")}
           </button>
-          <p className="text-xs text-slate-500">
-            Les champs marqués d'un astérisque sont obligatoires.
-          </p>
+          <p className="text-xs text-slate-500">{t("form.requiredNote")}</p>
         </div>
       </form>
     </DemarcheShell>

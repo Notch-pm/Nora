@@ -14,6 +14,9 @@
 import type { Audience, RequesterField } from "@fn/_shared/domain/requesterConfig.ts";
 import { AUDIENCES } from "@fn/_shared/domain/requesterConfig.ts";
 import type { FieldErrors } from "./formulaire.ts";
+import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
+import { errorText } from "@/i18n/t.ts";
+import type { StringKey } from "@/i18n/strings.ts";
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 " +
@@ -22,10 +25,15 @@ const inputClass =
 
 const invalidClass = "border-red-500 focus:border-red-500 focus:ring-red-500/30";
 
-/** Les civilités telles que le Socle les STOCKE — minuscules, deux valeurs. */
-const CIVILITES = [
-  { value: "madame", label: "Madame" },
-  { value: "monsieur", label: "Monsieur" },
+/**
+ * Les civilités telles que le Socle les STOCKE — minuscules, deux valeurs.
+ *
+ * ⚠️ La VALEUR part au Socle et à Iris : elle ne se traduit jamais. Seule
+ * l'étiquette lue par l'usager change de langue.
+ */
+const CIVILITES: { value: string; key: StringKey }[] = [
+  { value: "madame", key: "requester.madame" },
+  { value: "monsieur", key: "requester.monsieur" },
 ];
 
 const INPUT_TYPES: Record<string, string> = {
@@ -45,6 +53,7 @@ function RequesterInput({
   onChange: (value: string) => void;
   error: string | null;
 }) {
+  const t = useT();
   const inputId = "requerant-" + field.key;
   const className = inputClass + (error !== null ? " " + invalidClass : "");
   const describedBy = error !== null ? inputId + "-erreur" : undefined;
@@ -58,7 +67,7 @@ function RequesterInput({
             *
           </span>
         )}
-        {field.required && <span className="sr-only"> (obligatoire)</span>}
+        {field.required && <span className="sr-only">{t("form.required")}</span>}
       </label>
       {field.key === "civilite" ? (
         <select
@@ -69,10 +78,10 @@ function RequesterInput({
           aria-describedby={describedBy}
           onChange={(event) => onChange(event.target.value)}
         >
-          <option value="">Choisissez…</option>
+          <option value="">{t("form.choose")}</option>
           {CIVILITES.map((civilite) => (
             <option key={civilite.value} value={civilite.value}>
-              {civilite.label}
+              {t(civilite.key)}
             </option>
           ))}
         </select>
@@ -125,20 +134,20 @@ export function RequesterSection({
   onChange: (key: string, value: string) => void;
   errors: FieldErrors;
 }) {
+  const { lang } = useLanguage();
+  const t = useT();
   if (audiences.length === 0) return null;
 
   return (
     <section className="flex flex-col gap-4 rounded-xl border border-slate-200 p-5">
       <div>
-        <h2 className="text-lg font-bold text-slate-900">Vos informations</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Elles permettent à votre collectivité de vous répondre.
-        </p>
+        <h2 className="text-lg font-bold text-slate-900">{t("requester.title")}</h2>
+        <p className="mt-1 text-sm text-slate-500">{t("requester.subtitle")}</p>
       </div>
 
       {/* Un seul public ouvert : pas de question à poser, la réponse est faite. */}
       {audiences.length > 1 && (
-        <div role="radiogroup" aria-label="Vous effectuez cette démarche" className="flex flex-wrap gap-2">
+        <div role="radiogroup" aria-label={t("requester.audience")} className="flex flex-wrap gap-2">
           {AUDIENCES.filter((candidate) => audiences.includes(candidate.key)).map((candidate) => {
             const active = candidate.key === audience;
             return (
@@ -168,9 +177,7 @@ export function RequesterSection({
       {fields.length === 0 ? (
         // Public ouvert, mais tous les champs masqués : la collectivité ne
         // demande rien de plus. Le dire vaut mieux qu'un cadre vide.
-        <p className="text-sm text-slate-600">
-          Aucune information personnelle n'est demandée pour cette démarche.
-        </p>
+        <p className="text-sm text-slate-600">{t("requester.none")}</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {fields.map((field) => (
@@ -179,7 +186,7 @@ export function RequesterSection({
               field={field}
               value={values[field.key] ?? ""}
               onChange={(value) => onChange(field.key, value)}
-              error={errors[field.key] ?? null}
+              error={errorText(lang, errors[field.key])}
             />
           ))}
         </div>

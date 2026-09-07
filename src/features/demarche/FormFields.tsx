@@ -9,6 +9,7 @@
  * ou déposé vient de `formulaire.ts`. Ce fichier ne fait qu'afficher.
  */
 import type { AttachmentField, Field, FieldOption } from "@fn/_shared/domain/formSchema.ts";
+import { useT, useTn } from "@/i18n/LanguageLayout.tsx";
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 " +
@@ -24,17 +25,17 @@ const invalidClass = "border-red-500 focus:border-red-500 focus:ring-red-500/30"
  * demande rien.
  */
 function AttachmentNotice({ field }: { field: AttachmentField }) {
+  const t = useT();
+  const tn = useTn();
   const formats =
     field.acceptedFormats.length > 0
-      ? "Formats acceptés : " + field.acceptedFormats.map((f) => f.toUpperCase()).join(", ")
-      : "Tous formats acceptés";
-  const files = field.maxFiles > 1 ? field.maxFiles + " fichiers maximum" : "1 fichier maximum";
+      ? t("form.formats", { formats: field.acceptedFormats.map((f) => f.toUpperCase()).join(", ") })
+      : t("form.allFormats");
+  const files = tn("form.maxFiles", field.maxFiles);
 
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-3">
-      <p className="text-sm text-slate-600">
-        Cette pièce vous sera demandée après le dépôt de votre demande.
-      </p>
+      <p className="text-sm text-slate-600">{t("form.attachmentLater")}</p>
       <p className="mt-1 text-xs text-slate-500">
         {formats} · {files}
       </p>
@@ -67,6 +68,7 @@ export function FormFieldControl({
   required: boolean;
   error: string | null;
 }) {
+  const t = useT();
   const inputId = "champ-" + field.id;
   const describedBy = [field.help ? inputId + "-aide" : null, error ? inputId + "-erreur" : null]
     .filter((id) => id !== null)
@@ -104,7 +106,7 @@ export function FormFieldControl({
               checked={value === true}
               onChange={(event) => onChange(event.target.checked)}
             />
-            <span>Oui</span>
+            <span>{t("form.yes")}</span>
           </label>
         );
       case "select":
@@ -116,7 +118,7 @@ export function FormFieldControl({
           >
             {/* Une liste obligatoire commence sans réponse : préselectionner le
                 premier choix ferait répondre l'usager à sa place. */}
-            <option value="">Choisissez…</option>
+            <option value="">{t("form.choose")}</option>
             <Options options={field.options} />
           </select>
         );
@@ -210,7 +212,7 @@ export function FormFieldControl({
             *
           </span>
         )}
-        {required && <span className="sr-only"> (obligatoire)</span>}
+        {required && <span className="sr-only">{t("form.required")}</span>}
       </Label>
       {field.help && (
         <p id={inputId + "-aide"} className="text-xs text-slate-500">

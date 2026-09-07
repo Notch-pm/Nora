@@ -8,7 +8,8 @@
  */
 import type { Demarche, DemarcheOrganization } from "@fn/_shared/domain/demarche.ts";
 import type { DemarchesSection as DemarchesSectionData } from "@fn/_shared/domain/page.ts";
-import { emptyDemarchesMessage, gridColumnsClass, orderDemarchesForSection } from "../composition.ts";
+import { emptyDemarchesKey, gridColumnsClass, orderDemarchesForSection } from "../composition.ts";
+import { useT } from "@/i18n/LanguageLayout.tsx";
 import { DemarcheCard } from "./DemarcheCard.tsx";
 import { OrganizationFilter } from "./OrganizationFilter.tsx";
 
@@ -31,6 +32,7 @@ export function DemarchesSection({
   /** Une recherche non vide est en cours : le message « rien trouvé » en dépend. */
   searchActive: boolean;
 }) {
+  const t = useT();
   const pinnedSet = new Set(section.pinned);
   const ordered = orderDemarchesForSection(demarches, section.pinned, section.pinnedFirst);
 
@@ -46,7 +48,7 @@ export function DemarchesSection({
       </div>
       {ordered.length === 0 ? (
         <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-500">
-          {emptyDemarchesMessage(searchActive, organizationId)}
+          {t(emptyDemarchesKey(searchActive, organizationId))}
         </p>
       ) : (
         <ul className={"grid gap-3 " + gridColumnsClass(section.columns)}>

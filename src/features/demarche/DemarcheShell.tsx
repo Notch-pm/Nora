@@ -12,6 +12,7 @@ import type { PortalLoadFailure } from "@/services/portal/portalClient.ts";
 import { errorMessageFor } from "@/features/portal/errorMessages.ts";
 import { PageHeader } from "@/features/portal/PageHeader.tsx";
 import { brandingStyle } from "@/features/portal/theme.ts";
+import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 
 export function DemarcheShell({
   tenantName,
@@ -44,9 +45,10 @@ export function DemarcheShell({
 
 /** L'attente. Le cadre est déjà là : seule la zone de contenu est vide. */
 export function DemarcheLoading() {
+  const t = useT();
   return (
     <DemarcheShell tenantName={null} branding={null}>
-      <p className="text-slate-500">Chargement…</p>
+      <p className="text-slate-500">{t("page.loading")}</p>
     </DemarcheShell>
   );
 }
@@ -65,7 +67,9 @@ export function DemarcheError({
   /** Le retour à l'accueil, que seule la page appelante sait construire. */
   children?: ReactNode;
 }) {
-  const message = errorMessageFor(reason);
+  const { lang } = useLanguage();
+  const t = useT();
+  const message = errorMessageFor(reason, lang);
   return (
     <DemarcheShell tenantName={null} branding={null}>
       <h1 className="text-xl font-semibold text-slate-900">{message.title}</h1>
@@ -77,12 +81,12 @@ export function DemarcheError({
             onClick={onRetry}
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
           >
-            Réessayer
+            {t("page.retry")}
           </button>
         )}
         {children}
       </div>
-      <p className="mt-8 text-xs text-slate-400">Code : {reason}</p>
+      <p className="mt-8 text-xs text-slate-400">{t("page.errorCode", { code: reason })}</p>
     </DemarcheShell>
   );
 }
