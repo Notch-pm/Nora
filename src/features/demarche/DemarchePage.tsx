@@ -16,7 +16,7 @@ import { allFields } from "@fn/_shared/domain/formSchema.ts";
 import { DemarcheError, DemarcheLoading, DemarcheShell } from "./DemarcheShell.tsx";
 import { useDemarche } from "./useDemarche.ts";
 import { useLanguage, useT, useTn } from "@/i18n/LanguageLayout.tsx";
-import { localizedPath } from "@/i18n/localizedPath.ts";
+import { localizedPath, servedLanguage } from "@/i18n/localizedPath.ts";
 
 
 function BackToHome({ subtle = false }: { subtle?: boolean }) {
@@ -44,7 +44,14 @@ export function DemarchePage() {
   const { state, retry } = useDemarche(demarcheId, lang);
 
   // Le serveur a tranché la langue : l'adresse s'y aligne (voir `PortalPage`).
-  const served = state.status === "ready" ? state.snapshot.lang : null;
+  // ⚠️ ON N'ALIGNE L'ADRESSE QUE SUR UNE RÉPONSE À JOUR. Un état « prêt » qui
+  // répond à la langue précédente est périmé le temps d'un rendu : s'en servir
+  // renverrait le visiteur à la langue qu'il vient de quitter — et ferait
+  // recharger la page sans que l'adresse change.
+  const served = servedLanguage(
+    state.status === "ready" ? { requested: state.requested, lang: state.snapshot.lang } : null,
+    lang,
+  );
   useEffect(() => {
     if (served !== null) serve(served);
   }, [served, serve]);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { localizedPath, splitLangPath } from "./localizedPath.ts";
+import { localizedPath, servedLanguage, splitLangPath } from "./localizedPath.ts";
 
 describe("splitLangPath", () => {
   it("reconnaît un préfixe de langue", () => {
@@ -43,5 +43,37 @@ describe("localizedPath", () => {
 
   it("ignore une langue de forme invalide plutôt que de fabriquer une adresse", () => {
     expect(localizedPath("anglais!", "/demarches/x")).toBe("/demarches/x");
+  });
+});
+
+/**
+ * Le bogue du 2026-09-07, épinglé.
+ *
+ * Choisir l'anglais rechargeait la page en français et laissait l'adresse
+ * inchangée : l'effet qui aligne l'adresse se rejouait sur l'état « prêt » de
+ * la langue précédente — périmé le temps d'un rendu — et annulait le choix.
+ *
+ * Aucun test pur ne pouvait l'attraper tant que la règle vivait dans un effet ;
+ * elle vit maintenant ici.
+ */
+describe("servedLanguage — une réponse périmée ne dicte pas l'adresse", () => {
+  it("aligne l'adresse quand la réponse répond à la langue demandée", () => {
+    expect(servedLanguage({ requested: "en", lang: "en" }, "en")).toBe("en");
+  });
+
+  it("ne conclut RIEN d'une réponse à la langue précédente", () => {
+    // Le visiteur vient de choisir l'anglais ; le chargement anglais n'est pas
+    // parti. S'en servir le renverrait au français.
+    expect(servedLanguage({ requested: "fr", lang: "fr" }, "en")).toBeNull();
+  });
+
+  it("rend la langue CLAMPÉE quand le serveur a refusé celle demandée", () => {
+    // `/de` sur une collectivité qui n'a pas l'allemand : la réponse répond
+    // bien à « de », et dit « c'est fr » — l'adresse doit suivre.
+    expect(servedLanguage({ requested: "de", lang: "fr" }, "de")).toBe("fr");
+  });
+
+  it("ne conclut rien tant que rien n'est chargé", () => {
+    expect(servedLanguage(null, "en")).toBeNull();
   });
 });

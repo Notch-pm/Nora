@@ -25,6 +25,16 @@ export type PortalState =
   | { status: "loading" }
   | {
     status: "ready";
+    /**
+     * La langue DEMANDÉE par ce chargement-ci.
+     *
+     * ⚠️ Elle existe pour que l'appelant sache si cet état répond encore à sa
+     * question. Entre le moment où le visiteur change de langue et celui où le
+     * nouveau chargement démarre, l'état « prêt » est celui de la langue
+     * PRÉCÉDENTE : agir dessus (par exemple pour aligner l'adresse) annulerait
+     * le choix qui vient d'être fait.
+     */
+    requested: string;
     /** La langue réellement servie — pas forcément celle demandée. */
     lang: string;
     tenant: Tenant;
@@ -52,7 +62,17 @@ export function usePortal(lang: string): { state: PortalState; retry: () => void
       getServedLanguage(lang),
     ])
       .then(([tenant, demarches, page, branding, served]) => {
-        if (current) setState({ status: "ready", lang: served, tenant, demarches, page, branding });
+        if (current) {
+          setState({
+            status: "ready",
+            requested: lang,
+            lang: served,
+            tenant,
+            demarches,
+            page,
+            branding,
+          });
+        }
       })
       .catch((error: unknown) => {
         if (!current) return;

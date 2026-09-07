@@ -15,7 +15,8 @@ import {
 
 export type DemarcheState =
   | { status: "loading" }
-  | { status: "ready"; snapshot: DemarcheSnapshot }
+  // `requested` : la langue de CE chargement — voir `usePortal`, même raison.
+  | { status: "ready"; requested: string; snapshot: DemarcheSnapshot }
   | { status: "error"; reason: PortalLoadFailure };
 
 export function useDemarche(
@@ -37,7 +38,7 @@ export function useDemarche(
         if (!current) return;
         setState(
           result.ok
-            ? { status: "ready", snapshot: result.snapshot }
+            ? { status: "ready", requested: lang, snapshot: result.snapshot }
             : { status: "error", reason: result.reason },
         );
       })

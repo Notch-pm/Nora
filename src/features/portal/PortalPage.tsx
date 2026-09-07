@@ -20,6 +20,7 @@ import { DemarcheCard } from "./sections/DemarcheCard.tsx";
 import { OrganizationFilter } from "./sections/OrganizationFilter.tsx";
 import { usePortal } from "./usePortal.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
+import { servedLanguage } from "@/i18n/localizedPath.ts";
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -75,7 +76,11 @@ export function PortalPage() {
   // ⚠️ LE SERVEUR A TRANCHÉ : l'adresse doit dire ce qui est affiché. Une
   // langue mémorisée mais désactivée depuis revient au français ici, et le
   // préfixe se pose quand la langue venait de la mémoire et non de l'adresse.
-  const served = state.status === "ready" ? state.lang : null;
+  // ⚠️ ON N'ALIGNE L'ADRESSE QUE SUR UNE RÉPONSE À JOUR. Un état « prêt » qui
+  // répond à la langue précédente est périmé le temps d'un rendu : s'en servir
+  // renverrait le visiteur à la langue qu'il vient de quitter — et ferait
+  // recharger la page sans que l'adresse change.
+  const served = servedLanguage(state.status === "ready" ? state : null, lang);
   useEffect(() => {
     if (served !== null) serve(served);
   }, [served, serve]);

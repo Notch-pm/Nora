@@ -16,6 +16,28 @@
  * lire le préfixe sans connaître la table des routes.
  */
 
+/**
+ * La langue sur laquelle l'ADRESSE doit s'aligner — ou `null` s'il n'y a rien à
+ * en conclure.
+ *
+ * ⚠️ CETTE FONCTION EXISTE POUR UN BOGUE PRÉCIS, vu en production le
+ * 2026-09-07 : choisir l'anglais rechargeait la page et laissait l'adresse en
+ * français. Entre le clic et le départ du nouveau chargement, l'état « prêt »
+ * est encore celui de la langue PRÉCÉDENTE ; l'effet qui aligne l'adresse se
+ * rejouait dessus et ramenait le visiteur à la langue qu'il venait de quitter.
+ *
+ * D'où la comparaison : une réponse ne vaut que pour la question qu'elle a
+ * reçue. Tant que `requested` n'est pas la langue demandée maintenant, on ne
+ * touche à rien — et surtout pas à l'adresse.
+ */
+export function servedLanguage(
+  answer: { requested: string; lang: string } | null,
+  asked: string,
+): string | null {
+  if (answer === null) return null;
+  return answer.requested === asked ? answer.lang : null;
+}
+
 /** Forme d'un code de langue — miroir de celle du serveur et du Socle. */
 export const LANG_SEGMENT_RE = /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/;
 
