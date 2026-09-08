@@ -22,11 +22,13 @@ export type IrisReply =
   /** 200 ou 201 — la demande existe, qu'elle vienne d'être créée ou non. */
   | { kind: "ok"; body: unknown }
   /**
-   * 400 / 409 / 422 — l'enveloppe est refusée : démarche fermée côté Iris,
-   * identité absente, ou rejeu d'un même identifiant avec un contenu qui a
-   * changé. Aucune n'est une panne, et aucune ne se répare en réessayant.
+   * 400 / 409 / 413 / 415 / 422 / 429 — l'envoi est refusé : démarche fermée
+   * côté Iris, identité absente, rejeu d'un même identifiant avec un contenu
+   * qui a changé, fichier trop gros ou d'un format refusé, trop de dépôts.
+   * Aucune n'est une panne. `status` laisse l'appelant distinguer ce qui se
+   * dit à l'usager (un fichier refusé) de ce qui va au journal (un contrat).
    */
-  | { kind: "rejected"; message: string | null }
+  | { kind: "rejected"; status: number; message: string | null }
   /** 401/403 — la clé du PORTAIL est refusée, ou hors de son périmètre. */
   | { kind: "auth_failed" }
   /** Réseau, DNS, délai dépassé : rien n'est revenu. */
@@ -36,6 +38,12 @@ export type IrisReply =
 
 export interface IrisClient {
   post(path: string, body: unknown): Promise<IrisReply>;
+  /**
+   * Dépôt d'un FICHIER (`POST /v1/uploads`, contrat 2.0.0) : les octets
+   * partent en `multipart/form-data`, champ `file`, avec leur nom d'origine —
+   * Iris vérifie lui-même le contenu réel et l'extension.
+   */
+  postMultipart(path: string, file: Blob, fileName: string): Promise<IrisReply>;
 }
 
 export interface IrisClientConfig {
@@ -61,51 +69,63 @@ function errorMessage(body: unknown): string | null {
   return typeof message === "string" && message.trim() !== "" ? message.trim() : null;
 }
 
+const REJECTED_STATUSES = new Set([400, 409, 413, 415, 422, 429]);
+
 export function createIrisClient(config: IrisClientConfig): IrisClient {
   const baseUrl = config.baseUrl.replace(/\/+$/, "");
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
+  async function send(path: string, init: RequestInit): Promise<IrisReply> {
+    let response: Response;
+    try {
+      response = await fetch(baseUrl + path, {
+        ...init,
+        headers: { ...(init.headers as Record<string, string>), Authorization: "Bearer " + config.apiKey },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch {
+      // Réseau, DNS, délai dépassé — indiscernables. Sans conséquence
+      // différente : l'usager réessaie, et l'identifiant de dépôt conservé
+      // fait qu'un rejeu ne crée pas de doublon.
+      return { kind: "unreachable" };
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      await response.body?.cancel().catch(() => {});
+      return { kind: "auth_failed" };
+    }
+
+    let parsed: unknown = null;
+    try {
+      parsed = await response.json();
+    } catch {
+      parsed = null;
+    }
+
+    // 200 = la demande existait déjà (rejeu), 201 = elle vient d'être créée.
+    // Les deux sont des succès : l'usager doit voir le même accusé.
+    if (response.status === 200 || response.status === 201) {
+      return parsed === null ? { kind: "unexpected" } : { kind: "ok", body: parsed };
+    }
+    if (REJECTED_STATUSES.has(response.status)) {
+      return { kind: "rejected", status: response.status, message: errorMessage(parsed) };
+    }
+    return { kind: "unexpected" };
+  }
+
   return {
-    async post(path: string, body: unknown): Promise<IrisReply> {
-      let response: Response;
-      try {
-        response = await fetch(baseUrl + path, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + config.apiKey,
-          },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-      } catch {
-        // Réseau, DNS, délai dépassé — indiscernables. Sans conséquence
-        // différente : l'usager réessaie, et l'identifiant de dépôt conservé
-        // fait qu'un rejeu ne crée pas de doublon.
-        return { kind: "unreachable" };
-      }
-
-      if (response.status === 401 || response.status === 403) {
-        await response.body?.cancel().catch(() => {});
-        return { kind: "auth_failed" };
-      }
-
-      let parsed: unknown = null;
-      try {
-        parsed = await response.json();
-      } catch {
-        parsed = null;
-      }
-
-      // 200 = la demande existait déjà (rejeu), 201 = elle vient d'être créée.
-      // Les deux sont des succès : l'usager doit voir le même accusé.
-      if (response.status === 200 || response.status === 201) {
-        return parsed === null ? { kind: "unexpected" } : { kind: "ok", body: parsed };
-      }
-      if (response.status === 400 || response.status === 409 || response.status === 422) {
-        return { kind: "rejected", message: errorMessage(parsed) };
-      }
-      return { kind: "unexpected" };
+    post(path: string, body: unknown): Promise<IrisReply> {
+      return send(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    },
+    postMultipart(path: string, file: Blob, fileName: string): Promise<IrisReply> {
+      // Pas de Content-Type explicite : fetch pose la frontière multipart lui-même.
+      const form = new FormData();
+      form.append("file", file, fileName);
+      return send(path, { method: "POST", headers: {}, body: form });
     },
   };
 }

@@ -8,8 +8,12 @@
  * Rien de ce qui se décide n'est ici : ce qui est visible, obligatoire, valide
  * ou déposé vient de `formulaire.ts`. Ce fichier ne fait qu'afficher.
  */
+import { useState } from "react";
 import type { AttachmentField, Field, FieldOption } from "@fn/_shared/domain/formSchema.ts";
 import { useT, useTn } from "@/i18n/LanguageLayout.tsx";
+import type { StringKey } from "@/i18n/strings.ts";
+import { uploadPiece, type PieceUploadFailure } from "@/services/portal/portalClient.ts";
+import { piecesOf, type UploadedPiece } from "./formulaire.ts";
 
 const inputClass =
   "w-full rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-3 py-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] " +
@@ -18,27 +22,140 @@ const inputClass =
 
 const invalidClass = "border-red-500 focus:border-red-500 focus:ring-red-500/30";
 
+/** Ce que l'écran dit d'un fichier refusé — le code vient du serveur, la phrase d'ici. */
+const PIECE_FAILURE_KEYS: Record<PieceUploadFailure, StringKey> = {
+  piece_too_large: "form.piece.tooLarge",
+  piece_unsupported: "form.piece.unsupported",
+  piece_rejected: "form.piece.unsupported",
+  too_many_uploads: "form.piece.failed",
+  iris_unavailable: "form.piece.failed",
+  iris_misconfigured: "form.piece.failed",
+  not_configured: "form.piece.failed",
+  network: "form.piece.failed",
+};
+
+function formatSize(bytes: number): string {
+  if (bytes >= 1_048_576) return (bytes / 1_048_576).toFixed(1).replace(/\.0$/, "") + " Mo";
+  if (bytes >= 1024) return Math.round(bytes / 1024) + " Ko";
+  return bytes + " o";
+}
+
 /**
- * Le dépôt de pièces n'existe pas encore côté traitement : le champ est montré
- * — l'usager doit savoir ce qui lui sera demandé — mais désactivé, et il ne
- * retient jamais l'envoi. Le cacher laisserait croire que la démarche ne
- * demande rien.
+ * Le dépôt d'une pièce (2026-09-08). Le fichier part DÈS sa sélection vers
+ * `portal-api`, qui le remet à Iris : Iris vérifie le contenu réel (formats
+ * fermés, extension, taille) et le garde en attente de la demande. Le
+ * formulaire ne retient qu'un identifiant — aucun fichier ne traîne dans le
+ * navigateur, et un rejeu du dépôt réutilise les mêmes identifiants.
+ *
+ * Le nombre de fichiers est borné par la démarche ; les formats annoncés sont
+ * un confort (`accept`), la vérification est celle d'Iris.
  */
-function AttachmentNotice({ field }: { field: AttachmentField }) {
+function AttachmentInput({
+  field,
+  value,
+  onChange,
+  inputId,
+  demarcheId,
+  invalid,
+}: {
+  field: AttachmentField;
+  value: unknown;
+  onChange: (value: UploadedPiece[]) => void;
+  inputId: string;
+  demarcheId: string | null;
+  invalid: boolean;
+}) {
   const t = useT();
   const tn = useTn();
+  const pieces = piecesOf(value);
+  const [busy, setBusy] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const full = pieces.length >= field.maxFiles;
+  const accept = field.acceptedFormats.map((f) => "." + f).join(",");
   const formats =
     field.acceptedFormats.length > 0
       ? t("form.formats", { formats: field.acceptedFormats.map((f) => f.toUpperCase()).join(", ") })
       : t("form.allFormats");
-  const files = tn("form.maxFiles", field.maxFiles);
+
+  async function onFiles(list: FileList | null) {
+    if (!list || list.length === 0 || demarcheId === null) return;
+    setUploadError(null);
+    setBusy(true);
+    let next = [...pieces];
+    for (const file of Array.from(list)) {
+      if (next.length >= field.maxFiles) {
+        setUploadError(t("form.piece.tooMany", { n: field.maxFiles }));
+        break;
+      }
+      const result = await uploadPiece(file, { demarcheId, fieldId: field.id });
+      if (!result.ok) {
+        setUploadError(t(PIECE_FAILURE_KEYS[result.reason], { name: file.name }));
+        break;
+      }
+      next = [...next, { uploadId: result.piece.uploadId, name: result.piece.fileName || file.name, size: result.piece.sizeBytes }];
+      onChange(next);
+    }
+    setBusy(false);
+  }
 
   return (
-    <div className="rounded-[var(--pt-radius-sm)] border border-dashed border-[color:var(--pt-border)] bg-[color:var(--pt-surface)] px-3 py-3">
-      <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("form.attachmentLater")}</p>
-      <p className="mt-1 text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
-        {formats} · {files}
-      </p>
+    <div className="flex flex-col gap-2">
+      {pieces.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {pieces.map((piece) => (
+            <li
+              key={piece.uploadId}
+              className="flex items-center justify-between gap-3 rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-3 py-2 text-[length:var(--pt-body)]"
+            >
+              <span className="min-w-0 truncate text-[color:var(--pt-ink)]">
+                {piece.name}
+                <span className="ml-2 text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">{formatSize(piece.size)}</span>
+              </span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onChange(pieces.filter((p) => p.uploadId !== piece.uploadId))}
+                aria-label={t("form.removeFile", { name: piece.name })}
+                className="shrink-0 text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline disabled:opacity-50"
+              >
+                {t("form.remove")}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!full && (
+        <label
+          className={
+            "flex cursor-pointer flex-col gap-1 rounded-[var(--pt-radius-sm)] border border-dashed px-3 py-3 " +
+            (invalid ? "border-red-500 " : "border-[color:var(--pt-border)] ") +
+            "bg-[color:var(--pt-surface)] hover:border-[color:var(--brand-primary)]"
+          }
+        >
+          <span className="text-[length:var(--pt-body)] font-semibold text-[color:var(--brand-primary)]">
+            {busy ? t("form.uploading") : t("form.chooseFile")}
+          </span>
+          <span className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
+            {formats} · {tn("form.maxFiles", field.maxFiles)}
+          </span>
+          <input
+            id={inputId}
+            type="file"
+            className="sr-only"
+            accept={accept === "" ? undefined : accept}
+            multiple={field.maxFiles > 1}
+            disabled={busy || demarcheId === null}
+            aria-invalid={invalid}
+            onChange={(event) => {
+              void onFiles(event.target.files);
+              event.target.value = "";
+            }}
+          />
+        </label>
+      )}
+      {uploadError !== null && (
+        <p role="alert" className="text-[length:var(--pt-body)] text-red-600">{uploadError}</p>
+      )}
     </div>
   );
 }
@@ -61,12 +178,15 @@ export function FormFieldControl({
   onChange,
   required,
   error,
+  demarcheId = null,
 }: {
   field: Field;
   value: unknown;
   onChange: (value: unknown) => void;
   required: boolean;
   error: string | null;
+  /** La démarche remplie — nécessaire au dépôt d'une pièce (revérifiée serveur). */
+  demarcheId?: string | null;
 }) {
   const t = useT();
   const inputId = "champ-" + field.id;
@@ -84,7 +204,16 @@ export function FormFieldControl({
   const control = (() => {
     switch (field.type) {
       case "attachment":
-        return <AttachmentNotice field={field} />;
+        return (
+          <AttachmentInput
+            field={field}
+            value={value}
+            onChange={onChange}
+            inputId={inputId}
+            demarcheId={demarcheId}
+            invalid={error !== null}
+          />
+        );
       case "textarea":
         return (
           <textarea

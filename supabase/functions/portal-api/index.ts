@@ -29,9 +29,12 @@ import { createSocleClient } from "../_shared/socle/socleClient.ts";
 import { withCache } from "../_shared/socle/cachedSocleClient.ts";
 import { createIrisClient } from "../_shared/iris/irisClient.ts";
 import { submitDemande } from "../_shared/iris/demandeService.ts";
+import { httpStatusForPieceFailure, uploadPiece } from "../_shared/iris/pieceService.ts";
 import { hostnameForRequest } from "../_shared/http/requestHostname.ts";
+import { clientAddress, createRateLimiter, hashKey } from "../_shared/http/rateLimit.ts";
 import { allFields } from "../_shared/domain/formSchema.ts";
 import { AUDIENCES } from "../_shared/domain/requesterConfig.ts";
+import type { AttachmentRef } from "../_shared/domain/demande.ts";
 import type { Tenant } from "../_shared/domain/tenant.ts";
 import { resolveLang } from "../_shared/domain/languages.ts";
 import { httpStatusForFailure, type PortalFailure } from "../_shared/domain/failure.ts";
@@ -63,6 +66,34 @@ const DEFAULT_SOURCE_SYSTEM = "portail-citoyen";
 
 /** Bornes d'une enveloppe de dépôt, alignées sur ce qu'Iris accepte. */
 const MAX_SUBMISSION_ID = 200;
+const MAX_ATTACHMENTS = 50;
+const MAX_UPLOAD_ID = 64;
+
+/**
+ * Une pièce déposée depuis le portail : 10 Mo. Iris en accepte 25 ; on garde
+ * la marge pour un usager sur mobile — et parce qu'un justificatif de 10 Mo
+ * est déjà une photo mal compressée.
+ */
+const MAX_PIECE_BYTES = 10 * 1_048_576;
+/** Marge d'enrobage multipart tolérée sur `Content-Length` avant lecture. */
+const MULTIPART_ALLOWANCE = 64 * 1024;
+
+/**
+ * Frein de confort contre un script maladroit — EN MÉMOIRE D'ISOLAT, donc ni
+ * partagé ni durable (Nora n'a pas de base). La borne opposable est chez Iris :
+ * 60 dépôts par minute et par clé, pour toute la collectivité.
+ */
+const pieceLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
+
+/** Messages de refus d'une pièce, adressés au visiteur (l'écran les traduit par code). */
+const PIECE_MESSAGES: Record<string, string> = {
+  piece_too_large: "Ce fichier dépasse la taille maximale de 10 Mo.",
+  piece_unsupported: "Ce fichier n'est pas dans un format accepté.",
+  piece_rejected: "Ce fichier n'a pas pu être accepté.",
+  too_many_uploads: "Trop de fichiers envoyés en peu de temps : patientez une minute.",
+  iris_unavailable: "Le fichier n'a pas pu être envoyé. Merci de réessayer dans quelques instants.",
+  iris_misconfigured: "Le fichier n'a pas pu être envoyé. Merci de réessayer dans quelques instants.",
+};
 
 function json(status: number, body: unknown, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -260,6 +291,87 @@ Deno.serve(async (request: Request): Promise<Response> => {
     );
   }
 
+  // ── POST /v1/demandes/pieces — un fichier, AVANT la demande.
+  //
+  // Le portail ne garde rien : il relaie les octets à Iris (`POST /v1/uploads`,
+  // contrat 2.0.0), qui vérifie le contenu réel, calcule l'empreinte et garde
+  // le fichier vingt-quatre heures en attente d'une demande. Le navigateur ne
+  // reçoit qu'un identifiant, qu'il mettra dans `attachments` au dépôt.
+  //
+  // Ordre des vérifications : la taille annoncée AVANT de lire le corps (un
+  // envoi de 300 Mo est refusé sans être chargé), le frein par adresse, la
+  // collectivité du domaine, puis — si le formulaire est nommé — les formats
+  // que la démarche demande pour ce champ.
+  if (request.method === "POST" && path === "/v1/demandes/pieces") {
+    const irisUrl = Deno.env.get("IRIS_API_URL");
+    const irisKey = Deno.env.get("IRIS_API_KEY");
+    if (!irisUrl || !irisKey) {
+      console.error("portal-api : secrets Iris manquants pour le dépôt d'une pièce.");
+      return failure("not_configured");
+    }
+    const pieceFailure = (code: keyof typeof PIECE_MESSAGES, status: number, message?: string) =>
+      json(status, { error: { code, message: message ?? PIECE_MESSAGES[code] } }, { "Cache-Control": "no-store" });
+
+    const declared = Number.parseInt(request.headers.get("content-length") ?? "", 10);
+    if (Number.isFinite(declared) && declared > MAX_PIECE_BYTES + MULTIPART_ALLOWANCE) {
+      return pieceFailure("piece_too_large", 413);
+    }
+    if (!pieceLimiter.allow(await hashKey(clientAddress(request.headers)))) {
+      return pieceFailure("too_many_uploads", 429);
+    }
+
+    const resolved = await tenantOf(request, socle);
+    if (!resolved.ok) return resolved.response;
+
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch {
+      return badRequest("Envoi multipart/form-data attendu, avec un champ « file ».");
+    }
+    const file = form.get("file");
+    if (!(file instanceof File)) return badRequest("Fichier absent (champ « file »).");
+    if (file.size === 0) return badRequest("Le fichier est vide.");
+    if (file.size > MAX_PIECE_BYTES) return pieceFailure("piece_too_large", 413);
+    const fileName = file.name.trim();
+    if (fileName === "" || fileName.length > 255) return badRequest("Nom de fichier absent ou trop long.");
+
+    // Les formats que la démarche demande pour CE champ — un confort de plus
+    // avant Iris, qui vérifie de toute façon le contenu réel.
+    const demarcheId = typeof form.get("demarcheId") === "string" ? String(form.get("demarcheId")).trim() : "";
+    const fieldId = typeof form.get("fieldId") === "string" ? String(form.get("fieldId")).trim() : "";
+    if (demarcheId !== "" && fieldId !== "") {
+      const result = await getPublicDemarche(resolved.tenant.id, demarcheId, socle);
+      if (!result.ok) return failure(result.reason);
+      const field = result.demarche.form === null
+        ? undefined
+        : allFields(result.demarche.form).find((f) => f.id === fieldId);
+      if (field === undefined || field.type !== "attachment") {
+        return badRequest("fieldId : ce champ n'est pas une pièce de cette démarche.");
+      }
+      if (field.acceptedFormats.length > 0) {
+        const dot = fileName.lastIndexOf(".");
+        const ext = dot > 0 ? fileName.slice(dot + 1).toLowerCase() : "";
+        if (!field.acceptedFormats.includes(ext)) {
+          return pieceFailure(
+            "piece_unsupported", 415,
+            `Formats acceptés pour cette pièce : ${field.acceptedFormats.map((f) => f.toUpperCase()).join(", ")}.`,
+          );
+        }
+      }
+    }
+
+    const iris = createIrisClient({ baseUrl: irisUrl, apiKey: irisKey });
+    const uploaded = await uploadPiece({ file, fileName }, iris);
+    if (!uploaded.ok) {
+      if (uploaded.reason === "iris_misconfigured" || uploaded.reason === "iris_unavailable") {
+        return failure(uploaded.reason);
+      }
+      return pieceFailure(uploaded.reason, httpStatusForPieceFailure(uploaded.reason));
+    }
+    return json(201, { piece: uploaded.piece }, { "Cache-Control": "no-store" });
+  }
+
   // ── POST /v1/demandes — le dépôt.
   //
   // Trois vérifications, toutes CÔTÉ SERVEUR, parce qu'aucune ne peut être
@@ -301,6 +413,9 @@ Deno.serve(async (request: Request): Promise<Response> => {
     if (body.requester !== undefined && body.requester !== null && !isRecord(body.requester)) {
       return badRequest("requester : objet attendu.");
     }
+    if (body.attachments !== undefined && !Array.isArray(body.attachments)) {
+      return badRequest("attachments : tableau attendu.");
+    }
 
     const resolved = await tenantOf(request, socle);
     if (!resolved.ok) return resolved.response;
@@ -336,6 +451,27 @@ Deno.serve(async (request: Request): Promise<Response> => {
       if (declaredKeys.has(key)) formData[key] = value;
     }
 
+    // Les pièces : un identifiant de dépôt (Iris revérifie qu'il est de CETTE
+    // clé, vivant et pas déjà rattaché) sous la clé d'un champ « pièce » que
+    // le formulaire DÉCLARE — même règle de whitelist que les réponses.
+    const attachmentKeys = new Set(
+      demarche.form === null
+        ? []
+        : allFields(demarche.form).filter((f) => f.type === "attachment").map((f) => f.key),
+    );
+    const attachments: AttachmentRef[] = [];
+    const seenUploads = new Set<string>();
+    for (const raw of Array.isArray(body.attachments) ? body.attachments : []) {
+      if (!isRecord(raw)) continue;
+      const uploadId = typeof raw.uploadId === "string" ? raw.uploadId.trim() : "";
+      const fieldKey = typeof raw.fieldKey === "string" ? raw.fieldKey.trim() : "";
+      if (uploadId === "" || uploadId.length > MAX_UPLOAD_ID || seenUploads.has(uploadId)) continue;
+      if (!attachmentKeys.has(fieldKey)) continue;
+      seenUploads.add(uploadId);
+      attachments.push({ uploadId, fieldKey });
+      if (attachments.length >= MAX_ATTACHMENTS) break;
+    }
+
     // Même règle pour l'identité : les clés du paramétrage du Socle, plus le
     // type de fiche, et rien d'autre.
     const requesterKeys = new Set<string>(["contact_type"]);
@@ -362,6 +498,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
           formData,
           requester: Object.keys(requester).length === 0 ? null : requester,
           submissionId,
+          attachments,
         },
       },
       iris,
@@ -372,7 +509,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return json(201, { receipt: submission.receipt }, { "Cache-Control": "no-store" });
   }
 
-  if (path === "/v1/bootstrap" || path === "/v1/demandes" || path.startsWith("/v1/demarches/")) {
+  if (
+    path === "/v1/bootstrap" || path === "/v1/demandes" || path === "/v1/demandes/pieces"
+    || path.startsWith("/v1/demarches/")
+  ) {
     return json(405, {
       error: { code: "method_not_allowed", message: "Méthode non autorisée sur cette ressource." },
     });

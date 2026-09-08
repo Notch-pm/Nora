@@ -33,6 +33,7 @@ import { FormFieldControl } from "./FormFields.tsx";
 import { RequesterSection } from "./RequesterSection.tsx";
 import {
   isFieldRequired,
+  toAttachments,
   toFormData,
   toRequester,
   validateForm,
@@ -250,6 +251,9 @@ export function FormulairePage() {
           ? null
           : toRequester(CONTACT_TYPES[currentAudience], requesterFields, requesterValues),
       submissionId,
+      // Les fichiers sont déjà chez Iris : seuls leurs identifiants partent,
+      // et un rejeu après coupure les renvoie tels quels.
+      attachments: toAttachments(schema, values),
     });
     setSending(false);
     if (result.ok) setReceipt(result.receipt);
@@ -345,6 +349,7 @@ export function FormulairePage() {
                   onChange={(value) => setValue(field.id, value)}
                   required={isFieldRequired(field, values)}
                   error={errorText(lang, errors[field.id])}
+                  demarcheId={detail.id}
                 />
               ))}
             </section>
@@ -356,6 +361,7 @@ export function FormulairePage() {
               onChange={(value) => setValue(node.id, value)}
               required={isFieldRequired(node, values)}
               error={errorText(lang, errors[node.id])}
+              demarcheId={detail.id}
             />
           ),
         )}

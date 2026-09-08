@@ -34,6 +34,19 @@ export interface DemandeSubmission {
    * inoffensifs : Iris répond alors « déjà reçue », sans créer de doublon.
    */
   submissionId: string;
+  /**
+   * Les pièces justificatives, DÉJÀ déposées dans Iris (`POST /v1/uploads`
+   * via `portal-api`) et désignées par leur identifiant de dépôt — le portail
+   * ne détient aucun fichier. `fieldKey` est la clé machine du champ « pièce »
+   * auquel le fichier répond.
+   */
+  attachments: AttachmentRef[];
+}
+
+/** Une pièce déposée, rattachée à l'exigence du formulaire qu'elle honore. */
+export interface AttachmentRef {
+  uploadId: string;
+  fieldKey: string;
 }
 
 /** Ce que l'usager reçoit en retour : de quoi retrouver sa demande. */

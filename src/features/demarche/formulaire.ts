@@ -15,12 +15,15 @@
  *  2. **On saisit par `id`, on dépose par `key`.** Les conditions du Socle
  *     s'évaluent sur l'identifiant du champ ; la demande, elle, est indexée
  *     par la clé machine, la seule que lise un agent.
- *  3. **Les pièces justificatives ne bloquent jamais** tant que leur dépôt
- *     n'existe pas : elles sont affichées pour que l'usager sache ce qui lui
- *     sera demandé, et n'empêchent aucun envoi.
+ *  3. **Une pièce justificative est un fichier DÉJÀ déposé** (2026-09-08). Le
+ *     fichier part dans Iris dès sa sélection (`portal-api /v1/demandes/pieces`,
+ *     qui le vérifie et le garde en attente) ; le formulaire ne retient que
+ *     son identifiant. Une pièce obligatoire est donc obligatoire comme n'importe
+ *     quel champ, et le nombre de fichiers est borné par la démarche.
  */
 import type { Condition, FormValues } from "@fn/_shared/domain/conditions.ts";
 import { evaluateCondition } from "@fn/_shared/domain/conditions.ts";
+import type { AttachmentRef } from "@fn/_shared/domain/demande.ts";
 import type { Field, FormNode, FormSchema, Section } from "@fn/_shared/domain/formSchema.ts";
 import { isSection } from "@fn/_shared/domain/formSchema.ts";
 import type { RequesterField } from "@fn/_shared/domain/requesterConfig.ts";
@@ -34,13 +37,34 @@ import type { RequesterField } from "@fn/_shared/domain/requesterConfig.ts";
  * et les tests assertent sur des codes — plus robustes que sur de la prose.
  */
 export interface FieldError {
-  key: "validation.required" | "validation.email" | "validation.number" | "validation.maxLength";
+  key:
+    | "validation.required"
+    | "validation.email"
+    | "validation.number"
+    | "validation.maxLength"
+    | "validation.maxFiles";
   params?: Record<string, string | number>;
 }
 
 export type FieldErrors = Record<string, FieldError>;
 
 const REQUIRED: FieldError = { key: "validation.required" };
+
+/** Un fichier déposé dans Iris — ce que le formulaire retient d'une pièce. */
+export interface UploadedPiece {
+  uploadId: string;
+  name: string;
+  size: number;
+}
+
+/** La valeur d'un champ « pièce » : les fichiers déposés, ou rien. */
+export function piecesOf(value: unknown): UploadedPiece[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (v): v is UploadedPiece =>
+      typeof v === "object" && v !== null && typeof (v as UploadedPiece).uploadId === "string",
+  );
+}
 
 /** Vrai si la valeur saisie ne dit rien : vide, blanche, ou aucun choix. */
 export function isBlank(value: unknown): boolean {
@@ -106,9 +130,16 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 function fieldError(field: Field, values: FormValues): FieldError | null {
   const value = values[field.id];
 
-  // Les pièces ne bloquent pas : leur dépôt n'existe pas encore, et refuser
-  // l'envoi pour une pièce qu'on ne sait pas recevoir serait absurde.
-  if (field.type === "attachment") return null;
+  // Une pièce est un fichier déjà déposé : obligatoire comme un autre champ,
+  // et jamais plus de fichiers que la démarche n'en demande.
+  if (field.type === "attachment") {
+    const pieces = piecesOf(value);
+    if (pieces.length === 0) return isFieldRequired(field, values) ? REQUIRED : null;
+    if (pieces.length > field.maxFiles) {
+      return { key: "validation.maxFiles", params: { n: field.maxFiles } };
+    }
+    return null;
+  }
 
   if (isBlank(value)) {
     return isFieldRequired(field, values) ? REQUIRED : null;
@@ -146,11 +177,28 @@ export function validateForm(schema: FormSchema, values: FormValues): FieldError
 }
 
 /**
+ * Les pièces telles qu'elles partent dans la demande : l'identifiant de dépôt
+ * de chaque fichier, rattaché à la clé machine de son champ — et seulement
+ * pour les champs visibles (une pièce jointe à une question qu'on a cessé de
+ * poser n'est pas une réponse). Le fichier lui-même est déjà chez Iris.
+ */
+export function toAttachments(schema: FormSchema, values: FormValues): AttachmentRef[] {
+  const refs: AttachmentRef[] = [];
+  for (const field of visibleFields(schema, values)) {
+    if (field.type !== "attachment") continue;
+    for (const piece of piecesOf(values[field.id])) {
+      refs.push({ uploadId: piece.uploadId, fieldKey: field.key });
+    }
+  }
+  return refs;
+}
+
+/**
  * Les réponses telles qu'elles partent dans la demande : indexées par la
  * **clé machine** des champs, et limitées aux champs visibles.
  *
- * Les pièces justificatives n'y figurent pas — il n'y a pas de fichier à
- * déposer, et une clé vide vaudrait « répondu, mais rien ».
+ * Les pièces justificatives n'y figurent pas : elles voyagent à part
+ * (`toAttachments`), et une clé vide vaudrait « répondu, mais rien ».
  */
 export function toFormData(schema: FormSchema, values: FormValues): Record<string, unknown> {
   const data: Record<string, unknown> = {};

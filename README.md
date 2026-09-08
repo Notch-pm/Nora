@@ -222,9 +222,18 @@ formulaire a ensuite l'écran pour lui seul.
   informations » et leurs champs viennent tous de `requester_config` (défaut du Socle : public
   fermé, champ masqué). Aucun public ouvert = la demande part **sans identité**, et l'écran le
   dit — l'anonymat devient un choix de la collectivité, pas un oubli du portail.
-- **Les pièces justificatives sont montrées, jamais bloquantes.** Le worker de copie d'Iris n'est
-  pas actif : une URL signée expirerait avant d'être lue. Le champ apparaît avec ses formats et
-  son nombre de fichiers, désactivé, et ne retient aucun envoi.
+- **Les pièces justificatives se déposent, et le portail n'en garde aucune** (2026-09-08, contrat
+  d'ingestion Iris 2.0.0). Le fichier part **dès sa sélection** vers `portal-api`
+  (`POST /v1/demandes/pieces`, un fichier par appel, 10 Mo maximum), qui le remet à Iris
+  (`POST /v1/uploads`) : Iris vérifie le **contenu réel** (signature binaire contre une liste
+  fermée — PDF, images, HEIC, Word/Excel/OpenDocument —, extension cohérente), calcule
+  l'empreinte et garde le fichier vingt-quatre heures en attente d'une demande. Le formulaire ne
+  retient qu'un `uploadId` par fichier ; la demande les référence (`attachments`) et un rejeu
+  après coupure les renvoie tels quels. Une pièce **obligatoire** est désormais obligatoire
+  comme n'importe quel champ, et le nombre de fichiers est borné par la démarche. Nora n'a
+  toujours ni bucket ni table : rien à purger de son côté. Le limiteur de `portal-api`
+  (20 fichiers par minute et par adresse hachée) est un frein de confort **en mémoire
+  d'isolat** ; la borne opposable est le quota d'Iris (60 dépôts par minute et par clé).
 - **La complétude n'est pas vérifiée côté serveur.** C'est le parti d'Iris — « la complétude est
   un problème d'instruction, pas un motif de rejet » — et le portail ne décide pas l'inverse pour
   lui. La saisie est guidée dans le navigateur ; ce qui arrive incomplet est qualifié par un
@@ -627,7 +636,8 @@ ouvertes sont dans `docs/roadmap.md` du Socle, section « Portail usagers » :
    `contacts` du Socle) ;
 4. la **création de compte** ;
 5. les **échanges** usager ↔ agent sur une demande ;
-6. les **pièces jointes** (le formulaire les annonce déjà, le dépôt reste à faire) ;
+6. ~~les **pièces jointes**~~ — **livrées le 2026-09-08** (dépôt dès la sélection, formats et
+   taille vérifiés par Iris, voir « Les pièces justificatives se déposent » ci-dessus) ;
 7. **FranceConnect** — à instruire (habilitation, périmètre).
 
 Transverse : accessibilité RGAA — la **déclaration** est désormais affichée au

@@ -3,6 +3,7 @@ import type { FormSchema } from "@fn/_shared/domain/formSchema.ts";
 import { isSection } from "@fn/_shared/domain/formSchema.ts";
 import {
   isFieldRequired,
+  toAttachments,
   toFormData,
   toRequester,
   validateForm,
@@ -94,9 +95,9 @@ describe("validation", () => {
     expect(validateForm(SCHEMA, { "f-motif": "voirie", "f-courriel": "a@b.fr" })).toEqual({});
   });
 
-  it("ne bloque jamais sur une pièce justificative, même obligatoire", () => {
-    // Le dépôt de pièces n'existe pas encore : refuser l'envoi pour une pièce
-    // qu'on ne sait pas recevoir enfermerait l'usager.
+  it("une pièce obligatoire retient l'envoi tant qu'aucun fichier n'est déposé", () => {
+    // Depuis le 2026-09-08, le fichier part dès sa sélection : une pièce est
+    // une réponse comme une autre, et une obligatoire manque comme les autres.
     const schema: FormSchema = {
       version: 1,
       content: [
@@ -112,7 +113,52 @@ describe("validation", () => {
       ],
     };
     expect(isFieldRequired(schema.content[0] as never, {})).toBe(true);
-    expect(validateForm(schema, {})).toEqual({});
+    expect(validateForm(schema, {})).toEqual({ p1: { key: "validation.required" } });
+    expect(validateForm(schema, { p1: [{ uploadId: "u1", name: "a.jpg", size: 10 }] })).toEqual({});
+    // Une valeur qui n'est pas une liste de fichiers déposés ne compte pas.
+    expect(validateForm(schema, { p1: "fichier" })).toEqual({ p1: { key: "validation.required" } });
+  });
+
+  it("borne le nombre de fichiers à ce que la démarche demande", () => {
+    const schema: FormSchema = {
+      version: 1,
+      content: [
+        { id: "p1", key: "photos", type: "attachment", label: "Photos", maxFiles: 2, acceptedFormats: [] },
+      ],
+    };
+    const three = [
+      { uploadId: "u1", name: "a.jpg", size: 1 },
+      { uploadId: "u2", name: "b.jpg", size: 1 },
+      { uploadId: "u3", name: "c.jpg", size: 1 },
+    ];
+    expect(validateForm(schema, { p1: three })).toEqual({ p1: { key: "validation.maxFiles", params: { n: 2 } } });
+    expect(validateForm(schema, { p1: three.slice(0, 2) })).toEqual({});
+  });
+});
+
+describe("toAttachments — les pièces voyagent par identifiant, sous la clé de leur champ", () => {
+  it("ne référence que les fichiers des champs visibles", () => {
+    const schema: FormSchema = {
+      version: 1,
+      content: [
+        { id: "m", key: "motif", type: "select", label: "Motif", options: [{ value: "a", label: "A" }, { value: "b", label: "B" }] },
+        { id: "p1", key: "photo", type: "attachment", label: "Photo", maxFiles: 2, acceptedFormats: [] },
+        {
+          id: "p2", key: "justificatif", type: "attachment", label: "Justificatif", maxFiles: 1, acceptedFormats: [],
+          visibleIf: { combinator: "and", rules: [{ fieldId: "m", operator: "equals", value: "b" }] },
+        },
+      ],
+    } as FormSchema;
+    const values = {
+      m: "a",
+      p1: [{ uploadId: "u1", name: "a.jpg", size: 1 }, { uploadId: "u2", name: "b.jpg", size: 1 }],
+      p2: [{ uploadId: "u3", name: "c.pdf", size: 1 }],
+    };
+    expect(toAttachments(schema, values)).toEqual([
+      { uploadId: "u1", fieldKey: "photo" },
+      { uploadId: "u2", fieldKey: "photo" },
+    ]);
+    expect(toAttachments(schema, { ...values, m: "b" })).toHaveLength(3);
   });
 });
 
@@ -140,14 +186,14 @@ describe("toFormData — on saisit par id, on dépose par key", () => {
     expect(toFormData(schema, { n: "12", t: "   " })).toEqual({ quantite: 12 });
   });
 
-  it("n'envoie pas de pièce jointe : une clé vide vaudrait « répondu, mais rien »", () => {
+  it("ne met pas les pièces dans form_data : elles voyagent à part, par identifiant", () => {
     const schema: FormSchema = {
       version: 1,
       content: [
         { id: "p1", key: "photo", type: "attachment", label: "Photo", maxFiles: 1, acceptedFormats: [] },
       ],
     };
-    expect(toFormData(schema, { p1: ["fichier"] })).toEqual({});
+    expect(toFormData(schema, { p1: [{ uploadId: "u1", name: "a.jpg", size: 1 }] })).toEqual({});
   });
 });
 

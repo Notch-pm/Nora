@@ -13,6 +13,7 @@
  */
 import type { Demarche, DemarcheDetail } from "@fn/_shared/domain/demarche.ts";
 import type { DemandeReceipt, DemandeSubmission } from "@fn/_shared/domain/demande.ts";
+import type { PieceFailure, PieceReceipt } from "@fn/_shared/iris/pieceService.ts";
 import type { PortalFailure } from "@fn/_shared/domain/failure.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
@@ -191,6 +192,70 @@ export async function fetchDemarche(demarcheId: string, lang: string): Promise<D
   const snapshot = readDemarcheSnapshot(body);
   if (snapshot === null) return { ok: false, reason: "socle_unavailable" };
   return { ok: true, snapshot };
+}
+
+/** Les refus d'un dépôt de fichier, plus ceux que le serveur ne peut pas signaler. */
+export type PieceUploadFailure = PieceFailure | "not_configured" | "network";
+
+export type PieceUpload =
+  | { ok: true; piece: PieceReceipt }
+  | { ok: false; reason: PieceUploadFailure };
+
+const KNOWN_PIECE_FAILURES: readonly PieceUploadFailure[] = [
+  "piece_too_large",
+  "piece_unsupported",
+  "piece_rejected",
+  "too_many_uploads",
+  "iris_unavailable",
+  "iris_misconfigured",
+  "not_configured",
+  "network",
+];
+
+/**
+ * Dépose UN fichier, avant la demande. `portal-api` le remet à Iris, qui en
+ * vérifie le contenu réel et le garde en attente vingt-quatre heures ; le
+ * navigateur ne retient qu'un identifiant. `demarcheId` et `fieldId` disent à
+ * quelle exigence le fichier répond — le serveur en revérifie les formats.
+ */
+export async function uploadPiece(
+  file: File,
+  context: { demarcheId: string; fieldId: string },
+): Promise<PieceUpload> {
+  const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
+  if (!baseUrl) return { ok: false, reason: "not_configured" };
+
+  const form = new FormData();
+  form.append("file", file, file.name);
+  form.append("demarcheId", context.demarcheId);
+  form.append("fieldId", context.fieldId);
+
+  let response: Response;
+  try {
+    // Pas de Content-Type : le navigateur pose la frontière multipart lui-même.
+    response = await fetch(baseUrl.replace(/\/+$/, "") + "/v1/demandes/pieces", {
+      method: "POST",
+      body: form,
+    });
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const code = (body as { error?: { code?: unknown } } | null)?.error?.code;
+    return {
+      ok: false,
+      reason: KNOWN_PIECE_FAILURES.includes(code as PieceUploadFailure)
+        ? (code as PieceUploadFailure)
+        : "iris_unavailable",
+    };
+  }
+  const piece = (body as { piece?: PieceReceipt } | null)?.piece;
+  if (!piece || typeof piece.uploadId !== "string" || piece.uploadId === "") {
+    return { ok: false, reason: "iris_unavailable" };
+  }
+  return { ok: true, piece };
 }
 
 export type DemandeSend =

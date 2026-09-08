@@ -15,6 +15,7 @@ function fakeIris(reply: IrisReply = { kind: "ok", body: CREATED }) {
       calls.push({ path, body: body as Record<string, unknown> });
       return Promise.resolve(reply);
     },
+    postMultipart: () => Promise.reject(new Error("pas ici")),
   };
   return { client, calls };
 }
@@ -29,6 +30,7 @@ const INPUT: SubmitDemandeInput = {
     formData: { motif: "voirie" },
     requester: { contact_type: "personne", courriel: "a@b.fr" },
     submissionId: "dep-1",
+    attachments: [],
   },
 };
 
@@ -54,6 +56,28 @@ describe("submitDemande — l'enveloppe d'ingestion", () => {
       form_data: { motif: "voirie" },
       context: { channel: "portail" },
     });
+  });
+
+  it("référence les pièces déjà déposées par upload_id, et rien de plus", async () => {
+    const iris = fakeIris();
+    await submitDemande(
+      {
+        ...INPUT,
+        submission: {
+          ...INPUT.submission,
+          attachments: [{ uploadId: "up-1", fieldKey: "justificatif" }, { uploadId: "up-2", fieldKey: "photo" }],
+        },
+      },
+      iris.client,
+    );
+    expect(iris.calls[0].body.attachments).toEqual([
+      { upload_id: "up-1", form_field_key: "justificatif" },
+      { upload_id: "up-2", form_field_key: "photo" },
+    ]);
+    // Sans pièce, la clé est absente : la whitelist d'Iris n'a rien à refuser.
+    const sans = fakeIris();
+    await submitDemande(INPUT, sans.client);
+    expect(sans.calls[0].body).not.toHaveProperty("attachments");
   });
 
   it("porte le MÊME identifiant en external_id et en idempotency_key", async () => {

@@ -97,6 +97,15 @@ export async function submitDemande(
   if (submission.organizationId !== null) {
     envelope.socle_organization_id = submission.organizationId;
   }
+  // Même règle pour les pièces : déjà déposées, référencées par identifiant
+  // (contrat 2.0.0). Rien n'est envoyé s'il n'y en a pas — et jamais un
+  // fichier, ni un nom, ni un type : Iris les tient de sa propre vérification.
+  if (submission.attachments.length > 0) {
+    envelope.attachments = submission.attachments.map((a) => ({
+      upload_id: a.uploadId,
+      form_field_key: a.fieldKey,
+    }));
+  }
 
   const reply = await iris.post("/v1/requests", envelope);
   switch (reply.kind) {
