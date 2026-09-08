@@ -16,6 +16,7 @@
 import type { Branding } from "../domain/branding.ts";
 import type { PortalFailure } from "../domain/failure.ts";
 import type { SocleClient } from "./socleClient.ts";
+import { httpsUrl } from "./urls.ts";
 
 export type BrandingResult =
   | { ok: true; branding: Branding | null }
@@ -30,16 +31,12 @@ export function color(value: unknown): string | null {
   return HEX_COLOR.test(lower) ? lower : null;
 }
 
-/** URL absolue en https ; tout le reste → `null`. */
-export function logoUrl(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" ? url.toString() : null;
-  } catch {
-    return null;
-  }
-}
+/**
+ * URL absolue en https ; tout le reste → `null`. La règle vit dans `urls.ts` :
+ * un logo de charte et l'image d'un bloc de page sont deux adresses posées dans
+ * la même page publique, elles ne peuvent pas avoir deux règles.
+ */
+export const logoUrl = httpsUrl;
 
 /** `null` si rien d'exploitable n'est renseigné — le portail garde ses défauts. */
 export function toBranding(body: unknown): Branding | null {

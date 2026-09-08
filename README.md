@@ -69,11 +69,12 @@ src/
     PortalPage.tsx         états (chargement, erreurs, repli en liste), puis la composition
     HomeComposition.tsx    la page d'accueil composée ; possède l'état de recherche
     PageHeader.tsx         l'en-tête, partagé avec les pages d'une démarche
-    sections/              un composant par kind : Recherche, Demarches, Compte, Texte, Footer
-                           + DemarcheCard (la carte, partagée avec le repli) et OrganizationFilter
-    composition.ts         règles pures : filtres (recherche, organisme), organismes du filtre,
-                           ordre des épinglées, raccourcis, colonnes, luminance, message de grille
-                           vide, « le pied de page final est le bas de la page »
+    sections/              un composant par kind : Recherche, Demarches, Compte, Texte,
+                           TexteImage, Footer + DemarcheCard (la carte, partagée avec le repli),
+                           OrganizationFilter et AudienceFilter
+    composition.ts         règles pures : filtres (recherche, organisme, public), organismes et
+                           publics du filtre, ordre des épinglées, raccourcis, colonnes, luminance,
+                           message de grille vide, « le pied de page final est le bas de la page »
     theme.ts               la charte → variables CSS --brand-primary / --brand-secondary
     errorMessages.ts       un message par PortalFailure
   features/demarche/     La démarche : la lire, la remplir, la déposer.
@@ -91,6 +92,7 @@ supabase/functions/
                          Demande, plus les deux MIROIRS du schéma possédé par le Socle :
                          formSchema.ts + conditions.ts (lecture tolérante) et requesterConfig.ts.
     socle/               Le seul code qui connaisse la forme des réponses du Socle.
+      urls.ts              `https` absolue ou rien — la règle des URL posées dans la page
       socleClient.ts       port HTTP + implémentation
       cachedSocleClient.ts décorateur de cache
       tenantService.ts     resolveTenant(hostname)
@@ -141,8 +143,29 @@ liste ordonnée de sections typées. Règles de rendu, toutes dans
   pas.
 - **La recherche est réelle.** Le champ de la section `recherche` filtre les
   grilles `demarches` de la page (normalisation sans accents ni casse) ; sans
-  section `recherche`, aucun filtre. Recherche et organisme se cumulent, et
-  valent pour toutes les grilles de la page.
+  section `recherche`, aucun filtre.
+- **Le filtre « Je suis… »** (citoyen / entreprise / association) ne s'affiche
+  que si la collectivité l'a demandé sur la grille (`audience_filter`) **et**
+  que le catalogue vise au moins deux publics — un sélecteur à une entrée est
+  une question sans objet. Il se lit sur `Demarche.audiences`, les publics
+  ouverts à l'étape « Informations demandeur ». ⚠️ Une démarche dont la
+  collectivité n'a déclaré **aucun** public ne passe aucun choix : elle reste
+  visible tant qu'on ne filtre pas, et la lire comme « tous publics » la
+  proposerait à des usagers auxquels elle n'est pas ouverte.
+- **Les trois filtres se cumulent** et valent pour toutes les grilles de la
+  page. ⚠️ Un filtre qu'aucune grille ne propose ne s'applique pas — sans quoi
+  un choix fait ailleurs filtrerait en silence une grille qui n'offre pas de
+  quoi revenir en arrière. Quand deux filtres sont posés et que la grille est
+  vide, le message n'en nomme aucun : désigner l'un enverrait défaire le mauvais.
+- **Un bloc « texte et image »** rend ses deux moitiés côte à côte, empilées sur
+  petit écran ; `layout` dit laquelle se lit en **premier**, et cet ordre survit
+  à l'empilement (`order-first`, que `flex` applique en ligne comme en colonne).
+  ⚠️ L'adresse de l'image n'entre qu'en **https absolue** (`socle/urls.ts`,
+  même règle que les logos, et même règle qu'à la saisie côté Socle) — le portail
+  est servi en https, un `http://` y serait bloqué comme contenu mixte et un
+  chemin absolu se résoudrait sur un domaine qui n'héberge aucun média. Écartée,
+  l'image laisse un bandeau texte pleine largeur, jamais une image cassée. `alt` vide = image décorative : on
+  rend `alt=""`, jamais le titre recopié.
 - **Le pied de page final est le bas de la page.** Pleine largeur, hors du
   conteneur centré, poussé au bord ; la page perd sa marge basse. Sa couleur
   n'entre que sous la forme `#rrggbb`, le texte passe en clair ou en sombre

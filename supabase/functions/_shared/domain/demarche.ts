@@ -18,7 +18,7 @@ export interface DemarcheOrganization {
 }
 
 import type { FormSchema } from "./formSchema.ts";
-import type { RequesterConfig } from "./requesterConfig.ts";
+import type { Audience, RequesterConfig } from "./requesterConfig.ts";
 
 export interface Demarche {
   id: string;
@@ -36,6 +36,18 @@ export interface Demarche {
    * adosse.
    */
   organizations: DemarcheOrganization[];
+  /**
+   * Les publics auxquels la démarche est ouverte — citoyen, entreprise,
+   * association — dans l'ordre du Socle. De quoi filtrer une liste (« Je
+   * suis… ») sans charger le détail de chaque démarche.
+   *
+   * ⚠️ **Peut être vide**, et ce n'est pas une anomalie : la collectivité n'a
+   * pas rempli les publics de cette démarche. Elle ne répond alors à AUCUN
+   * choix du filtre — elle reste visible tant que l'usager ne filtre pas. La
+   * lire comme « tous publics » la ferait apparaître sous chaque choix, y
+   * compris là où elle n'est pas ouverte.
+   */
+  audiences: Audience[];
 }
 
 /** Catégorie d'une démarche : de quoi la situer, rien de plus. */

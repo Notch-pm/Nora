@@ -39,6 +39,17 @@ export interface DemarchesSection {
   pinnedFirst: boolean;
   /** Démarches à la une (`Demarche.id`). */
   pinned: string[];
+  /**
+   * La collectivité propose le filtre « Je suis… » (citoyen / entreprise /
+   * association) sur cette grille. Il se **cumule** avec le filtre par
+   * organisme, il ne le remplace pas : deux dimensions de la même liste.
+   *
+   * ⚠️ `true` ne veut pas dire « affiche-le » : un filtre à un seul choix n'en
+   * est pas un. Le rendu ne le montre que si le catalogue vise au moins deux
+   * publics — même règle que le filtre par organisme, et même règle que
+   * l'aperçu de l'éditeur du Socle.
+   */
+  audienceFilter: boolean;
 }
 
 export interface CompteSection {
@@ -54,6 +65,27 @@ export interface TexteSection {
   title: string;
   body: string;
   align: "left" | "center";
+}
+
+/**
+ * Un texte et une illustration. `layout` dit lequel des deux se lit en
+ * **premier** — un ORDRE, pas une position : sur un téléphone les deux moitiés
+ * s'empilent, et il n'y a plus de gauche ni de droite.
+ *
+ * `imageUrl` est `null` quand la collectivité n'en a pas mis, ou quand
+ * l'adresse servie n'est pas une `https` absolue (voir `socle/urls.ts`) : le
+ * bloc n'est alors qu'un bandeau texte — pas une erreur, et surtout pas une
+ * image cassée. `title` vide = pas de titre, pas un titre vide.
+ */
+export interface TexteImageSection {
+  id: string;
+  kind: "texte-image";
+  title: string;
+  body: string;
+  imageUrl: string | null;
+  /** Texte alternatif. Vide = image décorative (`alt=""`), jamais le titre recopié. */
+  alt: string;
+  layout: "text-first" | "image-first";
 }
 
 export type FooterColumns = 1 | 2 | 3;
@@ -79,6 +111,7 @@ export type HomeSection =
   | DemarchesSection
   | CompteSection
   | TexteSection
+  | TexteImageSection
   | FooterSection;
 
 export interface HomePage {

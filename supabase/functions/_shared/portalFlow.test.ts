@@ -52,6 +52,9 @@ const ROUTES: Record<string, unknown> = {
       // Traduite en anglais, intitulé SEULEMENT : le résumé doit rester
       // français sans emporter l'intitulé traduit.
       translations: { en: { name: "Report a road problem" } },
+      // Les publics du filtre « Je suis… ». `patrimoine` n'en est pas un :
+      // écarté, comme un kind de section inconnu.
+      audiences: ["citoyen", "patrimoine"],
       // Proposée par la ville et par l'un de ses quartiers : le Socle sert
       // les organismes dans l'ordre de l'arbre, le portail le conserve.
       organizations: [
@@ -69,6 +72,7 @@ const ROUTES: Record<string, unknown> = {
       user_description: "Effectuez votre demande en ligne.",
       input_duration_minutes: null,
       organizations: [{ id: NANTES, name: "Ville de Nantes" }],
+      audiences: ["citoyen", "entreprise"],
     },
   ],
   // Angers existe, mais n'a encore rien publié : cas normal, pas une erreur.
@@ -221,6 +225,7 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
           { id: NANTES, name: "Ville de Nantes" },
           { id: "q-chantenay", name: "Mairie de quartier de Chantenay" },
         ],
+        audiences: ["citoyen"],
       },
       {
         id: "d2",
@@ -230,13 +235,17 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
         description: "Effectuez votre demande en ligne.",
         estimatedMinutes: null,
         organizations: [{ id: NANTES, name: "Ville de Nantes" }],
+        // ⚠️ Dans l'ordre du filtre, pas celui du Socle : deux catalogues
+        // paramétrés dans un ordre différent doivent se filtrer pareil.
+        audiences: ["citoyen", "entreprise"],
       },
     ]);
   });
 
-  it("affiche une démarche servie sans organismes — le portail ne décide pas qui la porte", async () => {
-    // Un Socle d'avant le champ `organizations`, ou une liste absente : la
-    // démarche est publiée, elle s'affiche ; la carte ne nomme simplement personne.
+  it("affiche une démarche sans organismes ni publics — le portail ne décide ni qui la porte, ni pour qui", async () => {
+    // Un Socle d'avant ces champs, ou des listes absentes : la démarche est
+    // publiée, elle s'affiche ; la carte ne nomme simplement personne, et la
+    // démarche ne répond à aucun choix du filtre « Je suis… ».
     const socle = fakeSocle({
       [NANTES_PROCEDURES]: {
         kind: "ok",
@@ -247,7 +256,15 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.demarches).toEqual([
-      { id: "d9", name: "Sans organisme", description: null, estimatedMinutes: null, organizations: [] },
+      {
+        id: "d9",
+        name: "Sans organisme",
+        description: null,
+        estimatedMinutes: null,
+        organizations: [],
+        // ⚠️ Vide, jamais « tous publics » : rien n'a été déclaré.
+        audiences: [],
+      },
     ]);
   });
 

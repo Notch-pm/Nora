@@ -14,6 +14,15 @@ const PUBLISHED = {
     { id: "n", kind: "actus", title: "Actus", layout: "grid", count: 3, show_dates: true },
     { id: "c", kind: "compte", title: "Votre espace", subtitle: "Suivez" },
     { id: "t", kind: "texte", title: "Aide", body: "Un agent…", align: "center" },
+    {
+      id: "i",
+      kind: "texte-image",
+      title: "Nos équipements",
+      body: "La piscine est ouverte toute l'année.",
+      image_url: "https://exemple.fr/piscine.jpg",
+      alt: "La piscine municipale",
+      layout: "image-first",
+    },
     { id: "x", kind: "carrousel", title: "Inconnu" },
   ],
 };
@@ -25,7 +34,13 @@ describe("getPublishedPage — traduction", () => {
     if (!result.ok || !result.page) return;
     expect(result.page.publishedAt).toBe("2026-09-05T12:21:10Z");
     // `actus` (rien à afficher) et `carrousel` (inconnu) sont ignorés.
-    expect(result.page.sections.map((s) => s.kind)).toEqual(["recherche", "demarches", "compte", "texte"]);
+    expect(result.page.sections.map((s) => s.kind)).toEqual([
+      "recherche",
+      "demarches",
+      "compte",
+      "texte",
+      "texte-image",
+    ]);
     expect(result.page.sections[1]).toEqual({
       id: "g",
       kind: "demarches",
@@ -33,8 +48,97 @@ describe("getPublishedPage — traduction", () => {
       columns: 4,
       pinnedFirst: true,
       pinned: ["p1", "p2"],
+      // Absent du corps servi : pas de filtre. C'est ce que le Socle sert pour
+      // les pages composées avant qu'il existe.
+      audienceFilter: false,
     });
     expect(result.page.sections[3]).toMatchObject({ kind: "texte", align: "center" });
+    expect(result.page.sections[4]).toEqual({
+      id: "i",
+      kind: "texte-image",
+      title: "Nos équipements",
+      body: "La piscine est ouverte toute l'année.",
+      imageUrl: "https://exemple.fr/piscine.jpg",
+      alt: "La piscine municipale",
+      layout: "image-first",
+    });
+  });
+
+  it("porte le filtre « Je suis… » quand la collectivité l'a demandé", async () => {
+    const body = {
+      ...PUBLISHED,
+      sections: [{ ...PUBLISHED.sections[1], audience_filter: true }],
+    };
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body }), "fr");
+    if (!result.ok || !result.page) throw new Error("attendu une page");
+    expect(result.page.sections[0]).toMatchObject({ kind: "demarches", audienceFilter: true });
+  });
+
+  describe("l'image d'un bloc texte et image", () => {
+    const withImage = (image_url: unknown) => ({
+      ...PUBLISHED,
+      sections: [{ ...PUBLISHED.sections[5], image_url }],
+    });
+
+    it("n'entre qu'en https absolue — le reste devient « pas d'image », pas une image cassée", async () => {
+      // ⚠️ Plus strict que le Socle, qui accepte `http://` et les chemins
+      // absolus : le portail est servi en https (contenu mixte bloqué) et
+      // n'héberge aucun média de collectivité (chemin absolu = 404).
+      for (const url of [
+        "javascript:alert(1)",
+        "data:image/svg+xml,<svg/>",
+        "http://exemple.fr/a.jpg",
+        "/media/a.jpg",
+        42,
+        null,
+      ]) {
+        const result = await getPublishedPage(
+          "t1",
+          replying({ kind: "ok", body: withImage(url) }),
+          "fr",
+        );
+        if (!result.ok || !result.page) throw new Error("attendu une page");
+        // Le bloc reste rendu : le texte de la collectivité ne disparaît pas
+        // avec son illustration.
+        expect(result.page.sections[0], String(url)).toMatchObject({
+          kind: "texte-image",
+          imageUrl: null,
+          body: "La piscine est ouverte toute l'année.",
+        });
+      }
+    });
+
+    it("traduit le texte alternatif comme les autres textes", async () => {
+      // Une synthèse vocale lit ce texte-là : le laisser en français ne
+      // traduirait la page que pour ceux qui la voient.
+      const body = {
+        ...PUBLISHED,
+        sections: [
+          {
+            ...PUBLISHED.sections[5],
+            translations: { en: { title: "Our facilities", alt: "The municipal pool" } },
+          },
+        ],
+      };
+      const result = await getPublishedPage("t1", replying({ kind: "ok", body }), "en");
+      if (!result.ok || !result.page) throw new Error("attendu une page");
+      expect(result.page.sections[0]).toMatchObject({
+        title: "Our facilities",
+        alt: "The municipal pool",
+        // Le repli reste CHAMP PAR CHAMP : le paragraphe non traduit tient bon.
+        body: "La piscine est ouverte toute l'année.",
+      });
+    });
+
+    it("ramène un ordre inconnu au texte d'abord", async () => {
+      const body = {
+        ...PUBLISHED,
+        sections: [{ ...PUBLISHED.sections[5], layout: "image-au-milieu" }],
+      };
+      const result = await getPublishedPage("t1", replying({ kind: "ok", body }), "fr");
+      if (!result.ok || !result.page) throw new Error("attendu une page");
+      expect(result.page.sections[0]).toMatchObject({ layout: "text-first" });
+    });
   });
 
   it("vide les raccourcis quand ils sont masqués — le rendu n'a pas à connaître le commutateur", async () => {

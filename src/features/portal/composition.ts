@@ -6,6 +6,7 @@
  * résolution des raccourcis vivent ici, pour être vérifiés sans rendu.
  */
 import type { Demarche, DemarcheOrganization } from "@fn/_shared/domain/demarche.ts";
+import type { Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import type { FooterColumns, GridColumns } from "@fn/_shared/domain/page.ts";
 
 /**
@@ -53,6 +54,38 @@ export function filterDemarchesByOrganization(
   );
 }
 
+/**
+ * Filtre par public : ne garde que les démarches ouvertes à ce public. `null` —
+ * « peu importe » — ne filtre rien.
+ *
+ * ⚠️ Une démarche **sans public déclaré** ne passe AUCUN choix. C'est voulu :
+ * la collectivité n'a pas dit à qui elle s'adresse, et la faire apparaître
+ * partout la proposerait à des usagers auxquels elle n'est pas ouverte. Elle
+ * reste visible tant qu'on ne filtre pas — c'est là qu'on la voit, et c'est au
+ * Socle que ça se corrige.
+ */
+export function filterDemarchesByAudience(
+  demarches: Demarche[],
+  audience: Audience | null,
+): Demarche[] {
+  if (audience === null) return demarches;
+  return demarches.filter((demarche) => demarche.audiences.includes(audience));
+}
+
+/** Les trois publics, dans l'ordre où le filtre les propose. */
+const AUDIENCE_ORDER: readonly Audience[] = ["citoyen", "entreprise", "association"];
+
+/**
+ * Les publics visés par au moins une démarche du catalogue, dans l'ordre
+ * ci-dessus. C'est la liste du filtre — proposer « Entreprise » quand aucune
+ * démarche ne s'y adresse ne mènerait qu'à une liste vide, exactement comme un
+ * organisme qui ne propose rien.
+ */
+export function audiencesOffered(demarches: Demarche[]): Audience[] {
+  const present = new Set(demarches.flatMap((demarche) => demarche.audiences));
+  return AUDIENCE_ORDER.filter((audience) => present.has(audience));
+}
+
 const organizationCollator = new Intl.Collator("fr", { sensitivity: "base" });
 
 /**
@@ -80,15 +113,22 @@ export function organizationsOffering(
 
 /**
  * Ce que dit une grille vide. La recherche prime : c'est le geste le plus
- * récent de l'usager, et c'est lui qu'il faut lui rendre. Puis l'organisme
- * choisi ; sinon, rien n'est publié — et ce n'est pas une erreur.
+ * récent de l'usager, et c'est lui qu'il faut lui rendre.
+ *
+ * ⚠️ Avec DEUX filtres posés, on ne nomme ni l'un ni l'autre : dire « cet
+ * organisme ne propose rien » alors qu'un public est aussi choisi désignerait
+ * un coupable au hasard, et enverrait l'usager défaire le mauvais filtre.
+ * Sinon, rien n'est publié — et ce n'est pas une erreur.
  */
 export function emptyDemarchesKey(
   searchActive: boolean,
   organizationId: string | null,
-): "empty.search" | "empty.organization" | "empty.none" {
+  audience: Audience | null = null,
+): "empty.search" | "empty.filters" | "empty.organization" | "empty.audience" | "empty.none" {
   if (searchActive) return "empty.search";
+  if (organizationId !== null && audience !== null) return "empty.filters";
   if (organizationId !== null) return "empty.organization";
+  if (audience !== null) return "empty.audience";
   return "empty.none";
 }
 

@@ -23,6 +23,7 @@ import type {
   DemarcheDetail,
   DemarcheOrganization,
 } from "../domain/demarche.ts";
+import type { Audience } from "../domain/requesterConfig.ts";
 import type { PortalFailure } from "../domain/failure.ts";
 import { parseFormSchema } from "../domain/formSchema.ts";
 import { parseRequesterConfig } from "../domain/requesterConfig.ts";
@@ -62,6 +63,24 @@ function toOrganizations(raw: unknown): DemarcheOrganization[] {
   return organizations;
 }
 
+/** Les trois publics du Socle, dans l'ordre où le filtre les propose. */
+const KNOWN_AUDIENCES: readonly Audience[] = ["citoyen", "entreprise", "association"];
+
+/**
+ * Les publics auxquels la démarche est ouverte. Un public que ce portail ne
+ * connaît pas est écarté — même règle que pour les sections de page : on ne
+ * rend pas à moitié ce qu'on ne sait pas nommer, et le Socle peut apprendre un
+ * public avant ce portail.
+ *
+ * ⚠️ Une liste absente ou vide reste **vide**, jamais « tous publics » : la
+ * démarche ne répond alors à aucun choix du filtre, ce qui est exactement ce
+ * que veut dire « la collectivité n'a pas rempli ses publics ».
+ */
+function toAudiences(raw: unknown): Audience[] {
+  if (!Array.isArray(raw)) return [];
+  return KNOWN_AUDIENCES.filter((audience) => raw.includes(audience));
+}
+
 /**
  * Traduction d'une démarche du Socle vers le modèle du portail. Une entrée sans
  * identifiant ou sans intitulé est ÉCARTÉE plutôt que rendue vide : une carte
@@ -94,6 +113,7 @@ function toDemarche(raw: unknown, lang: string): Demarche | null {
         ? row.input_duration_minutes
         : null,
     organizations: toOrganizations(row.organizations),
+    audiences: toAudiences(row.audiences),
   };
 }
 

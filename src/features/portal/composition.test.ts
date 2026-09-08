@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import {
   MAX_SHORTCUTS,
+  audiencesOffered,
   emptyDemarchesKey,
   endsWithFooter,
+  filterDemarchesByAudience,
   filterDemarchesByOrganization,
   filterDemarchesByQuery,
   footerColumnsClass,
@@ -23,8 +25,9 @@ function demarche(
   name: string,
   description: string | null = null,
   organizations: Demarche["organizations"] = [ACCM],
+  audiences: Demarche["audiences"] = ["citoyen"],
 ): Demarche {
-  return { id, name, description, estimatedMinutes: null, organizations };
+  return { id, name, description, estimatedMinutes: null, organizations, audiences };
 }
 
 describe("filterDemarchesByOrganization", () => {
@@ -75,6 +78,63 @@ describe("emptyDemarchesKey", () => {
     expect(emptyDemarchesKey(true, "arles")).toBe("empty.search");
     expect(emptyDemarchesKey(false, "arles")).toBe("empty.organization");
     expect(emptyDemarchesKey(false, null)).toBe("empty.none");
+  });
+
+  it("nomme le public quand c'est le seul filtre posé", () => {
+    expect(emptyDemarchesKey(false, null, "entreprise")).toBe("empty.audience");
+  });
+
+  it("n'en nomme AUCUN quand les deux sont posés", () => {
+    // Désigner l'organisme alors qu'un public est aussi choisi enverrait
+    // l'usager défaire le mauvais filtre.
+    expect(emptyDemarchesKey(false, "arles", "entreprise")).toBe("empty.filters");
+    // La recherche prime toujours : c'est le geste le plus récent.
+    expect(emptyDemarchesKey(true, "arles", "entreprise")).toBe("empty.search");
+  });
+});
+
+describe("filterDemarchesByAudience", () => {
+  const demarches = [
+    demarche("a", "Acte de naissance", null, [ACCM], ["citoyen"]),
+    demarche("b", "Débit de boisson", null, [ACCM], ["entreprise", "association"]),
+    demarche("c", "Jamais paramétrée", null, [ACCM], []),
+  ];
+
+  it("ne garde que les démarches ouvertes à ce public", () => {
+    expect(filterDemarchesByAudience(demarches, "citoyen").map((d) => d.id)).toEqual(["a"]);
+    expect(filterDemarchesByAudience(demarches, "association").map((d) => d.id)).toEqual(["b"]);
+  });
+
+  it("aucun public choisi : rien n'est filtré, la démarche sans public comprise", () => {
+    expect(filterDemarchesByAudience(demarches, null)).toBe(demarches);
+  });
+
+  it("une démarche SANS public déclaré ne passe aucun choix", () => {
+    // La collectivité n'a pas dit à qui elle s'adresse. La proposer partout
+    // l'offrirait à des usagers auxquels elle n'est pas ouverte ; elle reste
+    // visible sans filtre, et c'est là qu'on la voit.
+    for (const audience of ["citoyen", "entreprise", "association"] as const) {
+      expect(filterDemarchesByAudience(demarches, audience).map((d) => d.id)).not.toContain("c");
+    }
+  });
+});
+
+describe("audiencesOffered", () => {
+  it("réunit les publics du catalogue, sans doublon et dans l'ordre du filtre", () => {
+    const demarches = [
+      demarche("a", "A", null, [ACCM], ["association"]),
+      demarche("b", "B", null, [ACCM], ["citoyen", "association"]),
+    ];
+    expect(audiencesOffered(demarches)).toEqual(["citoyen", "association"]);
+  });
+
+  it("n'en rend qu'un quand tout vise le même — le filtre ne s'affichera pas", () => {
+    expect(audiencesOffered([demarche("a", "A"), demarche("b", "B")])).toEqual(["citoyen"]);
+  });
+
+  it("n'invente aucun public pour un catalogue qui n'en déclare pas", () => {
+    expect(audiencesOffered([demarche("a", "A", null, [ACCM], [])])).toEqual([]);
+    expect(audiencesOffered([])).toEqual([]);
   });
 });
 

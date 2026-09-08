@@ -23,6 +23,7 @@ import type { PortalFailure } from "../domain/failure.ts";
 import { localizedText } from "../domain/languages.ts";
 import type { FooterColumns, GridColumns, HomePage, HomeSection, TexteSection } from "../domain/page.ts";
 import type { SocleClient } from "./socleClient.ts";
+import { httpsUrl } from "./urls.ts";
 
 export type PageResult =
   | { ok: true; page: HomePage | null }
@@ -82,6 +83,9 @@ function toSection(raw: unknown, lang: string): HomeSection | null {
         columns: columns(row.columns),
         pinnedFirst: row.pinned_first === true,
         pinned: ids(row.pinned),
+        // Absent = pas de filtre : c'est ce que sert le Socle pour les pages
+        // composées avant qu'il existe, et le rendu n'a pas à le savoir.
+        audienceFilter: row.audience_filter === true,
       };
     case "compte":
       return {
@@ -97,6 +101,22 @@ function toSection(raw: unknown, lang: string): HomeSection | null {
         title,
         body: localizedText(text(row.body), tr, lang, "body") ?? "",
         align: row.align === "center" ? "center" : "left",
+      };
+    case "texte-image":
+      return {
+        id,
+        kind: "texte-image",
+        title,
+        body: localizedText(text(row.body), tr, lang, "body") ?? "",
+        // ⚠️ `https` absolue ou rien (voir `urls.ts`) : plus strict que le
+        // Socle, qui accepte aussi `http://` et les chemins absolus — ni l'un
+        // ni l'autre ne peut s'afficher sur une page publique servie en https.
+        // Le bloc reste rendu, sans image : le texte de la collectivité n'a pas
+        // à disparaître avec son illustration.
+        imageUrl: httpsUrl(row.image_url),
+        // Traduit comme le reste : une synthèse vocale lit ce texte-là.
+        alt: localizedText(text(row.alt), tr, lang, "alt") ?? "",
+        layout: row.layout === "image-first" ? "image-first" : "text-first",
       };
     case "footer": {
       const children: TexteSection[] = [];
