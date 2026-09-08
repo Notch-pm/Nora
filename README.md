@@ -234,6 +234,17 @@ formulaire a ensuite l'écran pour lui seul.
   toujours ni bucket ni table : rien à purger de son côté. Le limiteur de `portal-api`
   (20 fichiers par minute et par adresse hachée) est un frein de confort **en mémoire
   d'isolat** ; la borne opposable est le quota d'Iris (60 dépôts par minute et par clé).
+  Vérifié de bout en bout le 2026-09-08 : une pièce déposée depuis le portail arrive dans la
+  demande Iris, rattachée à son exigence, avec son type détecté et son empreinte.
+- **Une démarche non activée pour l'organisme transmis est refusée par Iris** (`400`, message
+  « Cette démarche n'est pas activée pour cet organisme dans le référentiel Socle »). Le portail
+  ne transmet un organisme que si l'usager l'a choisi — donc seulement quand la démarche en liste
+  plusieurs ; sans organisme, Iris retient la racine de la collectivité, qui doit alors avoir
+  activé la démarche. **Question ouverte (2026-09-08)** : la liste d'organismes que le Socle
+  publie avec une démarche et ses activations (`organization_procedures`) peuvent diverger — une
+  démarche activée pour une seule commune, mais publiée sans organisme, part vers la racine et
+  se fait refuser. À trancher côté Socle (publier les organismes qui activent) ou côté portail
+  (présélectionner l'unique organisme activé).
 - **La complétude n'est pas vérifiée côté serveur.** C'est le parti d'Iris — « la complétude est
   un problème d'instruction, pas un motif de rejet » — et le portail ne décide pas l'inverse pour
   lui. La saisie est guidée dans le navigateur ; ce qui arrive incomplet est qualifié par un
