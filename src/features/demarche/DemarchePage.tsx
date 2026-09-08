@@ -27,8 +27,8 @@ function BackToHome({ subtle = false }: { subtle?: boolean }) {
       to={localizedPath(lang, "/")}
       className={
         subtle
-          ? "text-sm font-semibold text-[color:var(--brand-primary)] hover:underline"
-          : "rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
+          ? "text-[length:var(--pt-body)] font-semibold text-[color:var(--brand-primary)] hover:underline"
+          : "rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] px-4 py-2 text-[length:var(--pt-body)] hover:bg-[color:var(--pt-surface)]"
       }
     >
       {t("demarche.backHome")}
@@ -72,40 +72,45 @@ export function DemarchePage() {
       : allFields(demarche.form).filter((field) => field.type === "attachment");
 
   return (
-    <DemarcheShell tenantName={tenant.name} branding={branding} languages={tenant.languages}>
+    <DemarcheShell
+      tenantName={tenant.name}
+      branding={branding}
+      theme={tenant.theme}
+      languages={tenant.languages}
+    >
       <nav className="mb-6">
         <BackToHome subtle />
       </nav>
 
       <header className="flex flex-col gap-3">
         {demarche.category !== null && (
-          <span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-slate-500">
+          <span className="w-fit rounded-full bg-[color:var(--pt-surface)] px-2.5 py-1 text-[length:var(--pt-small)] font-bold uppercase tracking-wide text-[color:var(--pt-muted)]">
             {demarche.category.name}
           </span>
         )}
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{demarche.name}</h1>
+        <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">{demarche.name}</h1>
         {demarche.description !== null && (
-          <p className="text-lg text-slate-600">{demarche.description}</p>
+          <p className="text-[length:var(--pt-h2)] text-[color:var(--pt-muted)]">{demarche.description}</p>
         )}
       </header>
 
-      <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-3 border-y border-slate-200 py-4">
+      <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-3 border-y border-[color:var(--pt-border)] py-4">
         {demarche.estimatedMinutes !== null && (
           <div>
-            <dt className="text-xs font-bold uppercase tracking-wide text-slate-500">
+            <dt className="text-[length:var(--pt-small)] font-bold uppercase tracking-wide text-[color:var(--pt-muted)]">
               {t("demarche.duration")}
             </dt>
-            <dd className="text-sm text-slate-800">
+            <dd className="text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
               {t("card.duration", { n: demarche.estimatedMinutes })}
             </dd>
           </div>
         )}
         {demarche.organizations.length > 0 && (
           <div>
-            <dt className="text-xs font-bold uppercase tracking-wide text-slate-500">
+            <dt className="text-[length:var(--pt-small)] font-bold uppercase tracking-wide text-[color:var(--pt-muted)]">
               {tn("demarche.organizations", demarche.organizations.length)}
             </dt>
-            <dd className="text-sm text-slate-800">
+            <dd className="text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
               {demarche.organizations.map((org) => org.name).join(" · ")}
             </dd>
           </div>
@@ -117,22 +122,22 @@ export function DemarchePage() {
           Il n'est répété que s'il apporte autre chose que le résumé — sans
           résumé, `description` EST déjà ce descriptif. */}
       {demarche.userDescription !== null && demarche.userDescription !== demarche.description && (
-        <p className="mt-6 whitespace-pre-line text-slate-700">{demarche.userDescription}</p>
+        <p className="mt-6 whitespace-pre-line text-[color:var(--pt-ink)]">{demarche.userDescription}</p>
       )}
 
       {attachments.length > 0 && (
         <section className="mt-8">
-          <h2 className="text-lg font-bold text-slate-900">{t("demarche.attachments")}</h2>
+          <h2 className="text-[length:var(--pt-h2)] font-bold text-[color:var(--pt-ink)]">{t("demarche.attachments")}</h2>
           <ul className="mt-3 flex flex-col gap-2">
             {attachments.map((field) => (
-              <li key={field.id} className="flex gap-2 text-sm text-slate-700">
-                <span aria-hidden="true" className="text-slate-400">
+              <li key={field.id} className="flex gap-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
+                <span aria-hidden="true" className="text-[color:var(--pt-muted)]">
                   •
                 </span>
                 <span>
                   {field.label}
                   {field.type === "attachment" && field.acceptedFormats.length > 0 && (
-                    <span className="text-slate-500">
+                    <span className="text-[color:var(--pt-muted)]">
                       {" "}
                       ({field.acceptedFormats.map((f) => f.toUpperCase()).join(", ")})
                     </span>
@@ -141,7 +146,7 @@ export function DemarchePage() {
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-sm text-slate-500">{t("demarche.attachmentsLater")}</p>
+          <p className="mt-3 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("demarche.attachmentsLater")}</p>
         </section>
       )}
 
@@ -150,13 +155,13 @@ export function DemarchePage() {
           // Une démarche sans formulaire n'est pas une erreur : elle est
           // publiée, sa saisie n'est simplement pas encore paramétrée. Le dire
           // vaut mieux qu'un bouton qui mène à une page vide.
-          <p className="rounded-lg border border-dashed border-slate-300 px-4 py-5 text-sm text-slate-600">
+          <p className="rounded-[var(--pt-radius-sm)] border border-dashed border-[color:var(--pt-border)] px-4 py-5 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
             {t("demarche.notOnline")}
           </p>
         ) : (
           <Link
             to={localizedPath(lang, "/demarches/" + encodeURIComponent(demarche.id) + "/formulaire")}
-            className="inline-flex rounded-lg bg-[color:var(--brand-primary)] px-5 py-3 text-sm font-bold text-white hover:opacity-90"
+            className="inline-flex rounded-[var(--pt-radius-sm)] bg-[color:var(--brand-primary)] px-5 py-3 text-[length:var(--pt-body)] font-bold text-white hover:opacity-90"
           >
             {t("demarche.start")}
           </Link>

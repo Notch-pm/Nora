@@ -11,12 +11,16 @@ import type { Branding } from "@fn/_shared/domain/branding.ts";
 import type { PortalLoadFailure } from "@/services/portal/portalClient.ts";
 import { errorMessageFor } from "@/features/portal/errorMessages.ts";
 import { PageHeader } from "@/features/portal/PageHeader.tsx";
-import { brandingStyle } from "@/features/portal/theme.ts";
+import { PortalLoader } from "@/features/portal/PortalLoader.tsx";
+import { headerLogoUrl, themeStyle } from "@/features/portal/themeStyle.ts";
+import { AccessibilityNotice } from "@/features/portal/AccessibilityNotice.tsx";
+import { defaultTheme, type PortalTheme } from "@fn/_shared/domain/theme.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 
 export function DemarcheShell({
   tenantName,
   branding,
+  theme,
   languages,
   children,
 }: {
@@ -24,33 +28,44 @@ export function DemarcheShell({
   /** Les langues de la collectivité, pour le sélecteur de l'en-tête. */
   languages?: readonly string[];
   branding: Branding | null;
+  /**
+   * Le thème du site. ⚠️ Il vaut pour TOUTES les pages, pas seulement pour
+   * l'accueil composé : un usager qui dépose une demande ne doit pas avoir
+   * l'impression de changer de site en cours de route. Absent tant que la
+   * collectivité n'est pas connue — on prend alors les défauts.
+   */
+  theme?: PortalTheme;
   children: ReactNode;
 }) {
+  const applied: PortalTheme = theme ?? defaultTheme();
   return (
     <main
-      className="flex min-h-screen flex-col bg-white pb-12 text-slate-800"
-      style={brandingStyle(branding)}
+      className="flex min-h-screen flex-col bg-white"
+      style={{ ...themeStyle(applied, branding), color: "var(--pt-ink)" }}
     >
       {/* Tant que la collectivité n'est pas connue, l'en-tête reste neutre :
           mieux vaut une barre vide qu'un nom qui change sous les yeux. */}
       <PageHeader
         tenantName={tenantName ?? ""}
-        logoUrl={branding?.logoUrl ?? null}
+        logoUrl={headerLogoUrl(applied, branding)}
+        theme={theme}
         languages={languages}
       />
-      <div className="mx-auto w-full max-w-3xl flex-1 px-6 pt-8">{children}</div>
+      <div className="mx-auto w-full max-w-3xl flex-1 px-6 pb-12 pt-8">{children}</div>
+      <AccessibilityNotice theme={theme} />
     </main>
   );
 }
 
-/** L'attente. Le cadre est déjà là : seule la zone de contenu est vide. */
+/**
+ * L'attente — la même que celle de l'accueil.
+ *
+ * Le cadre n'est PAS rendu ici : sans la collectivité, son en-tête serait une
+ * barre vide surmontant un écran vide. Le loader de l'accueil, lui, porte déjà
+ * la marque de la collectivité — c'est plus juste que le nom qu'on n'a pas.
+ */
 export function DemarcheLoading() {
-  const t = useT();
-  return (
-    <DemarcheShell tenantName={null} branding={null}>
-      <p className="text-slate-500">{t("page.loading")}</p>
-    </DemarcheShell>
-  );
+  return <PortalLoader />;
 }
 
 /**
@@ -72,21 +87,21 @@ export function DemarcheError({
   const message = errorMessageFor(reason, lang);
   return (
     <DemarcheShell tenantName={null} branding={null}>
-      <h1 className="text-xl font-semibold text-slate-900">{message.title}</h1>
-      <p className="mt-3 text-slate-600">{message.detail}</p>
+      <h1 className="text-[length:var(--pt-h2)] font-semibold text-[color:var(--pt-ink)]">{message.title}</h1>
+      <p className="mt-3 text-[color:var(--pt-muted)]">{message.detail}</p>
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {message.retryable && (
           <button
             type="button"
             onClick={onRetry}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
+            className="rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] px-4 py-2 text-[length:var(--pt-body)] hover:bg-[color:var(--pt-surface)]"
           >
             {t("page.retry")}
           </button>
         )}
         {children}
       </div>
-      <p className="mt-8 text-xs text-slate-400">{t("page.errorCode", { code: reason })}</p>
+      <p className="mt-8 text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">{t("page.errorCode", { code: reason })}</p>
     </DemarcheShell>
   );
 }

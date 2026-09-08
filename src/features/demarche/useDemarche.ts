@@ -12,6 +12,7 @@ import {
   type DemarcheSnapshot,
   type PortalLoadFailure,
 } from "@/services/portal/portalClient.ts";
+import { rememberBranding } from "@/features/portal/theme.ts";
 
 export type DemarcheState =
   | { status: "loading" }
@@ -35,6 +36,10 @@ export function useDemarche(
 
     fetchDemarche(demarcheId, lang)
       .then((result) => {
+        // La charte arrive avec la démarche : on la retient pour l'attente de
+        // la prochaine visite (voir `theme.ts`), qu'elle soit encore utile ici
+        // ou non.
+        if (result.ok) rememberBranding(result.snapshot.branding);
         if (!current) return;
         setState(
           result.ok

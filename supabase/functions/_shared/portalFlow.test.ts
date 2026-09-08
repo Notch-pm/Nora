@@ -19,6 +19,7 @@ import { resolveLang } from "./domain/languages.ts";
 import { getPublishedPage } from "./socle/pageService.ts";
 import { getBranding } from "./socle/brandingService.ts";
 import { resolveTenant } from "./socle/tenantService.ts";
+import { defaultTheme } from "./domain/theme.ts";
 import type { SocleClient, SocleReply } from "./socle/socleClient.ts";
 
 const NANTES = "8f1e0d3a-0000-4000-8000-000000000001";
@@ -160,6 +161,10 @@ describe("1. domaine connu → tenant correctement identifié", () => {
       slug: "nantes",
       hostname: "nantes.edilumen.fr",
       languages: ["fr", "en", "br"],
+      // Ce Socle simulé ne sert pas de thème : le portail prend les défauts,
+      // jamais `null`. C'est ce qui permet à un portail à jour de parler à un
+      // Socle d'avant le contrat 1.17.0.
+      theme: defaultTheme(),
     });
   });
 

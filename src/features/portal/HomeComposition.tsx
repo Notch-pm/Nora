@@ -23,7 +23,8 @@ import type { Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
-import { brandingStyle } from "./theme.ts";
+import { headerLogoUrl, themeStyle } from "./themeStyle.ts";
+import { AccessibilityNotice } from "./AccessibilityNotice.tsx";
 import {
   audiencesOffered,
   endsWithFooter,
@@ -74,21 +75,34 @@ export function HomeComposition({
   );
 
   // Un pied de page en dernière position EST le bas de la page : il est poussé
-  // au bord (`mt-auto`) et rien ne le suit. Sans lui, la page garde une marge
-  // basse. Les autres sections vivent dans le conteneur centré.
+  // au bord (`mt-auto`). Seule la mention d'accessibilité se pose sous lui —
+  // elle n'appartient pas à la composition, elle est due sur toutes les pages.
   const footerLast = endsWithFooter(page.sections);
 
   return (
     <main
-      className={"flex min-h-screen flex-col bg-white text-slate-800 " + (footerLast ? "" : "pb-8")}
-      style={brandingStyle(branding)}
+      className="flex min-h-screen flex-col bg-white"
+      // ⚠️ TOUT LE THÈME TIENT DANS CET OBJET. Les sections ne le reçoivent pas
+      // en props : elles lisent des variables CSS. C'est ce qui rend le thème
+      // gratuit — quelques centaines d'octets de style, pas une requête.
+      style={{ ...themeStyle(tenant.theme, branding), color: "var(--pt-ink)" }}
     >
       <PageHeader
         tenantName={tenant.name}
-        logoUrl={branding?.logoUrl ?? null}
+        logoUrl={headerLogoUrl(tenant.theme, branding)}
+        theme={tenant.theme}
         languages={tenant.languages}
       />
-      <div className="flex flex-1 flex-col gap-6 pt-8">
+      <div
+        className="flex flex-1 flex-col"
+        style={{
+          gap: "var(--pt-gap)",
+          paddingTop: "var(--pt-pad)",
+          // Un pied de page composé va au bord ; sans lui, la dernière section
+          // garde sa respiration. L'espacement suit la densité du thème.
+          paddingBottom: footerLast ? 0 : "var(--pt-pad)",
+        }}
+      >
         {page.sections.map((section) => {
           if (section.kind === "footer") {
             return (
@@ -136,6 +150,9 @@ export function HomeComposition({
           );
         })}
       </div>
+      {/* Sous le pied de page composé, et sur toutes les pages du site :
+          c'est une mention obligatoire, pas un bloc de contenu. */}
+      <AccessibilityNotice theme={tenant.theme} />
     </main>
   );
 }

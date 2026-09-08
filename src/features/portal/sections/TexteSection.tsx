@@ -7,13 +7,19 @@ import type { TexteSection as TexteSectionData } from "@fn/_shared/domain/page.t
 export function TexteSection({ section }: { section: TexteSectionData }) {
   return (
     <section
+      // L'aplat est la couleur secondaire de la collectivité, diluée : posé en
+      // style parce qu'une transparence sur une variable CSS ne s'écrit pas en
+      // modificateur d'opacité Tailwind.
+      style={{ background: "var(--pt-accent-soft)" }}
       className={
-        "flex flex-col gap-1.5 rounded-xl bg-[color:color-mix(in_srgb,var(--brand-secondary)_35%,white)] px-6 py-4 " +
+        "flex flex-col gap-1.5 rounded-[var(--pt-radius)] p-[var(--pt-pad)] " +
         (section.align === "center" ? "items-center text-center" : "items-start text-left")
       }
     >
-      <h2 className="text-base font-bold text-slate-900">{section.title}</h2>
-      <p className="whitespace-pre-line text-[13.5px] leading-relaxed text-slate-700">
+      <h2 className="text-[length:var(--pt-h2)] font-bold text-[color:var(--pt-ink)]">
+        {section.title}
+      </h2>
+      <p className="whitespace-pre-line text-[length:var(--pt-body)] leading-relaxed text-[color:var(--pt-ink)]">
         {section.body}
       </p>
     </section>

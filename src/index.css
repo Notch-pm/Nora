@@ -9,3 +9,127 @@
   --brand-primary: #089b59;
   --brand-secondary: #ffcd57;
 }
+
+/* Le thème du site, posé par `themeStyle` sur la racine de la page dès que la
+   collectivité est connue. Ces défauts — ceux du Socle — servent AVANT : l'écran
+   d'attente et celui d'erreur s'affichent sans thème, et n'ont pas à connaître
+   de cas d'absence. */
+:root {
+  /* ⚠️ AUCUNE POLICE WEB PAR DÉFAUT. Ce défaut sert les écrans qui s'affichent
+     AVANT que la collectivité soit connue — l'attente, l'erreur. Y nommer une
+     police à télécharger la ferait charger à chaque visite, y compris quand le
+     thème en demande une autre : le visiteur paierait deux fichiers pour n'en
+     voir qu'un. `system-ui` est déjà sur la machine, et s'affiche sans délai. */
+  --pt-font: system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --pt-radius: 10px;
+  --pt-radius-sm: 6px;
+  --pt-shadow: 0 1px 2px 0 hsl(220 20% 10% / 0.05);
+
+  --pt-h1: 30px;
+  --pt-h2: 19px;
+  --pt-body: 14px;
+  --pt-small: 12px;
+  --pt-tiny: 11px;
+
+  --pt-gap: 22px;
+  --pt-pad: 20px;
+  --pt-card-pad: 14px;
+
+  --pt-ink: #1c2220;
+  --pt-muted: #5c6663;
+  --pt-border: #e4e7e6;
+  --pt-surface: #f1f4f3;
+  --pt-primary: #089b59;
+  --pt-primary-soft: rgb(8 155 89 / 0.08);
+  --pt-on-primary: #ffffff;
+  --pt-accent: #ffcd57;
+  --pt-accent-soft: rgb(255 205 87 / 0.35);
+  --pt-accent-ink: #1c2220;
+
+  --pt-header-surface: #ffffff;
+  --pt-header-ink: #1c2220;
+  --pt-header-muted: #5c6663;
+  --pt-header-border: #e4e7e6;
+  --pt-header-direction: row;
+  --pt-header-gap: 14px;
+
+  --pt-nav-bg: transparent;
+  --pt-nav-pad: 0;
+  --pt-nav-radius: 0;
+
+  --pt-account-bg: #089b59;
+  --pt-account-fg: #ffffff;
+  --pt-account-border: #089b59;
+  --pt-account-pad: 8px 14px;
+
+  --pt-mark-bg: #089b59;
+}
+
+/* La police du thème vaut pour TOUTE la page — y compris les écrans qui ne
+   passent pas par une composition (attente, erreur, formulaire d'une démarche).
+   La poser ici plutôt que sur chaque conteneur évite qu'un écran oublié reste
+   dans la police du navigateur. */
+body {
+  font-family: var(--pt-font);
+}
+
+/* L'attente (`PortalLoader`) : trois ondes qui s'écartent du logo, un logo qui
+   respire, une phrase qui s'estompe. Ces animations ne sont pas en style en
+   ligne parce qu'une requête de média ne s'y écrit pas — et c'est elle qui
+   calme tout pour qui a demandé moins de mouvement. */
+@keyframes portal-wave {
+  0% {
+    transform: scale(0.46);
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes portal-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.035);
+  }
+}
+
+@keyframes portal-fade {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.portal-wave {
+  animation: portal-wave 3.4s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+}
+
+.portal-breathe {
+  animation: portal-breathe 3.4s ease-in-out infinite;
+}
+
+.portal-fade {
+  animation: portal-fade 3.4s ease-in-out infinite;
+}
+
+/* Mouvement réduit : on ralentit au lieu de couper. L'écran garde un signe de
+   vie — sans lui, une attente longue passerait pour une page figée. */
+@media (prefers-reduced-motion: reduce) {
+  .portal-wave,
+  .portal-breathe,
+  .portal-fade {
+    animation-duration: 16s;
+  }
+}

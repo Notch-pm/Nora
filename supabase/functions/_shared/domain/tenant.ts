@@ -7,6 +7,8 @@
  * forme des réponses du Socle est `socle/tenantService.ts`, qui traduit vers ce
  * type. Tout le reste du portail — interface comprise — ne voit que celui-ci.
  */
+import type { PortalTheme } from "./theme.ts";
+
 export interface Tenant {
   /** Identifiant de la collectivité au Socle. Sert à demander ses démarches. */
   id: string;
@@ -24,4 +26,16 @@ export interface Tenant {
    * fait texte par texte.
    */
   languages: string[];
+  /**
+   * L'apparence que la collectivité a réglée pour son site : typographie,
+   * formes, densité, en-tête, accessibilité.
+   *
+   * ⚠️ **Jamais absent.** Une collectivité qui n'a rien publié, un Socle
+   * d'avant le contrat 1.17.0, une réponse abîmée : tous donnent le thème par
+   * défaut. Aucun composant n'a donc de cas d'absence à porter.
+   *
+   * ⚠️ Il ne porte **aucune couleur** — celles-ci sont dans `Branding`. Le
+   * thème dit comment peindre, la charte dit avec quoi.
+   */
+  theme: PortalTheme;
 }

@@ -51,7 +51,9 @@ export function DemarchesSection({
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-bold text-slate-900">{section.title}</h2>
+        <h2 className="text-[length:var(--pt-h2)] font-bold text-[color:var(--pt-ink)]">
+          {section.title}
+        </h2>
         {/* Les deux filtres se rangent côte à côte : ils réduisent la même
             grille, chacun sur sa dimension. « Je suis… » n'apparaît que si la
             collectivité l'a demandé sur CETTE grille. */}
@@ -67,7 +69,7 @@ export function DemarchesSection({
         </div>
       </div>
       {ordered.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-sm text-slate-500">
+        <p className="rounded-[var(--pt-radius-sm)] border border-dashed border-[color:var(--pt-border)] py-6 text-center text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
           {t(emptyDemarchesKey(searchActive, organizationId, audience))}
         </p>
       ) : (

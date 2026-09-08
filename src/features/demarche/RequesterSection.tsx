@@ -19,7 +19,7 @@ import { errorText } from "@/i18n/t.ts";
 import type { StringKey } from "@/i18n/strings.ts";
 
 const inputClass =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 " +
+  "w-full rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-3 py-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] " +
   "focus:border-[color:var(--brand-primary)] focus:outline-none " +
   "focus:ring-2 focus:ring-[color:var(--brand-primary)]/30";
 
@@ -60,7 +60,7 @@ function RequesterInput({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={inputId} className="text-sm font-semibold text-slate-900">
+      <label htmlFor={inputId} className="text-[length:var(--pt-body)] font-semibold text-[color:var(--pt-ink)]">
         {field.label}
         {field.required && (
           <span className="ml-1 text-red-600" aria-hidden="true">
@@ -108,7 +108,7 @@ function RequesterInput({
         />
       )}
       {error !== null && (
-        <p id={inputId + "-erreur"} className="text-sm text-red-600">
+        <p id={inputId + "-erreur"} className="text-[length:var(--pt-body)] text-red-600">
           {error}
         </p>
       )}
@@ -139,10 +139,10 @@ export function RequesterSection({
   if (audiences.length === 0) return null;
 
   return (
-    <section className="flex flex-col gap-4 rounded-xl border border-slate-200 p-5">
+    <section className="flex flex-col gap-4 rounded-[var(--pt-radius)] border border-[color:var(--pt-border)] p-5">
       <div>
-        <h2 className="text-lg font-bold text-slate-900">{t("requester.title")}</h2>
-        <p className="mt-1 text-sm text-slate-500">{t("requester.subtitle")}</p>
+        <h2 className="text-[length:var(--pt-h2)] font-bold text-[color:var(--pt-ink)]">{t("requester.title")}</h2>
+        <p className="mt-1 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("requester.subtitle")}</p>
       </div>
 
       {/* Un seul public ouvert : pas de question à poser, la réponse est faite. */}
@@ -154,10 +154,10 @@ export function RequesterSection({
               <label
                 key={candidate.key}
                 className={
-                  "cursor-pointer rounded-full border px-3.5 py-1.5 text-sm font-semibold " +
+                  "cursor-pointer rounded-full border px-3.5 py-1.5 text-[length:var(--pt-body)] font-semibold " +
                   (active
                     ? "border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_10%,white)] text-[color:var(--brand-primary)]"
-                    : "border-slate-300 text-slate-600")
+                    : "border-[color:var(--pt-border)] text-[color:var(--pt-muted)]")
                 }
               >
                 <input
@@ -177,7 +177,7 @@ export function RequesterSection({
       {fields.length === 0 ? (
         // Public ouvert, mais tous les champs masqués : la collectivité ne
         // demande rien de plus. Le dire vaut mieux qu'un cadre vide.
-        <p className="text-sm text-slate-600">{t("requester.none")}</p>
+        <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("requester.none")}</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {fields.map((field) => (

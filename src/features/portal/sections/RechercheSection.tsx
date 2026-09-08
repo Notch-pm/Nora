@@ -20,7 +20,7 @@ function SearchIcon() {
       fill="none"
       stroke="currentColor"
       aria-hidden="true"
-      className="shrink-0 text-slate-400"
+      className="shrink-0 text-[color:var(--pt-muted)]"
     >
       <circle cx="11" cy="11" r="7" />
       <path d="m20 20-3.5-3.5" />
@@ -47,13 +47,15 @@ export function RechercheSection({
 
   return (
     <section className="flex flex-col items-center gap-3.5 py-2">
-      <h2 className="text-center text-2xl font-extrabold tracking-tight text-slate-900">
+      <h2 className="text-center text-[length:var(--pt-h1)] font-extrabold leading-tight tracking-tight text-[color:var(--pt-ink)]">
         {section.title}
       </h2>
       {section.subtitle.trim() !== "" && (
-        <p className="text-center text-sm text-slate-500">{section.subtitle}</p>
+        <p className="text-center text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
+          {section.subtitle}
+        </p>
       )}
-      <div className="flex h-12 w-full max-w-[520px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3.5 shadow-sm">
+      <div className="flex h-12 w-full max-w-[520px] items-center gap-2.5 rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-3.5 shadow-[var(--pt-shadow)]">
         <SearchIcon />
         <input
           type="search"
@@ -61,7 +63,7 @@ export function RechercheSection({
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder={section.placeholder}
           aria-label={label}
-          className="w-full border-0 bg-transparent p-0 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0"
+          className="w-full border-0 bg-transparent p-0 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] outline-none placeholder:text-[color:var(--pt-muted)] focus:outline-none focus:ring-0"
         />
       </div>
       {shortcuts.length > 0 && (
@@ -71,7 +73,7 @@ export function RechercheSection({
               key={demarche.id}
               type="button"
               onClick={() => onQueryChange(demarche.name)}
-              className="rounded-full bg-slate-100 px-3 py-1.5 text-[12.5px] font-semibold text-slate-700 hover:bg-slate-200"
+              className="rounded-full bg-[color:var(--pt-surface)] px-3 py-1.5 text-[length:var(--pt-small)] font-semibold text-[color:var(--pt-ink)] hover:opacity-80"
             >
               {demarche.name}
             </button>

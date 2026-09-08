@@ -20,6 +20,7 @@ import {
   PortalUnavailableError,
   resetPortalCache,
 } from "@/services/portal/portalService.ts";
+import { rememberBranding } from "./theme.ts";
 
 export type PortalState =
   | { status: "loading" }
@@ -62,6 +63,9 @@ export function usePortal(lang: string): { state: PortalState; retry: () => void
       getServedLanguage(lang),
     ])
       .then(([tenant, demarches, page, branding, served]) => {
+        // Retenue même si ce chargement est périmé : c'est la charte de cette
+        // collectivité, et elle sert à peindre l'attente de la prochaine visite.
+        rememberBranding(branding);
         if (current) {
           setState({
             status: "ready",

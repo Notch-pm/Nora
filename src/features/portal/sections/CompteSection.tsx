@@ -18,7 +18,7 @@ function UserIcon() {
       fill="none"
       stroke="currentColor"
       aria-hidden="true"
-      className="text-slate-900"
+      className="text-[color:var(--pt-on-primary)]"
     >
       <circle cx="12" cy="8" r="4" />
       <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
@@ -29,20 +29,20 @@ function UserIcon() {
 export function CompteSection({ section }: { section: CompteSectionData }) {
   const t = useT();
   return (
-    <section className="flex flex-col items-stretch gap-4 rounded-xl bg-slate-900 px-6 py-5 sm:flex-row sm:items-center">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color:var(--brand-primary)]">
+    <section className="flex flex-col items-stretch gap-4 rounded-[var(--pt-radius)] bg-[color:var(--pt-ink)] p-[var(--pt-pad)] sm:flex-row sm:items-center">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--pt-radius-sm)] bg-[color:var(--pt-primary)]">
         <UserIcon />
       </div>
       <div className="flex flex-1 flex-col gap-0.5">
-        <h2 className="text-base font-bold text-white">{section.title}</h2>
-        <p className="text-[12.5px] text-slate-300">{section.subtitle}</p>
+        <h2 className="text-[length:var(--pt-h2)] font-bold text-white">{section.title}</h2>
+        <p className="text-[length:var(--pt-small)] text-white/75">{section.subtitle}</p>
       </div>
       <button
         type="button"
         disabled
         title={t("compte.soon")}
         aria-disabled="true"
-        className="shrink-0 cursor-not-allowed whitespace-nowrap rounded-[10px] bg-white px-4 py-2.5 text-center text-sm font-bold text-slate-900 opacity-60"
+        className="shrink-0 cursor-not-allowed whitespace-nowrap rounded-[var(--pt-radius-sm)] bg-white px-4 py-2.5 text-center text-[length:var(--pt-body)] font-bold text-[color:var(--pt-ink)] opacity-60"
       >
         {t("compte.signIn")}
       </button>

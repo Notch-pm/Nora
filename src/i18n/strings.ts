@@ -65,6 +65,21 @@ export const STRINGS = {
     uk: "Мова",
     zh: "语言",
   },
+  // Le nom du lien porté par le logo : il n'est lu que par les lecteurs
+  // d'écran, l'image étant décorative.
+  "header.home": {
+    fr: "Accueil",
+    en: "Home",
+    es: "Inicio",
+    de: "Startseite",
+    it: "Home",
+    pt: "Início",
+    ar: "الصفحة الرئيسية",
+    tr: "Ana sayfa",
+    ru: "Главная",
+    uk: "Головна",
+    zh: "首页",
+  },
   "header.demarches": {
     fr: "Démarches",
     en: "Services",

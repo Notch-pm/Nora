@@ -56,19 +56,19 @@ function Receipt({ receipt, demarcheName }: { receipt: DemandeReceipt; demarcheN
   const { lang } = useLanguage();
   const t = useT();
   return (
-    <section className="rounded-xl border border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_6%,white)] p-6">
-      <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
+    <section className="rounded-[var(--pt-radius)] border border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_6%,white)] p-6">
+      <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">
         {t(receipt.created ? "receipt.title" : "receipt.titleAgain")}
       </h1>
-      <p className="mt-2 text-slate-700">{demarcheName}</p>
-      <p className="mt-6 text-sm font-semibold uppercase tracking-wide text-slate-500">
+      <p className="mt-2 text-[color:var(--pt-ink)]">{demarcheName}</p>
+      <p className="mt-6 text-[length:var(--pt-body)] font-semibold uppercase tracking-wide text-[color:var(--pt-muted)]">
         {t("receipt.reference")}
       </p>
-      <p className="mt-1 text-2xl font-black tracking-tight text-slate-900">{receipt.reference}</p>
-      <p className="mt-4 text-sm text-slate-600">{t("receipt.note")}</p>
+      <p className="mt-1 text-[length:var(--pt-h1)] font-black tracking-tight text-[color:var(--pt-ink)]">{receipt.reference}</p>
+      <p className="mt-4 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("receipt.note")}</p>
       <Link
         to={localizedPath(lang, "/")}
-        className="mt-6 inline-flex rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+        className="mt-6 inline-flex rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-4 py-2 text-[length:var(--pt-body)] font-semibold hover:bg-[color:var(--pt-surface)]"
       >
         {t("demarche.backHome")}
       </Link>
@@ -83,7 +83,7 @@ function ErrorSummary({ count }: { count: number }) {
     <div
       role="alert"
       tabIndex={-1}
-      className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800"
+      className="rounded-[var(--pt-radius-sm)] border border-red-300 bg-red-50 px-4 py-3 text-[length:var(--pt-body)] text-red-800"
     >
       {tn("form.errors", count)}
     </div>
@@ -143,7 +143,7 @@ export function FormulairePage() {
       <DemarcheError reason={state.reason} onRetry={retry}>
         <Link
           to={localizedPath(lang, "/")}
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
+          className="rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] px-4 py-2 text-[length:var(--pt-body)] hover:bg-[color:var(--pt-surface)]"
         >
           {t("demarche.backHome")}
         </Link>
@@ -158,7 +158,12 @@ export function FormulairePage() {
 
   if (receipt !== null) {
     return (
-      <DemarcheShell tenantName={tenant.name} branding={branding} languages={tenant.languages}>
+      <DemarcheShell
+      tenantName={tenant.name}
+      branding={branding}
+      theme={tenant.theme}
+      languages={tenant.languages}
+    >
         <Receipt receipt={receipt} demarcheName={detail.name} />
       </DemarcheShell>
     );
@@ -168,14 +173,19 @@ export function FormulairePage() {
   // présentation, qui explique quoi faire.
   if (schema === null) {
     return (
-      <DemarcheShell tenantName={tenant.name} branding={branding} languages={tenant.languages}>
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">{detail.name}</h1>
-        <p className="mt-3 text-slate-600">
+      <DemarcheShell
+      tenantName={tenant.name}
+      branding={branding}
+      theme={tenant.theme}
+      languages={tenant.languages}
+    >
+        <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">{detail.name}</h1>
+        <p className="mt-3 text-[color:var(--pt-muted)]">
           Cette démarche ne peut pas encore être remplie en ligne.
         </p>
         <Link
           to={backToDemarche}
-          className="mt-6 inline-flex rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
+          className="mt-6 inline-flex rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] px-4 py-2 text-[length:var(--pt-body)] hover:bg-[color:var(--pt-surface)]"
         >
           {t("demarche.back")}
         </Link>
@@ -250,17 +260,22 @@ export function FormulairePage() {
     Object.keys(errors).length + Object.keys(requesterErrors).length + (organizationError ? 1 : 0);
 
   return (
-    <DemarcheShell tenantName={tenant.name} branding={branding} languages={tenant.languages}>
+    <DemarcheShell
+      tenantName={tenant.name}
+      branding={branding}
+      theme={tenant.theme}
+      languages={tenant.languages}
+    >
       <nav className="mb-6">
         <Link
           to={backToDemarche}
-          className="text-sm font-semibold text-[color:var(--brand-primary)] hover:underline"
+          className="text-[length:var(--pt-body)] font-semibold text-[color:var(--brand-primary)] hover:underline"
         >
           {t("demarche.back")}
         </Link>
       </nav>
 
-      <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">{detail.name}</h1>
+      <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">{detail.name}</h1>
 
       <form onSubmit={submit} noValidate className="mt-8 flex flex-col gap-6">
         {errorCount > 0 && <ErrorSummary count={errorCount} />}
@@ -268,7 +283,7 @@ export function FormulairePage() {
         {sendFailure !== null && (
           <div
             role="alert"
-            className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800"
+            className="rounded-[var(--pt-radius-sm)] border border-red-300 bg-red-50 px-4 py-3 text-[length:var(--pt-body)] text-red-800"
           >
             <p className="font-semibold">{errorMessageFor(sendFailure, lang).title}</p>
             <p className="mt-1">{errorMessageFor(sendFailure, lang).detail}</p>
@@ -279,7 +294,7 @@ export function FormulairePage() {
             un seul organisme, la question n'a pas d'objet. */}
         {mustChooseOrganization && (
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="organisme" className="text-sm font-semibold text-slate-900">
+            <label htmlFor="organisme" className="text-[length:var(--pt-body)] font-semibold text-[color:var(--pt-ink)]">
               {t("form.organization")}
               <span className="ml-1 text-red-600" aria-hidden="true">
                 *
@@ -294,10 +309,10 @@ export function FormulairePage() {
                 setOrganizationError(null);
               }}
               className={
-                "w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 " +
+                "w-full rounded-[var(--pt-radius-sm)] border bg-white px-3 py-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] focus:outline-none focus:ring-2 " +
                 (organizationError !== null
                   ? "border-red-500 focus:ring-red-500/30"
-                  : "border-slate-300 focus:border-[color:var(--brand-primary)] focus:ring-[color:var(--brand-primary)]/30")
+                  : "border-[color:var(--pt-border)] focus:border-[color:var(--brand-primary)] focus:ring-[color:var(--brand-primary)]/30")
               }
             >
               <option value="">Choisissez…</option>
@@ -308,18 +323,18 @@ export function FormulairePage() {
               ))}
             </select>
             {organizationError !== null && (
-              <p className="text-sm text-red-600">{organizationError}</p>
+              <p className="text-[length:var(--pt-body)] text-red-600">{organizationError}</p>
             )}
           </div>
         )}
 
         {nodes.map((node) =>
           isSection(node) ? (
-            <section key={node.id} className="flex flex-col gap-4 rounded-xl border border-slate-200 p-5">
+            <section key={node.id} className="flex flex-col gap-4 rounded-[var(--pt-radius)] border border-[color:var(--pt-border)] p-5">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">{node.title}</h2>
+                <h2 className="text-[length:var(--pt-h2)] font-bold text-[color:var(--pt-ink)]">{node.title}</h2>
                 {node.description !== undefined && (
-                  <p className="mt-1 text-sm text-slate-500">{node.description}</p>
+                  <p className="mt-1 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{node.description}</p>
                 )}
               </div>
               {node.fields.map((field) => (
@@ -366,7 +381,7 @@ export function FormulairePage() {
           // La collectivité n'a ouvert aucun public de requérant : la demande
           // part sans identité. C'est son choix, pas un oubli du portail — mais
           // l'usager doit le savoir avant d'envoyer.
-          <p className="rounded-lg border border-dashed border-slate-300 px-4 py-4 text-sm text-slate-600">
+          <p className="rounded-[var(--pt-radius-sm)] border border-dashed border-[color:var(--pt-border)] px-4 py-4 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
             {t("form.noRequester")}
           </p>
         )}
@@ -375,11 +390,11 @@ export function FormulairePage() {
           <button
             type="submit"
             disabled={sending}
-            className="rounded-lg bg-[color:var(--brand-primary)] px-5 py-3 text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
+            className="rounded-[var(--pt-radius-sm)] bg-[color:var(--brand-primary)] px-5 py-3 text-[length:var(--pt-body)] font-bold text-white hover:opacity-90 disabled:opacity-60"
           >
             {t(sending ? "form.submitting" : "form.submit")}
           </button>
-          <p className="text-xs text-slate-500">{t("form.requiredNote")}</p>
+          <p className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">{t("form.requiredNote")}</p>
         </div>
       </form>
     </DemarcheShell>

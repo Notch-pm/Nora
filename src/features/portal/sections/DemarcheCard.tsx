@@ -18,19 +18,18 @@ export function DemarcheCard({ demarche, pinned = false }: { demarche: Demarche;
   const t = useT();
   return (
     <li
+      style={pinned ? { background: "var(--pt-primary-soft)" } : undefined}
       className={
-        "relative flex flex-col gap-2 rounded-xl border p-4 transition hover:shadow-sm " +
-        (pinned
-          ? "border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_6%,white)]"
-          : "border-slate-200")
+        "relative flex flex-col gap-2 rounded-[var(--pt-radius)] border p-[var(--pt-card-pad)] shadow-[var(--pt-shadow)] transition hover:shadow-md " +
+        (pinned ? "border-[color:var(--pt-primary)]" : "border-[color:var(--pt-border)] bg-white")
       }
     >
       {pinned && (
-        <span className="w-fit rounded-full bg-[color:var(--brand-secondary)] px-2 py-0.5 text-[10.5px] font-extrabold text-slate-900">
+        <span className="w-fit rounded-full bg-[color:var(--pt-accent)] px-2 py-0.5 text-[length:var(--pt-tiny)] font-extrabold text-[color:var(--pt-accent-ink)]">
           {t("card.pinned")}
         </span>
       )}
-      <h3 className="font-medium text-slate-900">
+      <h3 className="text-[length:var(--pt-body)] font-bold leading-tight text-[color:var(--pt-ink)]">
         <Link
           to={localizedPath(lang, "/demarches/" + encodeURIComponent(demarche.id))}
           className="after:absolute after:inset-0 hover:underline focus-visible:underline"
@@ -39,10 +38,12 @@ export function DemarcheCard({ demarche, pinned = false }: { demarche: Demarche;
         </Link>
       </h3>
       {demarche.description !== null && (
-        <p className="text-sm text-slate-600">{demarche.description}</p>
+        <p className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">{demarche.description}</p>
       )}
       {demarche.estimatedMinutes !== null && (
-        <p className="text-xs text-slate-500">{t("card.duration", { n: demarche.estimatedMinutes })}</p>
+        <p className="text-[length:var(--pt-tiny)] text-[color:var(--pt-muted)]">
+          {t("card.duration", { n: demarche.estimatedMinutes })}
+        </p>
       )}
       {demarche.organizations.length > 0 && (
         <ul
@@ -52,7 +53,7 @@ export function DemarcheCard({ demarche, pinned = false }: { demarche: Demarche;
           {demarche.organizations.map((org) => (
             <li
               key={org.id}
-              className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600"
+              className="rounded-full bg-[color:var(--pt-surface)] px-2 py-0.5 text-[length:var(--pt-tiny)] font-semibold text-[color:var(--pt-muted)]"
             >
               {org.name}
             </li>

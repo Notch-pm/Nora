@@ -16,6 +16,7 @@
 import type { Tenant } from "../domain/tenant.ts";
 import type { PortalFailure } from "../domain/failure.ts";
 import { parseLanguages } from "../domain/languages.ts";
+import { parseTheme } from "../domain/theme.ts";
 import { normalizeHostname } from "../http/hostname.ts";
 import type { SocleClient } from "./socleClient.ts";
 
@@ -43,6 +44,10 @@ function toTenant(body: unknown, hostname: string): Tenant | null {
     // Socle d'avant le contrat 1.11.0, ou une réponse abîmée, rendent `["fr"]` :
     // un portail monolingue, jamais un portail sans langue.
     languages: parseLanguages(raw.languages),
+    // Le thème du site (contrat 1.17.0). Un Socle plus ancien ne sert pas ce
+    // champ : `parseTheme` rend alors les défauts, jamais `null` — le portail
+    // a toujours de quoi peindre.
+    theme: parseTheme(raw.theme),
   };
 }
 

@@ -12,8 +12,8 @@ import type { AttachmentField, Field, FieldOption } from "@fn/_shared/domain/for
 import { useT, useTn } from "@/i18n/LanguageLayout.tsx";
 
 const inputClass =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 " +
-  "placeholder:text-slate-400 focus:border-[color:var(--brand-primary)] focus:outline-none " +
+  "w-full rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-3 py-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] " +
+  "placeholder:text-[color:var(--pt-muted)] focus:border-[color:var(--brand-primary)] focus:outline-none " +
   "focus:ring-2 focus:ring-[color:var(--brand-primary)]/30";
 
 const invalidClass = "border-red-500 focus:border-red-500 focus:ring-red-500/30";
@@ -34,9 +34,9 @@ function AttachmentNotice({ field }: { field: AttachmentField }) {
   const files = tn("form.maxFiles", field.maxFiles);
 
   return (
-    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-3">
-      <p className="text-sm text-slate-600">{t("form.attachmentLater")}</p>
-      <p className="mt-1 text-xs text-slate-500">
+    <div className="rounded-[var(--pt-radius-sm)] border border-dashed border-[color:var(--pt-border)] bg-[color:var(--pt-surface)] px-3 py-3">
+      <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("form.attachmentLater")}</p>
+      <p className="mt-1 text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
         {formats} · {files}
       </p>
     </div>
@@ -98,11 +98,11 @@ export function FormFieldControl({
         );
       case "boolean":
         return (
-          <label className="flex items-center gap-2 text-sm text-slate-800">
+          <label className="flex items-center gap-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
             <input
               {...shared}
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 accent-[color:var(--brand-primary)]"
+              className="h-4 w-4 rounded border-[color:var(--pt-border)] accent-[color:var(--brand-primary)]"
               checked={value === true}
               onChange={(event) => onChange(event.target.checked)}
             />
@@ -130,14 +130,14 @@ export function FormFieldControl({
             className="flex flex-col gap-1.5"
           >
             {field.options.map((option) => (
-              <label key={option.value} className="flex items-center gap-2 text-sm text-slate-800">
+              <label key={option.value} className="flex items-center gap-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
                 <input
                   type="radio"
                   name={inputId}
                   value={option.value}
                   checked={value === option.value}
                   onChange={() => onChange(option.value)}
-                  className="h-4 w-4 border-slate-300 accent-[color:var(--brand-primary)]"
+                  className="h-4 w-4 border-[color:var(--pt-border)] accent-[color:var(--brand-primary)]"
                 />
                 <span>{option.label}</span>
               </label>
@@ -153,7 +153,7 @@ export function FormFieldControl({
             className="flex flex-col gap-1.5"
           >
             {field.options.map((option) => (
-              <label key={option.value} className="flex items-center gap-2 text-sm text-slate-800">
+              <label key={option.value} className="flex items-center gap-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
                 <input
                   type="checkbox"
                   checked={selected.includes(option.value)}
@@ -164,7 +164,7 @@ export function FormFieldControl({
                         : selected.filter((item) => item !== option.value),
                     )
                   }
-                  className="h-4 w-4 rounded border-slate-300 accent-[color:var(--brand-primary)]"
+                  className="h-4 w-4 rounded border-[color:var(--pt-border)] accent-[color:var(--brand-primary)]"
                 />
                 <span>{option.label}</span>
               </label>
@@ -204,7 +204,7 @@ export function FormFieldControl({
       <Label
         id={inputId + "-libelle"}
         {...(isGroup ? {} : { htmlFor: inputId })}
-        className="text-sm font-semibold text-slate-900"
+        className="text-[length:var(--pt-body)] font-semibold text-[color:var(--pt-ink)]"
       >
         {field.label}
         {required && (
@@ -215,13 +215,13 @@ export function FormFieldControl({
         {required && <span className="sr-only">{t("form.required")}</span>}
       </Label>
       {field.help && (
-        <p id={inputId + "-aide"} className="text-xs text-slate-500">
+        <p id={inputId + "-aide"} className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
           {field.help}
         </p>
       )}
       {control}
       {error !== null && (
-        <p id={inputId + "-erreur"} className="text-sm text-red-600">
+        <p id={inputId + "-erreur"} className="text-[length:var(--pt-body)] text-red-600">
           {error}
         </p>
       )}

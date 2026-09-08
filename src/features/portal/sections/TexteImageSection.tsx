@@ -38,7 +38,7 @@ export function TexteImageSection({ section }: { section: TexteImageSectionData 
           src={section.imageUrl}
           alt={section.alt}
           loading="lazy"
-          className="aspect-[4/3] w-full rounded-xl object-cover"
+          className="aspect-[4/3] w-full rounded-[var(--pt-radius)] bg-[color:var(--pt-surface)] object-cover"
         />
       </div>
     </section>
@@ -50,9 +50,9 @@ function Texte({ section }: { section: TexteImageSectionData }) {
   return (
     <>
       {section.title === "" ? null : (
-        <h2 className="text-base font-bold text-slate-900">{section.title}</h2>
+        <h2 className="text-[length:var(--pt-h2)] font-bold text-[color:var(--pt-ink)]">{section.title}</h2>
       )}
-      <p className="whitespace-pre-line text-[13.5px] leading-relaxed text-slate-700">
+      <p className="whitespace-pre-line text-[length:var(--pt-body)] leading-relaxed text-[color:var(--pt-ink)]">
         {section.body}
       </p>
     </>

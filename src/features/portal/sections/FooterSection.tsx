@@ -11,22 +11,24 @@ export function FooterSection({ section }: { section: FooterSectionData }) {
   const dark = isDarkColor(section.background);
   return (
     <footer
-      className={dark ? "text-white" : "text-slate-900"}
+      className={dark ? "text-white" : "text-[color:var(--pt-ink)]"}
       style={{ backgroundColor: section.background }}
     >
       <div className="mx-auto max-w-5xl px-6 py-10">
-        {section.title ? <p className="mb-6 text-sm font-bold">{section.title}</p> : null}
+        {section.title ? (
+          <p className="mb-6 text-[length:var(--pt-body)] font-bold">{section.title}</p>
+        ) : null}
         <div className={`grid gap-8 ${footerColumnsClass(section.columns)}`}>
           {section.children.map((child) => (
             <div
               key={child.id}
               className={child.align === "center" ? "flex flex-col items-center text-center" : ""}
             >
-              <h2 className="text-sm font-bold">{child.title}</h2>
+              <h2 className="text-[length:var(--pt-body)] font-bold">{child.title}</h2>
               <p
                 className={
-                  "mt-1 whitespace-pre-line text-sm leading-relaxed " +
-                  (dark ? "text-white/75" : "text-slate-700")
+                  "mt-1 whitespace-pre-line text-[length:var(--pt-small)] leading-relaxed " +
+                  (dark ? "text-white/75" : "text-black/70")
                 }
               >
                 {child.body}

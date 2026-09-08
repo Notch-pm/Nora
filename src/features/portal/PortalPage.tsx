@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
+import type { Branding } from "@fn/_shared/domain/branding.ts";
 import {
   emptyDemarchesKey,
   filterDemarchesByOrganization,
@@ -16,15 +17,20 @@ import {
 } from "./composition.ts";
 import { errorMessageFor } from "./errorMessages.ts";
 import { HomeComposition } from "./HomeComposition.tsx";
+import { PortalLoader } from "./PortalLoader.tsx";
 import { DemarcheCard } from "./sections/DemarcheCard.tsx";
 import { OrganizationFilter } from "./sections/OrganizationFilter.tsx";
 import { usePortal } from "./usePortal.ts";
+import { themeStyle } from "./themeStyle.ts";
+import { AccessibilityNotice } from "./AccessibilityNotice.tsx";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { servedLanguage } from "@/i18n/localizedPath.ts";
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto min-h-screen max-w-3xl px-6 py-12 text-slate-800">{children}</main>
+    <main className="mx-auto min-h-screen max-w-3xl px-6 py-12 text-[color:var(--pt-ink)]">
+      {children}
+    </main>
   );
 }
 
@@ -33,38 +39,55 @@ function Shell({ children }: { children: React.ReactNode }) {
  * d'accueil. Elle possède son propre filtre par organisme : il n'y a pas de
  * page composée pour le porter.
  */
-function DefaultCatalogue({ tenant, demarches }: { tenant: Tenant; demarches: Demarche[] }) {
+function DefaultCatalogue({
+  tenant,
+  demarches,
+  branding,
+}: {
+  tenant: Tenant;
+  demarches: Demarche[];
+  branding: Branding | null;
+}) {
   const t = useT();
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const organizations = organizationsOffering(demarches, tenant.id);
   const visible = filterDemarchesByOrganization(demarches, organizationId);
 
   return (
-    <Shell>
-      <header className="border-b border-slate-200 pb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">{tenant.name}</h1>
-        <p className="mt-1 text-sm text-slate-500">{t("page.title")}</p>
-      </header>
+    <div style={themeStyle(tenant.theme, branding)}>
+      <Shell>
+        <header className="border-b border-[color:var(--pt-border)] pb-6">
+          <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">
+            {tenant.name}
+          </h1>
+          <p className="mt-1 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
+            {t("page.title")}
+          </p>
+        </header>
 
-      <div className="mt-8 flex flex-col gap-4">
-        <OrganizationFilter
-          organizations={organizations}
-          value={organizationId}
-          onChange={setOrganizationId}
-        />
-        {visible.length === 0 ? (
-          // Cas normal, pas une erreur : la collectivité existe, elle n'a
-          // simplement rien publié. Le dire clairement évite un ticket de support.
-          <p className="text-slate-600">{t(emptyDemarchesKey(false, organizationId))}</p>
-        ) : (
-          <ul className="space-y-3">
-            {visible.map((demarche) => (
-              <DemarcheCard key={demarche.id} demarche={demarche} />
-            ))}
-          </ul>
-        )}
-      </div>
-    </Shell>
+        <div className="mt-8 flex flex-col gap-4">
+          <OrganizationFilter
+            organizations={organizations}
+            value={organizationId}
+            onChange={setOrganizationId}
+          />
+          {visible.length === 0 ? (
+            // Cas normal, pas une erreur : la collectivité existe, elle n'a
+            // simplement rien publié. Le dire clairement évite un ticket de support.
+            <p className="text-[color:var(--pt-muted)]">
+              {t(emptyDemarchesKey(false, organizationId))}
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {visible.map((demarche) => (
+                <DemarcheCard key={demarche.id} demarche={demarche} />
+              ))}
+            </ul>
+          )}
+        </div>
+      </Shell>
+      <AccessibilityNotice theme={tenant.theme} />
+    </div>
   );
 }
 
@@ -85,13 +108,7 @@ export function PortalPage() {
     if (served !== null) serve(served);
   }, [served, serve]);
 
-  if (state.status === "loading") {
-    return (
-      <Shell>
-        <p className="text-slate-500">{t("page.loading")}</p>
-      </Shell>
-    );
-  }
+  if (state.status === "loading") return <PortalLoader />;
 
   if (state.status === "error") {
     const message = errorMessageFor(state.reason, lang);
@@ -128,5 +145,11 @@ export function PortalPage() {
     );
   }
 
-  return <DefaultCatalogue tenant={state.tenant} demarches={state.demarches} />;
+  return (
+    <DefaultCatalogue
+      tenant={state.tenant}
+      demarches={state.demarches}
+      branding={state.branding}
+    />
+  );
 }

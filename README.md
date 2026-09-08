@@ -48,8 +48,28 @@ du Socle, héritage déjà résolu. Elle est décorative : absente ou indisponib
 le portail garde les couleurs de la gamme, il ne tombe pas en erreur. Les
 couleurs n'entrent que sous la forme `#rrggbb` et les logos qu'en `https` —
 ce sont des valeurs injectées dans la page, on ne les « nettoie » pas, on les
-écarte. Les composants ne connaissent que deux variables CSS,
-`--brand-primary` et `--brand-secondary`.
+écarte.
+
+Le **thème** vient du Socle lui aussi (`Tenant.theme`), réglé par la
+collectivité dans l'éditeur : typographie, formes, densité, en-tête,
+accessibilité. Il ne porte **aucune couleur** — le thème dit comment peindre,
+la charte dit avec quoi. Il vaut pour **toutes les pages**, l'accueil comme le
+formulaire d'une démarche : un usager qui dépose une demande ne doit pas avoir
+l'impression de changer de site.
+
+Charte et thème arrivent ensemble dans **un seul objet de style** posé sur la
+racine de la page (`themeStyle`) ; tout le portail lit des variables CSS
+(`--brand-*` pour les couleurs appliquées, `--pt-*` pour le thème). C'est ce
+qui rend le thème gratuit : quelques centaines d'octets de style, pas une
+requête de plus.
+
+⚠️ **Sauf la police**, seul réglage qui se télécharge — et elle est
+**auto-hébergée** (`public/fonts/`, SIL Open Font License 1.1). La charger
+depuis Google Fonts enverrait l'adresse IP de chaque visiteur à un tiers, sans
+base légale, sur le site d'une collectivité. Les trois familles sont déclarées
+une fois dans `index.html` ; un `@font-face` restant inerte tant qu'aucun texte
+ne l'utilise, **seule la famille choisie est chargée** (≈ 35 Ko), et
+« Système » ne charge rien du tout.
 
 La page d'accueil est **composée par la collectivité** dans l'éditeur CMS du
 Socle (sections typées, démarches à la une, recherche). Le portail ne rend que
@@ -75,7 +95,10 @@ src/
     composition.ts         règles pures : filtres (recherche, organisme, public), organismes et
                            publics du filtre, ordre des épinglées, raccourcis, colonnes, luminance,
                            message de grille vide, « le pied de page final est le bas de la page »
-    theme.ts               la charte → variables CSS --brand-primary / --brand-secondary
+    theme.ts               la charte → --brand-* ; mémoire de la dernière charte connue
+    themeStyle.ts          le thème + la charte → toutes les variables CSS de la page
+                           (miroir de `Socle/src/features/portal/themeStyle.ts`)
+    AccessibilityNotice.tsx la déclaration RGAA, au pied de TOUTES les pages
     errorMessages.ts       un message par PortalFailure
   features/demarche/     La démarche : la lire, la remplir, la déposer.
     DemarchePage.tsx       la présentation (descriptif, durée, organismes, pièces attendues)
@@ -88,9 +111,10 @@ src/
 
 supabase/functions/
   _shared/
-    domain/              Le modèle du PORTAIL — Tenant, Demarche, HomePage, Branding, PortalFailure,
-                         Demande, plus les deux MIROIRS du schéma possédé par le Socle :
-                         formSchema.ts + conditions.ts (lecture tolérante) et requesterConfig.ts.
+    domain/              Le modèle du PORTAIL — Tenant, Demarche, HomePage, Branding, PortalTheme,
+                         PortalFailure, Demande, plus les MIROIRS du schéma possédé par le Socle :
+                         formSchema.ts + conditions.ts (lecture tolérante), requesterConfig.ts
+                         et theme.ts (snake_case du contrat → camelCase du portail).
     socle/               Le seul code qui connaisse la forme des réponses du Socle.
       urls.ts              `https` absolue ou rien — la règle des URL posées dans la page
       socleClient.ts       port HTTP + implémentation
@@ -559,12 +583,43 @@ Il corrige le **texte** et la **saisie**, pas le **placement** : les utilitaires
 Tailwind sont physiques (`ml-`, `text-left`) et ne se miroitent pas. Le miroir
 complet de la mise en page est un chantier à mener avec le RGAA.
 
+## Le thème du site
+
+Réglé par la collectivité dans l'éditeur du Socle, publié avec la page
+d'accueil, servi dans `Tenant.theme` (contrat 1.17.0).
+
+| Bloc | Ce que le portail en fait |
+| --- | --- |
+| `typography.font` | La famille servie depuis `public/fonts/` — une seule chargée. |
+| `typography.text_scale` | Toutes les tailles de texte du site (× 0,92 / 1 / 1,12). |
+| `shapes.radius` / `shadow` | Angles et ombres, partout. |
+| `shapes.density` | Espacement entre les blocs et dans les cartes (× 0,78 / 1 / 1,28). |
+| `header.*` | Fond blanc ou coloré, logo à gauche ou centré, menu texte ou pilules, bouton de compte, bandeau fixe. |
+| `accessibility.high_contrast` | Encres, bordures **et** couleur principale assombries. |
+| `accessibility.dark_primary` | La couleur de la charte foncée d'un cran (clarté × 0,75) — **au rendu**, la charte ne bouge pas. |
+| `accessibility.declaration` | La mention RGAA, au pied de toutes les pages. Vide = rien d'affiché ; le portail n'invente pas de déclaration. |
+
+⚠️ **Le thème n'est jamais absent.** Une collectivité qui n'a rien publié, un
+Socle d'avant le contrat 1.17.0, une réponse abîmée : `parseTheme` rend les
+défauts, jamais `null`. Les deux dépôts peuvent donc être déployés dans
+n'importe quel ordre, et aucun composant ne porte de cas d'absence.
+
+⚠️ **Chaque champ est indépendant.** Un réglage inconnu — ajouté par un Socle
+plus récent — retombe sur son défaut sans emporter ses voisins.
+
+⚠️ **`themeStyle.ts` est un miroir volontaire** de son homologue au Socle :
+mêmes facteurs, mêmes encres, mêmes noms de variables. C'est ce qui fait que
+l'aperçu de l'éditeur ressemble au site. S'ils divergent, c'est l'éditeur qui
+ment, et personne ne s'en aperçoit avant la publication — d'où les tests des
+deux côtés.
+
 ## Ce qui n'est pas encore fait
 
 Dans l'ordre prévu — le détail, les prérequis côté Socle et les questions
 ouvertes sont dans `docs/roadmap.md` du Socle, section « Portail usagers » :
 
-1. les **autres templates** (thème, autres pages que l'accueil, actualités) ;
+1. les **autres templates** (gabarits de page, autres pages que l'accueil,
+   actualités) — le thème, lui, est appliqué depuis le 2026-09-08 ;
 2. les démarches **hors compte** : la demande part déjà, il lui manque son après —
    confirmation par courriel et lien de suivi signé, donc le statut d'une demande
    consultable depuis le portail ;
@@ -575,7 +630,9 @@ ouvertes sont dans `docs/roadmap.md` du Socle, section « Portail usagers » :
 6. les **pièces jointes** (le formulaire les annonce déjà, le dépôt reste à faire) ;
 7. **FranceConnect** — à instruire (habilitation, périmètre).
 
-Transverse : accessibilité RGAA et mentions obligatoires d'un site public,
+Transverse : accessibilité RGAA — la **déclaration** est désormais affichée au
+pied de toutes les pages quand la collectivité l'a écrite, l'audit lui-même
+reste à faire — et les autres mentions obligatoires d'un site public,
 premier domaine réel, et surtout **le multi-collectivités du dépôt** — voir
 « Plusieurs portails, ou un portail multi-collectivités ? ». C'est un choix
 d'architecture, pas une tâche : il conditionne si cette instance reste unique.
