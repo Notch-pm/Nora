@@ -16,5 +16,23 @@
     "directory": "./dist",
     // React Router (BrowserRouter) : toute route inconnue sert index.html au lieu d'un 404.
     "not_found_handling": "single-page-application"
-  }
+  },
+
+  // Le portail est multi-tenant PAR NOM D'HÔTE : `nantes.edilumen.fr` doit arriver ici sans qu'on
+  // ait rien déployé pour Nantes. D'où une route générique plutôt qu'un domaine personnalisé —
+  // ceux-ci n'acceptent pas de joker et demanderaient une entrée par collectivité.
+  //
+  // ⚠️ `*.edilumen.fr/*` capte AUSSI www, iris, socle et clara : sur un même nom d'hôte, une route
+  // passe DEVANT un domaine personnalisé. Ces quatre-là sont donc exclus par des routes SANS Worker
+  // (« None » dans le tableau de bord), plus spécifiques, qui annulent le joker et laissent la
+  // requête arriver au Worker de chaque application. Ces exclusions ne peuvent pas vivre ici — un
+  // fichier wrangler ne décrit que les routes DE CE Worker — elles se règlent au niveau de la zone.
+  //
+  // Ne jamais pousser ce fichier avant que ces exclusions existent : le build Cloudflare créerait
+  // la route joker et les quatre applications serviraient le portail.
+  //
+  // L'apex `edilumen.fr` n'est pas concerné : `*.edilumen.fr/*` ne matche que les sous-domaines.
+  "routes": [
+    { "pattern": "*.edilumen.fr/*", "zone_name": "edilumen.fr" }
+  ]
 }
