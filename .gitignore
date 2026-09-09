@@ -6,3 +6,6 @@ dist
 *.tsbuildinfo
 .DS_Store
 supabase/.temp
+
+# État local de wrangler (wrangler dev)
+.wrangler/
