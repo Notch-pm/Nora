@@ -252,7 +252,10 @@ export function PageHeader({
           <div className="mx-auto max-w-5xl px-6 py-4">
             <ul
               aria-label={t("header.maVille")}
-              className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4"
+              // Trois colonnes au plus : à quatre, les noms de communes se
+              // faisaient tronquer — « Mairie de Saint Martin de Cr… » ne se lit
+              // pas, et c'est précisément ce qu'on vient chercher dans ce menu.
+              className="grid grid-cols-2 gap-2 sm:grid-cols-3"
             >
               {villes.map((ville) => (
                 <VilleTile key={ville.id} ville={ville} lang={lang} current={ville.slug === currentOrganisme} />

@@ -225,3 +225,32 @@ export function isDarkColor(hex: string): boolean {
   const luminance = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
   return luminance < 0.4;
 }
+
+/**
+ * Au-delà de ce nombre d'organismes, une dalle annonce un COMPTE plutôt que la
+ * liste des noms.
+ */
+export const MAX_ORGANIZATION_CHIPS = 3;
+
+/**
+ * Ce qu'une dalle de démarche affiche des organismes qui la proposent : leurs
+ * noms, ou leur nombre.
+ *
+ * ⚠️ AU-DELÀ DE TROIS, C'EST LE NOMBRE QUI RENSEIGNE, pas la liste : quatre
+ * noms de communes sur une carte de trois lignes se font tronquer
+ * (« Mairie de Saint Martin de Cr… »), et une liste illisible informe moins
+ * qu'un chiffre. L'usager qui cherche sa commune a le filtre de l'accueil et
+ * le menu « Ma ville » pour cela ; la dalle, elle, dit seulement à quelle
+ * échelle la démarche est proposée.
+ *
+ * Le seuil vaut pour TOUT le portail — la grille de la page composée, la liste
+ * de repli, la page d'un organisme : une démarche se présente de la même façon
+ * partout.
+ */
+export function organizationChips(
+  organizations: DemarcheOrganization[],
+): { kind: "noms"; organizations: DemarcheOrganization[] } | { kind: "compte"; count: number } {
+  return organizations.length > MAX_ORGANIZATION_CHIPS
+    ? { kind: "compte", count: organizations.length }
+    : { kind: "noms", organizations };
+}

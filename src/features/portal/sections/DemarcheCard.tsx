@@ -8,8 +8,9 @@
  * que la cible au doigt soit la carte et non trois mots.
  */
 import { Link } from "react-router-dom";
-import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
+import { useLanguage, useT, useTn } from "@/i18n/LanguageLayout.tsx";
 import { localizedPath } from "@/i18n/localizedPath.ts";
+import { organizationChips } from "../composition.ts";
 
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 
@@ -30,6 +31,8 @@ export function DemarcheCard({
 }) {
   const { lang } = useLanguage();
   const t = useT();
+  const tn = useTn();
+  const chips = organizationChips(demarche.organizations);
   return (
     <li
       style={pinned ? { background: "var(--pt-primary-soft)" } : undefined}
@@ -64,14 +67,20 @@ export function DemarcheCard({
           className="mt-auto flex flex-wrap gap-1 pt-1"
           aria-label={t("card.organizations")}
         >
-          {demarche.organizations.map((org) => (
-            <li
-              key={org.id}
-              className="rounded-full bg-[color:var(--pt-surface)] px-2 py-0.5 text-[length:var(--pt-tiny)] font-semibold text-[color:var(--pt-muted)]"
-            >
-              {org.name}
+          {chips.kind === "compte" ? (
+            <li className="rounded-full bg-[color:var(--pt-surface)] px-2 py-0.5 text-[length:var(--pt-tiny)] font-semibold text-[color:var(--pt-muted)]">
+              {tn("card.organizationsCount", chips.count, { n: chips.count })}
             </li>
-          ))}
+          ) : (
+            chips.organizations.map((org) => (
+              <li
+                key={org.id}
+                className="rounded-full bg-[color:var(--pt-surface)] px-2 py-0.5 text-[length:var(--pt-tiny)] font-semibold text-[color:var(--pt-muted)]"
+              >
+                {org.name}
+              </li>
+            ))
+          )}
         </ul>
       )}
     </li>

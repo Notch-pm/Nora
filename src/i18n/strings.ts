@@ -334,6 +334,35 @@ export const STRINGS = {
     uk: "Установи, які надають цю послугу",
     zh: "提供该服务的机构",
   },
+  // ⚠️ N'apparaît qu'au-delà de trois organismes (voir `organizationChips`) :
+  // la forme au singulier est là pour le type et pour un futur seuil, pas pour
+  // un cas que le portail sait produire aujourd'hui.
+  "card.organizationsCount.one": {
+    fr: "{n} collectivité",
+    en: "{n} local authority",
+    es: "{n} entidad local",
+    de: "{n} Gebietskörperschaft",
+    it: "{n} ente locale",
+    pt: "{n} autarquia",
+    ar: "جهة محلية واحدة ({n})",
+    tr: "{n} yerel yönetim",
+    ru: "{n} муниципалитет",
+    uk: "{n} громада",
+    zh: "{n} 个地方政府",
+  },
+  "card.organizationsCount.other": {
+    fr: "{n} collectivités",
+    en: "{n} local authorities",
+    es: "{n} entidades locales",
+    de: "{n} Gebietskörperschaften",
+    it: "{n} enti locali",
+    pt: "{n} autarquias",
+    ar: "{n} جهات محلية",
+    tr: "{n} yerel yönetim",
+    ru: "{n} муниципалитета",
+    uk: "{n} громади",
+    zh: "{n} 个地方政府",
+  },
   "compte.signIn": {
     fr: "Se connecter",
     en: "Sign in",

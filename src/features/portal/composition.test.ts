@@ -11,6 +11,7 @@ import {
   footerColumnsClass,
   gridColumnsClass,
   isDarkColor,
+  organizationChips,
   orderDemarchesForSection,
   organizationsOffering,
   resolveShortcuts,
@@ -242,5 +243,39 @@ describe("footerColumnsClass / isDarkColor", () => {
     expect(isDarkColor("#ffffff")).toBe(false);
     expect(isDarkColor("#ffcd57")).toBe(false);
     expect(isDarkColor("n'importe quoi")).toBe(true);
+  });
+});
+
+describe("organizationChips — ce qu'une dalle dit des organismes", () => {
+  const villes = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `o${i}`,
+      name: `Commune ${i}`,
+      slug: null,
+      logoUrl: null,
+    }));
+
+  it("nomme les organismes jusqu'à trois", () => {
+    for (const n of [1, 2, 3]) {
+      const chips = organizationChips(villes(n));
+      expect(chips.kind, `pour ${n}`).toBe("noms");
+      if (chips.kind === "noms") expect(chips.organizations).toHaveLength(n);
+    }
+  });
+
+  // ⚠️ Le cas qui motive la règle : quatre noms de communes se font tronquer
+  // sur une carte, et une liste illisible informe moins qu'un chiffre.
+  it("rend le NOMBRE au-delà de trois", () => {
+    const chips = organizationChips(villes(4));
+    expect(chips.kind).toBe("compte");
+    if (chips.kind === "compte") expect(chips.count).toBe(4);
+    const beaucoup = organizationChips(villes(12));
+    if (beaucoup.kind === "compte") expect(beaucoup.count).toBe(12);
+  });
+
+  it("ne dit rien d'une liste vide — la dalle n'affiche alors aucune puce", () => {
+    const chips = organizationChips([]);
+    expect(chips.kind).toBe("noms");
+    if (chips.kind === "noms") expect(chips.organizations).toEqual([]);
   });
 });
