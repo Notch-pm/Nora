@@ -491,6 +491,16 @@ supabase secrets set \
 supabase functions deploy portal-api
 ```
 
+Pour activer la **mesure d'audience** (facultative — voir la section dédiée) :
+
+```bash
+supabase secrets set \
+  SOCLE_AUDIENCE_API_URL=https://<ref-socle>.supabase.co/functions/v1/audience-api
+```
+
+La clé employée est `SOCLE_API_KEY`, qui doit alors porter le scope `audience`
+en plus de `read`. Sans cette URL, le portail ne compte rien.
+
 Sans les deux secrets `IRIS_*`, tout le portail fonctionne **sauf** le dépôt, qui répond
 « portail non configuré » : la consultation ne dépend pas du système de traitement.
 
@@ -632,6 +642,78 @@ mêmes facteurs, mêmes encres, mêmes noms de variables. C'est ce qui fait que
 l'aperçu de l'éditeur ressemble au site. S'ils divergent, c'est l'éditeur qui
 ment, et personne ne s'en aperçoit avant la publication — d'où les tests des
 deux côtés.
+
+## Mesure d'audience sans cookie
+
+Depuis le 2026-09-12, le portail **compte sa fréquentation**, et le Socle
+l'affiche sur le tableau de bord de chaque collectivité. Ajouter cette mesure
+n'a demandé ni bandeau de consentement, ni outil tiers, ni base de données — et
+les trois vont ensemble.
+
+**Ce qui est compté :** la page affichée (accueil, présentation d'une démarche,
+formulaire), les **arrivées** sur le site, la **langue servie**, la **classe
+d'appareil**, et les **dépôts** de demandes.
+
+⚠️ **Une visite est une ARRIVÉE, pas un visiteur unique.** C'est la première
+page d'une navigation : le référent n'est pas le site lui-même, et ce n'est pas
+un rechargement. Quelqu'un qui revient trois fois dans la journée compte trois
+visites. Sans identifiant, il n'y a aucun moyen — ni aucune envie — de savoir
+que c'est la même personne.
+
+⚠️ **Rien n'est écrit sur le poste du visiteur** : ni cookie, ni `localStorage`,
+ni `sessionStorage`. La déduplication d'une page déjà comptée tient dans une
+`ref` React, qui meurt avec l'onglet.
+
+⚠️ **Aucun identifiant ne part vers le Socle.** Ses deux tables de compteurs
+n'ont aucune colonne capable d'en porter un — un test SQL en épingle la liste
+exacte. Les trois données qui pourraient désigner quelqu'un ne franchissent
+jamais `portal-api` :
+
+| Donnée | Où elle vit | Ce qu'il en reste |
+|---|---|---|
+| Adresse IP | `portal-api`, en mémoire | un haché, le temps d'une fenêtre de frein |
+| User-Agent | `portal-api`, le temps d'une requête | un mot parmi `mobile` / `tablette` / `ordinateur` |
+| Référent | le navigateur seul | un booléen : « est-ce une arrivée ? » |
+
+C'est cette absence, et elle seule, qui dispense d'un bandeau de consentement
+(article 82 de la loi Informatique et Libertés). Une ligne dans les mentions
+légales reste **recommandée** — elle n'est pas obligatoire, faute de donnée
+personnelle. La **provenance** a été écartée du périmètre : le serveur ne sait
+pas d'où vient un visiteur.
+
+⚠️ **Un seul appel réseau par page vue.** Le beacon part en `text/plain`, qui
+est une requête « simple » au sens du CORS : pas de requête préalable `OPTIONS`.
+L'envoi ne bloque rien (`keepalive`), et un échec est un silence complet — un
+compteur ne fait jamais échouer ni attendre une page. La réponse est **toujours
+204**, y compris pour un domaine inconnu : le navigateur ne doit rien pouvoir
+déduire de ce qu'il reçoit.
+
+⚠️ **Rien n'est mesuré en développement, ni sous pilotage**
+(`import.meta.env.PROD`, `navigator.webdriver`) : un agent qui met au point sa
+page d'accueil, ou un test de bout en bout qui la parcourt, gonfleraient des
+chiffres qu'un élu lira comme de la fréquentation réelle. Les robots qui **se
+nomment** (moteurs, moniteurs, aperçus de lien) sont écartés côté serveur —
+détection grossière et assumée : elle n'existe pas pour se défendre (un robot
+malveillant se déclare navigateur), mais pour qu'une commune sans visiteur
+n'affiche pas le trafic de sa propre surveillance.
+
+⚠️ **La mesure est un choix explicite** : sans `SOCLE_AUDIENCE_API_URL`, le
+portail ne compte rien du tout. La clé employée est `SOCLE_API_KEY`, qui doit
+alors porter le scope **`audience`** en plus de `read` — une clé par
+application, c'est la décision du registre des applications du Socle.
+
+⚠️ Piège de l'implémentation, à ne pas défaire : `LanguageLayout` déclenche
+jusqu'à **deux** `navigate(replace)` par chargement (canonicalisation de
+`/fr/…`, puis alignement sur la langue servie). Un effet branché naïvement sur
+`location.pathname` compterait la même page deux fois — d'où la clé de page
+**indépendante de la langue**, et la déduplication par `ref`. Changer de langue
+sur une même page n'est pas une nouvelle page vue.
+
+Code : `src/services/audience/{pageView,useAudience}.ts` (le premier pur et
+testé), branché dans `src/i18n/LanguageLayout.tsx` — le seul point commun aux
+trois écrans ; `supabase/functions/_shared/domain/audience.ts` (pur, testé) et
+`_shared/socle/audienceClient.ts` ; route `POST /v1/audience` de `portal-api`,
+et signalement du dépôt à la fin de `POST /v1/demandes`.
 
 ## Ce qui n'est pas encore fait
 

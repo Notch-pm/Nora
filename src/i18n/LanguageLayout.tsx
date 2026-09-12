@@ -16,6 +16,7 @@
 import * as React from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { isRtl } from "@fn/_shared/domain/languages.ts";
+import { useAudience } from "@/services/audience/useAudience.ts";
 import { localizedPath, PIVOT_LANGUAGE, splitLangPath } from "./localizedPath.ts";
 import { t, tn } from "./t.ts";
 import type { StringKey } from "./strings.ts";
@@ -130,6 +131,12 @@ export function LanguageLayout() {
     },
     [navigate, path, location.pathname, location.search, location.hash],
   );
+
+  // La fréquentation, comptée sans cookie. Posée ICI parce que ce layout est le
+  // seul point commun aux trois écrans ; il voit donc passer toutes les
+  // navigations. Le hook ne rend rien et n'affiche rien — voir son en-tête pour
+  // le piège des deux `navigate(replace)` ci-dessus.
+  useAudience(lang);
 
   const value = React.useMemo<LanguageState>(
     () => ({

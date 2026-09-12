@@ -27,6 +27,7 @@ import { getBranding } from "../_shared/socle/brandingService.ts";
 import { resolveTenant } from "../_shared/socle/tenantService.ts";
 import { createSocleClient } from "../_shared/socle/socleClient.ts";
 import { withCache } from "../_shared/socle/cachedSocleClient.ts";
+import { createAudienceClient } from "../_shared/socle/audienceClient.ts";
 import { createIrisClient } from "../_shared/iris/irisClient.ts";
 import { submitDemande } from "../_shared/iris/demandeService.ts";
 import { httpStatusForPieceFailure, uploadPiece } from "../_shared/iris/pieceService.ts";
@@ -37,6 +38,7 @@ import { AUDIENCES } from "../_shared/domain/requesterConfig.ts";
 import type { AttachmentRef } from "../_shared/domain/demande.ts";
 import type { Tenant } from "../_shared/domain/tenant.ts";
 import { resolveLang } from "../_shared/domain/languages.ts";
+import { deviceClass, isBot, parseAudienceBeacon } from "../_shared/domain/audience.ts";
 import { httpStatusForFailure, type PortalFailure } from "../_shared/domain/failure.ts";
 
 /**
@@ -84,6 +86,40 @@ const MULTIPART_ALLOWANCE = 64 * 1024;
  * 60 dépôts par minute et par clé, pour toute la collectivité.
  */
 const pieceLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
+
+/**
+ * Frein de la mesure d'audience — même nature que celui des pièces, seuil bien
+ * plus large : une navigation normale produit une poignée de pages vues par
+ * minute, mais plusieurs visiteurs partagent souvent une adresse (un réseau
+ * d'entreprise, une mairie, un opérateur mobile). 120 par minute laisse
+ * largement passer un guichet entier et coupe une boucle.
+ *
+ * ⚠️ C'EST LE SEUL ENDROIT DE LA CHAÎNE OÙ L'ADRESSE IP EXISTE, et elle n'y
+ * existe que hachée, en mémoire, le temps d'une fenêtre. Le Socle ne la voit
+ * jamais : ses tables de compteurs n'ont aucune colonne capable de la porter.
+ * Freiner plus loin — chez lui — demanderait de la lui transmettre, donc de
+ * défaire la seule promesse qui dispense d'un bandeau de consentement.
+ */
+const audienceLimiter = createRateLimiter({ windowMs: 60_000, max: 120 });
+
+/**
+ * Le client d'écriture vers le Socle, construit par requête (motif
+ * `irisClient`) : il n'a rien à mettre en cache, contrairement au port de
+ * lecture. `null` sans `SOCLE_AUDIENCE_API_URL` — la mesure est alors un
+ * silence complet.
+ *
+ * ⚠️ LA MÊME CLÉ QUE LA LECTURE (`SOCLE_API_KEY`), et c'est la décision du
+ * registre des applications : UNE clé par application, portant ses scopes.
+ * Celle de Nora porte `read` et `audience`. Une seconde clé pour la mesure
+ * ferait deux secrets à poser, deux à faire tourner, et deux à révoquer le
+ * jour où il le faudrait.
+ */
+function audienceClient() {
+  const baseUrl = Deno.env.get("SOCLE_AUDIENCE_API_URL");
+  const apiKey = Deno.env.get("SOCLE_API_KEY");
+  if (!baseUrl || !apiKey) return null;
+  return createAudienceClient({ baseUrl, apiKey });
+}
 
 /** Messages de refus d'une pièce, adressés au visiteur (l'écran les traduit par code). */
 const PIECE_MESSAGES: Record<string, string> = {
@@ -505,13 +541,85 @@ Deno.serve(async (request: Request): Promise<Response> => {
     );
     if (!submission.ok) return failure(submission.reason);
 
+    // Le dépôt compte dans la fréquentation — APRÈS l'acceptation d'Iris, et
+    // sans retarder l'accusé : un dépôt compté puis refusé gonflerait un taux
+    // de conversion sans qu'aucune demande n'existe. `waitUntil` laisse
+    // l'envoi finir hors de la réponse quand le runtime le propose.
+    const audience = audienceClient();
+    if (audience !== null) {
+      const counted = audience.post("/v1/deposits", {
+        tenant_id: tenant.id,
+        procedure_id: demarcheId,
+      });
+      const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
+        .EdgeRuntime;
+      if (typeof runtime?.waitUntil === "function") runtime.waitUntil(counted);
+    }
+
     // Jamais de cache sur un accusé : il est propre à un dépôt.
     return json(201, { receipt: submission.receipt }, { "Cache-Control": "no-store" });
   }
 
+  // ── POST /v1/audience — une page vue, comptée sans cookie.
+  //
+  // ⚠️ LA RÉPONSE EST TOUJOURS 204, quoi qu'il arrive : robot écarté, frein
+  // atteint, domaine inconnu, Socle muet, mesure non configurée. Le navigateur
+  // ne doit RIEN pouvoir déduire de ce qu'il reçoit — ni l'existence d'une
+  // collectivité, ni l'état de la chaîne de mesure — et il n'a de toute façon
+  // rien à en faire : il a déjà affiché sa page. Seul un corps illisible rend
+  // 400, parce que c'est une erreur de l'appelant et qu'elle se corrige.
+  //
+  // ⚠️ SANS `SOCLE_AUDIENCE_API_URL`, LA FONCTION NE COMPTE RIEN. La mesure est
+  // un choix explicite, et un environnement de développement ne pollue pas les
+  // chiffres d'une collectivité en production.
+  if (request.method === "POST" && path === "/v1/audience") {
+    const silent = () => new Response(null, { status: 204, headers: { ...CORS_HEADERS, "Cache-Control": "no-store" } });
+
+    let body: unknown;
+    try {
+      // ⚠️ `text/plain` côté navigateur : c'est une requête « simple », donc
+      // SANS requête préalable OPTIONS — un seul appel par page vue, pas deux.
+      // Le corps reste du JSON ; on le lit nous-mêmes.
+      body = JSON.parse(await request.text());
+    } catch {
+      return badRequest("Corps JSON attendu.");
+    }
+    const beacon = parseAudienceBeacon(body);
+    if (beacon === null) return badRequest("Beacon invalide.");
+
+    // Les robots honnêtes se nomment, et visitent une page d'accueil de
+    // collectivité plusieurs fois par jour (voir `isBot`). Le User-Agent est lu
+    // ICI, et n'ira pas plus loin.
+    const userAgent = request.headers.get("user-agent");
+    if (isBot(userAgent)) return silent();
+
+    if (!audienceLimiter.allow(await hashKey(clientAddress(request.headers)))) return silent();
+
+    const audience = audienceClient();
+    if (audience === null) return silent();
+
+    const resolved = await tenantOf(request, socle);
+    if (!resolved.ok) return silent();
+
+    // La langue SERVIE, pas celle demandée — la même résolution que partout
+    // ailleurs : compter « breton » là où la collectivité sert du français
+    // ferait croire à un public qui n'existe pas.
+    const lang = resolveLang(askedLang, resolved.tenant.languages);
+
+    await audience.post("/v1/page-views", {
+      tenant_id: resolved.tenant.id,
+      page: beacon.page,
+      procedure_id: beacon.demarcheId,
+      entry: beacon.entry,
+      lang,
+      device: deviceClass(userAgent),
+    });
+    return silent();
+  }
+
   if (
     path === "/v1/bootstrap" || path === "/v1/demandes" || path === "/v1/demandes/pieces"
-    || path.startsWith("/v1/demarches/")
+    || path === "/v1/audience" || path.startsWith("/v1/demarches/")
   ) {
     return json(405, {
       error: { code: "method_not_allowed", message: "Méthode non autorisée sur cette ressource." },
