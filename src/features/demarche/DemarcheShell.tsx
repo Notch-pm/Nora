@@ -8,6 +8,7 @@
  */
 import type { ReactNode } from "react";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
+import type { Ville } from "@fn/_shared/domain/demarche.ts";
 import type { PortalLoadFailure } from "@/services/portal/portalClient.ts";
 import { errorMessageFor } from "@/features/portal/errorMessages.ts";
 import { PageHeader } from "@/features/portal/PageHeader.tsx";
@@ -20,14 +21,28 @@ import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 export function DemarcheShell({
   tenantName,
   branding,
+  tenantBranding,
   theme,
   languages,
+  villes = [],
   children,
 }: {
   tenantName: string | null;
   /** Les langues de la collectivité, pour le sélecteur de l'en-tête. */
   languages?: readonly string[];
+  /**
+   * Les villes de la collectivité, pour le menu « Ma ville » de l'en-tête.
+   * Vide tant que la collectivité n'est pas connue (attente, erreur).
+   */
+  villes?: Ville[];
   branding: Branding | null;
+  /**
+   * La charte de la COLLECTIVITÉ, pour la marque de l'en-tête. Sous le
+   * périmètre d'un organisme, `branding` est la sienne et peint la page ;
+   * l'en-tête, lui, continue de dire sur quel site on est. Absente (attente,
+   * erreur, serveur d'avant) : on retombe sur la charte peinte, comme avant.
+   */
+  tenantBranding?: Branding | null;
   /**
    * Le thème du site. ⚠️ Il vaut pour TOUTES les pages, pas seulement pour
    * l'accueil composé : un usager qui dépose une demande ne doit pas avoir
@@ -47,9 +62,10 @@ export function DemarcheShell({
           mieux vaut une barre vide qu'un nom qui change sous les yeux. */}
       <PageHeader
         tenantName={tenantName ?? ""}
-        logoUrl={headerLogoUrl(applied, branding)}
+        logoUrl={headerLogoUrl(applied, tenantBranding ?? branding)}
         theme={theme}
         languages={languages}
+        villes={villes}
       />
       <div className="mx-auto w-full max-w-3xl flex-1 px-6 pb-12 pt-8">{children}</div>
       <AccessibilityNotice theme={theme} />

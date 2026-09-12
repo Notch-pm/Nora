@@ -17,7 +17,7 @@
  * la fait suivre la collectivité.
  */
 import { useEffect, useState } from "react";
-import type { Demarche } from "@fn/_shared/domain/demarche.ts";
+import type { Demarche, Ville } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
 import type { PortalLoadFailure } from "@/services/portal/portalClient.ts";
@@ -37,10 +37,17 @@ export type OrganismeState =
     /** La langue réellement servie — pas forcément celle demandée. */
     lang: string;
     tenant: Tenant;
+    /** Les villes de la collectivité, pour le menu « Ma ville » de l'en-tête. */
+    villes: Ville[];
     /** L'organisme dont cette page montre les démarches. */
     organisme: { id: string; name: string; slug: string | null };
     demarches: Demarche[];
     branding: Branding | null;
+    /**
+     * La charte de la COLLECTIVITÉ — celle de la marque de l'en-tête, pas
+     * celle qui peint la page. Voir `PortalSnapshot.tenantBranding`.
+     */
+    tenantBranding: Branding | null;
   }
   | { status: "error"; reason: PortalLoadFailure };
 
@@ -69,9 +76,11 @@ export function useOrganisme(
             requested: lang,
             lang: snapshot.lang,
             tenant: snapshot.tenant,
+            villes: snapshot.villes,
             organisme: snapshot.organisme,
             demarches: snapshot.demarches,
             branding: snapshot.branding,
+            tenantBranding: snapshot.tenantBranding,
           });
         }
       })

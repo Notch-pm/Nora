@@ -39,6 +39,7 @@ import {
   demarchesOfOrganization,
   type DemarcheOrganization,
   organizationBySlug,
+  villesOf,
 } from "../_shared/domain/demarche.ts";
 import type { AttachmentRef } from "../_shared/domain/demande.ts";
 import type { Tenant } from "../_shared/domain/tenant.ts";
@@ -299,13 +300,30 @@ Deno.serve(async (request: Request): Promise<Response> => {
       const organismeBranding = await getBranding(organisme.id, socle);
       if (!organismeBranding.ok) return failure(organismeBranding.reason);
 
+      // ⚠️ DEUX CHARTES, DEUX USAGES, et il faut les deux : celle de
+      // l'organisme PEINT la page (ses couleurs, son logo dans le bloc
+      // d'identification), celle de la collectivité porte la MARQUE de
+      // l'en-tête. Le bandeau du haut dit sur quel site on est ; le bloc
+      // dessous dit quelle mairie on visite. Les confondre ferait croire à un
+      // site propre à la mairie, alors qu'elle est une entrée de celui de sa
+      // collectivité.
+      //
+      // Le coût est nul en pratique : c'est le même chemin demandé au Socle
+      // que pour l'accueil, donc la même entrée de cache.
+      const tenantBranding = await getBranding(tenant.id, socle);
+
       return json(
         200,
         {
           lang,
           tenant,
+          // ⚠️ TOUTES les villes, pas seulement celle-ci : le menu « Ma ville »
+          // de l'en-tête sert précisément à en changer. Une liste réduite au
+          // périmètre courant enfermerait le visiteur sur la page où il est.
+          villes: villesOf(demarches.demarches, tenant.id),
           organisme,
           demarches: demarchesOfOrganization(demarches.demarches, organisme.id),
+          tenantBranding: tenantBranding.ok ? tenantBranding.branding : null,
           // ⚠️ AUCUNE PAGE COMPOSÉE ICI, et ce n'est pas un manque : le Socle
           // réserve `portal_pages` aux collectivités racines, et le portail
           // n'en veut pas — la prose d'une intercommunalité sonnerait faux
@@ -332,9 +350,14 @@ Deno.serve(async (request: Request): Promise<Response> => {
       {
         lang,
         tenant,
+        villes: villesOf(demarches.demarches, tenant.id),
         demarches: demarches.demarches,
         page: page.page,
         branding: branding.branding,
+        // Ici les deux ne font qu'une : la page peinte est celle de la
+        // collectivité. Le champ existe quand même, pour que l'en-tête lise
+        // TOUJOURS la même chose, sur les quatre écrans.
+        tenantBranding: branding.branding,
       },
       // Le catalogue d'une collectivité change à la journée, et une page
       // publique est servie à beaucoup de visiteurs : une minute de cache
@@ -371,21 +394,42 @@ Deno.serve(async (request: Request): Promise<Response> => {
       if (organisme === null) return failure("organisme_unavailable");
     }
 
+    // Le menu « Ma ville » doit être dans l'en-tête de TOUS les écrans, celui
+    // d'une démarche compris — sinon il disparaîtrait dès qu'on ouvre une
+    // démarche, et réapparaîtrait en revenant.
+    //
+    // ⚠️ Cette lecture n'est un appel de plus qu'À FROID : la clé du cache est
+    // le chemin demandé au Socle, exactement celui de l'accueil et des pages
+    // d'organisme, et un visiteur arrive presque toujours par une page qui l'a
+    // déjà réchauffé. Un échec ne bloque rien : la liste est vide, le menu ne
+    // s'affiche pas, la démarche se lit quand même.
+    const catalogue = await getPublicDemarches(resolved.tenant.id, socle, lang);
+    const villes = catalogue.ok ? villesOf(catalogue.demarches, resolved.tenant.id) : [];
+
     // La charte voyage avec la démarche : la page doit être aux couleurs de la
     // collectivité même quand l'usager y arrive par un lien direct, sans être
     // passé par l'accueil. Décorative comme partout — jamais bloquante.
     //
     // Sous le périmètre d'un organisme, c'est la SIENNE : rien ne doit changer
     // d'habillage entre la liste d'une mairie et la démarche qu'on y choisit.
-    const branding = await getBranding(organisme?.id ?? resolved.tenant.id, socle);
+    //
+    // La MARQUE de l'en-tête, elle, reste celle de la collectivité — voir la
+    // page d'un organisme pour le pourquoi. Hors périmètre, les deux appels
+    // sont le même chemin, donc la même entrée de cache : rien de plus.
+    const tenantBranding = await getBranding(resolved.tenant.id, socle);
+    const branding = organisme === null
+      ? tenantBranding
+      : await getBranding(organisme.id, socle);
     return json(
       200,
       {
         lang,
         tenant: resolved.tenant,
+        villes,
         organisme,
         demarche: result.demarche,
         branding: branding.ok ? branding.branding : null,
+        tenantBranding: tenantBranding.ok ? tenantBranding.branding : null,
       },
       { "Cache-Control": "public, max-age=60" },
     );

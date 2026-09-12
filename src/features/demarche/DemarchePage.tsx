@@ -74,7 +74,7 @@ export function DemarchePage() {
     );
   }
 
-  const { tenant, demarche, branding } = state.snapshot;
+  const { tenant, villes, demarche, branding, tenantBranding } = state.snapshot;
   const attachments =
     demarche.form === null
       ? []
@@ -84,8 +84,10 @@ export function DemarchePage() {
     <DemarcheShell
       tenantName={tenant.name}
       branding={branding}
+      tenantBranding={tenantBranding}
       theme={tenant.theme}
       languages={tenant.languages}
+      villes={villes}
     >
       <nav className="mb-6">
         <BackToHome subtle />

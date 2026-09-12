@@ -6,7 +6,7 @@
  * chargement mémoïsé — deux questions, un seul aller-retour.
  */
 import { useEffect, useState } from "react";
-import type { Demarche } from "@fn/_shared/domain/demarche.ts";
+import type { Demarche, Ville } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
@@ -17,6 +17,7 @@ import {
   getHomePage,
   getPublicDemarches,
   getServedLanguage,
+  getVilles,
   PortalUnavailableError,
   resetPortalCache,
 } from "@/services/portal/portalService.ts";
@@ -40,6 +41,8 @@ export type PortalState =
     /** La langue réellement servie — pas forcément celle demandée. */
     lang: string;
     tenant: Tenant;
+    /** Les villes de la collectivité, pour le menu « Ma ville » de l'en-tête. */
+    villes: Ville[];
     demarches: Demarche[];
     page: HomePage | null;
     branding: Branding | null;
@@ -62,8 +65,9 @@ export function usePortal(lang: string): { state: PortalState; retry: () => void
       getHomePage(lang),
       getBranding(lang),
       getServedLanguage(lang),
+      getVilles(lang),
     ])
-      .then(([tenant, demarches, page, branding, served]) => {
+      .then(([tenant, demarches, page, branding, served, villes]) => {
         // Retenue même si ce chargement est périmé : c'est la charte de cette
         // collectivité, et elle sert à peindre l'attente de la prochaine visite.
         // L'icône de l'onglet se pose pour la même raison — elle appartient au
@@ -77,6 +81,7 @@ export function usePortal(lang: string): { state: PortalState; retry: () => void
             requested: lang,
             lang: served,
             tenant,
+            villes,
             demarches,
             page,
             branding,

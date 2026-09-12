@@ -93,6 +93,22 @@ export const STRINGS = {
     uk: "Послуги",
     zh: "办事服务",
   },
+  // Le déclencheur du bandeau qui liste les villes (organismes ayant leur
+  // propre page) de la collectivité — voir `PageHeader.tsx`. Remplace
+  // « header.demarches » dans la nav dès qu'il y a au moins une ville.
+  "header.maVille": {
+    fr: "Ma ville",
+    en: "My town",
+    es: "Mi ciudad",
+    de: "Meine Stadt",
+    it: "La mia città",
+    pt: "A minha cidade",
+    ar: "مدينتي",
+    tr: "Şehrim",
+    ru: "Мой город",
+    uk: "Моє місто",
+    zh: "我的城市",
+  },
   "header.contact": {
     fr: "Contact",
     en: "Contact",

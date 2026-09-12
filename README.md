@@ -280,13 +280,48 @@ comme les autres — c'est ce que vérifie `pageOf` dans ses tests, et c'était 
 piège de ce lot : sans lui, ouvrir ces adresses aurait éteint la mesure sur ces
 parcours, en silence.
 
+### Le menu « Ma ville »
+
+L'en-tête porte un menu **« Ma ville »** — à la place du libellé « Démarches »,
+qui était décoratif. Il ouvre un bandeau sous l'en-tête où chaque ville est
+nommée, avec son logo, et mène à sa page.
+
+**La liste vient du catalogue**, exactement comme les pages : une ville y figure
+tant qu'elle propose au moins une démarche publiée. Lister le sous-arbre entier
+donnerait des entrées de menu qui mènent à une page inexistante — un lien mort
+dans une navigation. La collectivité elle-même est écartée (sa page est
+l'accueil), et un organisme sans slug aussi (pas d'adresse). Les **services
+internes** n'y sont jamais : le Socle ne les nomme pas, c'est leur porteur qui
+apparaît.
+
+⚠️ **LE LOGO EST CELUI DE LA VILLE, PAS CELUI DONT ELLE HÉRITE.** C'est le seul
+endroit où le portail reçoit une valeur de charte **brute** (contrat 1.23.0,
+`logo_url` sur `PortalOrganizationRef`), et c'est l'usage qui le veut : dans une
+liste de communes, un logo hérité donnerait la même image à chaque ligne, celle
+de l'intercommunalité, et la liste ne distinguerait plus rien. Sans logo propre,
+une pastille à la couleur du thème — jamais le logo de la collectivité.
+
+⚠️ **LA LISTE VOYAGE DANS TOUS LES INSTANTANÉS** (`villes`, à côté de `tenant`),
+parce que le menu vit dans l'en-tête et que l'en-tête est sur tous les écrans.
+La calculer par écran ferait un menu qui disparaît dès qu'on ouvre une démarche.
+Sur la page d'une démarche, cela demande au serveur de lire le catalogue en plus
+du détail : c'est **la même entrée de cache que l'accueil**, donc un appel de
+plus seulement à froid, et son échec vide simplement le menu.
+
+Sur une **page ville**, l'en-tête se range sur **une seule ligne** quand la
+largeur le permet — y compris lorsque le thème de la collectivité centre son
+logo, réglage pensé pour sa page d'accueil. Le menu y est toujours présent :
+c'est de là qu'on passe d'une ville à l'autre.
+
 Code : `src/i18n/localizedPath.ts` (la règle d'adresse, pure et testée),
 `src/App.tsx` (les six formes), `src/features/organisme/` (le gabarit et son
 chargement), `src/services/portal/organismeService.ts` ; côté serveur,
 `?organisme=<slug>` sur `GET /v1/bootstrap` et `GET /v1/demarches/{id}` de
 `portal-api`, et les deux fonctions pures `organizationBySlug` /
-`demarchesOfOrganization` de `_shared/domain/demarche.ts`. Contrat public
-**1.22.0** : `slug` sur `PortalOrganizationRef`.
+`demarchesOfOrganization` de `_shared/domain/demarche.ts` ; la liste du menu par
+`villesOf` (pure, testée) dans le même fichier, et `PageHeader` pour le bandeau.
+Contrat public **1.22.0** (`slug`) puis **1.23.0** (`logo_url`) sur
+`PortalOrganizationRef`.
 
 ## Une démarche, pour de vrai
 

@@ -4,17 +4,35 @@ import {
   type DemarcheOrganization,
   demarchesOfOrganization,
   organizationBySlug,
+  villesOf,
 } from "./demarche.ts";
 
-const ACCM: DemarcheOrganization = { id: "accm", name: "ACCM", slug: "laurentville" };
-const ARLES: DemarcheOrganization = { id: "arles", name: "Mairie d'Arles", slug: "mairie-d-arles" };
+const ACCM: DemarcheOrganization = {
+  id: "accm",
+  name: "ACCM",
+  slug: "laurentville",
+  logoUrl: "https://exemple.fr/accm.png",
+};
+const ARLES: DemarcheOrganization = {
+  id: "arles",
+  name: "Mairie d'Arles",
+  slug: "mairie-d-arles",
+  logoUrl: "https://exemple.fr/arles.png",
+};
 const CRAU: DemarcheOrganization = {
   id: "crau",
   name: "Mairie de Saint Martin de Crau",
   slug: "mairie-annexe",
+  // Pas de logo à elle : la liste affichera une pastille, jamais celui d'ACCM.
+  logoUrl: null,
 };
 /** Un organisme auquel personne n'a donné de slug : il n'a pas d'adresse. */
-const SANS_SLUG: DemarcheOrganization = { id: "sans", name: "Service sans slug", slug: null };
+const SANS_SLUG: DemarcheOrganization = {
+  id: "sans",
+  name: "Service sans slug",
+  slug: null,
+  logoUrl: null,
+};
 
 function demarche(id: string, organizations: DemarcheOrganization[]): Demarche {
   return {
@@ -84,5 +102,57 @@ describe("demarchesOfOrganization — ce que cet organisme propose", () => {
 
   it("rend une liste vide pour un organisme inconnu", () => {
     expect(demarchesOfOrganization(CATALOGUE, "personne")).toEqual([]);
+  });
+});
+
+describe("villesOf — la liste du menu « Ma ville »", () => {
+  it("rend les organismes qui ont une page, triés par nom, avec leur logo", () => {
+    expect(villesOf(CATALOGUE, "accm")).toEqual([
+      { id: "arles", name: "Mairie d'Arles", slug: "mairie-d-arles", logoUrl: "https://exemple.fr/arles.png" },
+      { id: "crau", name: "Mairie de Saint Martin de Crau", slug: "mairie-annexe", logoUrl: null },
+    ]);
+  });
+
+  // ⚠️ La page de la collectivité est l'accueil du portail : une entrée de
+  // menu vers elle ferait deux chemins vers la même page.
+  it("écarte la collectivité elle-même", () => {
+    expect(villesOf(CATALOGUE, "accm").some((v) => v.id === "accm")).toBe(false);
+    // Et si on visite le portail d'un autre tenant, c'est l'autre qui sort.
+    expect(villesOf(CATALOGUE, "arles").map((v) => v.id)).toEqual(["accm", "crau"]);
+  });
+
+  // Sans slug, pas d'adresse : une entrée de menu qui ne mène nulle part.
+  it("écarte un organisme sans slug", () => {
+    expect(villesOf(CATALOGUE, "accm").some((v) => v.id === "sans")).toBe(false);
+  });
+
+  it("ne nomme chaque ville qu'une fois, quel que soit le nombre de démarches", () => {
+    const villes = villesOf(CATALOGUE, "accm");
+    expect(new Set(villes.map((v) => v.id)).size).toBe(villes.length);
+  });
+
+  it("rend une liste vide quand rien n'est publié", () => {
+    expect(villesOf([], "accm")).toEqual([]);
+  });
+
+  // Le tri est celui d'une liste lue en français : « Étoile » avant « Fontvieille ».
+  it("trie sans se laisser piéger par les accents", () => {
+    const etoile: DemarcheOrganization = {
+      id: "etoile",
+      name: "Étoile-sur-Rhône",
+      slug: "etoile-sur-rhone",
+      logoUrl: null,
+    };
+    const fontvieille: DemarcheOrganization = {
+      id: "font",
+      name: "Fontvieille",
+      slug: "mairie-de-fontvieille",
+      logoUrl: null,
+    };
+    const catalogue = [demarche("d", [fontvieille, etoile])];
+    expect(villesOf(catalogue, "accm").map((v) => v.name)).toEqual([
+      "Étoile-sur-Rhône",
+      "Fontvieille",
+    ]);
   });
 });

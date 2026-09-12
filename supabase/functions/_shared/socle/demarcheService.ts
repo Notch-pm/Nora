@@ -29,6 +29,7 @@ import { parseFormSchema } from "../domain/formSchema.ts";
 import { parseRequesterConfig } from "../domain/requesterConfig.ts";
 import { localizedText } from "../domain/languages.ts";
 import type { SocleClient } from "./socleClient.ts";
+import { httpsUrl } from "./urls.ts";
 
 export type DemarchesResult =
   | { ok: true; demarches: Demarche[] }
@@ -61,7 +62,13 @@ function toOrganizations(raw: unknown): DemarcheOrganization[] {
     // Le slug peut manquer — Socle d'avant le contrat 1.22.0, ou organisme
     // auquel personne n'a donné d'identifiant lisible : il n'ouvre alors
     // aucune page, et ne change rien au reste de la carte.
-    if (id !== null && name !== null) organizations.push({ id, name, slug: text(org.slug) });
+    //
+    // Le logo passe par la même règle que toutes les images d'une page
+    // publique : `https` absolue ou rien (`urls.ts`). Un logo écarté rend une
+    // pastille, pas une image cassée.
+    if (id !== null && name !== null) {
+      organizations.push({ id, name, slug: text(org.slug), logoUrl: httpsUrl(org.logo_url) });
+    }
   }
   return organizations;
 }

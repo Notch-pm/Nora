@@ -22,7 +22,7 @@
  * qu'une seule ressource à ce stade, et la remplacer plus tard par un vrai
  * client de données ne demandera de toucher qu'ici.
  */
-import type { Demarche } from "@fn/_shared/domain/demarche.ts";
+import type { Demarche, Ville } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
@@ -130,6 +130,17 @@ export async function getPublicDemarches(lang: string): Promise<Demarche[]> {
  */
 export async function getHomePage(lang: string): Promise<HomePage | null> {
   return (await snapshot(lang)).page;
+}
+
+/**
+ * Les villes de la collectivité — de quoi bâtir le menu « Ma ville ».
+ *
+ * Une liste vide est une réponse normale : aucun organisme ne publie de
+ * démarche, il n'y a donc nulle part où aller et l'en-tête n'affiche pas le
+ * menu.
+ */
+export async function getVilles(lang: string): Promise<Ville[]> {
+  return (await snapshot(lang)).villes;
 }
 
 /** La charte graphique de la collectivité, ou `null` — couleurs par défaut. */

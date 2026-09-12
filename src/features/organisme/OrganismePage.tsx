@@ -106,7 +106,13 @@ export function OrganismePage() {
     );
   }
 
-  const { tenant, organisme, demarches, branding } = state;
+  const { tenant, organisme, demarches, branding, tenantBranding } = state;
+  // ⚠️ DEUX LOGOS, ET C'EST VOULU : celui de la COLLECTIVITÉ dans l'en-tête —
+  // le bandeau du haut dit sur quel site on est — et celui de la VILLE dans le
+  // bloc d'identification juste dessous, qui dit laquelle on visite. Les
+  // confondre laisserait croire à un site propre à la mairie, alors qu'elle
+  // est une entrée du site de sa collectivité.
+  const marqueLogoUrl = headerLogoUrl(tenant.theme, tenantBranding);
   const logoUrl = headerLogoUrl(tenant.theme, branding);
   const audiences = audiencesOffered(demarches);
   const searchActive = query.trim() !== "";
@@ -120,10 +126,15 @@ export function OrganismePage() {
   return (
     <div style={themeStyle(tenant.theme, branding)} className="min-h-screen bg-white">
       <PageHeader
-        tenantName={organisme.name}
-        logoUrl={logoUrl}
+        tenantName={tenant.name}
+        logoUrl={marqueLogoUrl}
         theme={tenant.theme}
         languages={tenant.languages}
+        villes={state.villes}
+        // ⚠️ Page de ville : marque + nav + langue + compte doivent tenir sur
+        // une seule ligne quand la largeur le permet, y compris quand le
+        // thème de la collectivité centre le logo (ACCM) — voir `PageHeader`.
+        singleLine
       />
 
       {/* Le bloc d'identification : le logo de l'en-tête (28 px) ne suffit

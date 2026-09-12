@@ -157,7 +157,7 @@ export function FormulairePage() {
     );
   }
 
-  const { tenant, branding } = state.snapshot;
+  const { tenant, villes, branding, tenantBranding } = state.snapshot;
   const detail = state.snapshot.demarche;
   const schema = detail.form;
   const backToDemarche = organismePath(
@@ -171,8 +171,10 @@ export function FormulairePage() {
       <DemarcheShell
       tenantName={tenant.name}
       branding={branding}
+      tenantBranding={tenantBranding}
       theme={tenant.theme}
       languages={tenant.languages}
+      villes={villes}
     >
         <Receipt receipt={receipt} demarcheName={detail.name} />
       </DemarcheShell>
@@ -186,8 +188,10 @@ export function FormulairePage() {
       <DemarcheShell
       tenantName={tenant.name}
       branding={branding}
+      tenantBranding={tenantBranding}
       theme={tenant.theme}
       languages={tenant.languages}
+      villes={villes}
     >
         <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">{detail.name}</h1>
         <p className="mt-3 text-[color:var(--pt-muted)]">
@@ -276,8 +280,10 @@ export function FormulairePage() {
     <DemarcheShell
       tenantName={tenant.name}
       branding={branding}
+      tenantBranding={tenantBranding}
       theme={tenant.theme}
       languages={tenant.languages}
+      villes={villes}
     >
       <nav className="mb-6">
         <Link

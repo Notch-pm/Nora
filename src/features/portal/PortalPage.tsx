@@ -138,6 +138,7 @@ export function PortalPage() {
     return (
       <HomeComposition
         tenant={state.tenant}
+        villes={state.villes}
         demarches={state.demarches}
         page={state.page}
         branding={state.branding}

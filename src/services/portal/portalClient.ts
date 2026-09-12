@@ -15,6 +15,7 @@ import type {
   Demarche,
   DemarcheDetail,
   DemarcheOrganization,
+  Ville,
 } from "@fn/_shared/domain/demarche.ts";
 import type { DemandeReceipt, DemandeSubmission } from "@fn/_shared/domain/demande.ts";
 import type { PieceFailure, PieceReceipt } from "@fn/_shared/iris/pieceService.ts";
@@ -32,11 +33,30 @@ export interface PortalSnapshot {
    */
   lang: string;
   tenant: Tenant;
+  /**
+   * Les villes de la collectivité — les organismes qui ont une page, prêtes à
+   * rendre (dédoublonnées, triées par nom).
+   *
+   * ⚠️ Elle voyage dans TOUS les instantanés parce que le menu « Ma ville »
+   * vit dans l'en-tête, qui est sur tous les écrans : le calculer par écran
+   * ferait un menu qui disparaît sur la page d'une démarche. Vide = pas de
+   * menu (aucun organisme ne publie, ou serveur d'avant).
+   */
+  villes: Ville[];
   demarches: Demarche[];
   /** La page d'accueil composée par la collectivité ; `null` = jamais publiée. */
   page: HomePage | null;
   /** La charte graphique de la collectivité ; `null` = couleurs par défaut. */
   branding: Branding | null;
+  /**
+   * La charte de la COLLECTIVITÉ — celle de la marque de l'en-tête.
+   *
+   * ⚠️ Distincte de `branding`, qui est la charte à PEINDRE : sous le
+   * périmètre d'un organisme, la page prend les couleurs et le logo de cet
+   * organisme, mais le bandeau du haut continue de dire sur quel site on est.
+   * Hors périmètre, les deux sont la même charte.
+   */
+  tenantBranding: Branding | null;
 }
 
 /**
@@ -78,9 +98,11 @@ function readSnapshot(body: unknown): PortalSnapshot | null {
   const raw = body as {
     lang?: unknown;
     tenant?: unknown;
+    villes?: unknown;
     demarches?: unknown;
     page?: unknown;
     branding?: unknown;
+    tenantBranding?: unknown;
   };
   const tenant = raw.tenant as Tenant | undefined;
   if (!tenant || typeof tenant.id !== "string" || typeof tenant.name !== "string") return null;
@@ -102,7 +124,16 @@ function readSnapshot(body: unknown): PortalSnapshot | null {
   // Un serveur d'avant le multilingue ne dit pas la langue : c'est le français,
   // et tout s'affiche comme avant.
   const lang = typeof raw.lang === "string" && raw.lang !== "" ? raw.lang : "fr";
-  return { lang, tenant, demarches, page, branding };
+  // Pas de villes servies (serveur d'avant le menu, ou collectivité sans
+  // organisme qui publie) : une liste vide, et l'en-tête n'affiche pas le menu.
+  const villes = Array.isArray(raw.villes) ? (raw.villes as Ville[]) : [];
+  // Absente d'un serveur d'avant la marque : la charte peinte fait alors les
+  // deux, comme avant.
+  const tenantBranding =
+    typeof raw.tenantBranding === "object" && raw.tenantBranding !== null
+      ? (raw.tenantBranding as Branding)
+      : branding;
+  return { lang, tenant, villes, demarches, page, branding, tenantBranding };
 }
 
 /** Ce que la page d'un organisme reçoit, en un seul aller-retour. */
@@ -110,6 +141,8 @@ export interface OrganismeSnapshot {
   /** La langue réellement servie — voir `PortalSnapshot.lang`. */
   lang: string;
   tenant: Tenant;
+  /** Les villes de la collectivité — voir `PortalSnapshot.villes`. */
+  villes: Ville[];
   /**
    * L'organisme visité. Jamais la collectivité elle-même : le serveur l'écarte,
    * puisque sa page est l'accueil du portail.
@@ -119,6 +152,15 @@ export interface OrganismeSnapshot {
   demarches: Demarche[];
   /** La charte de CET organisme, héritage déjà résolu ; `null` = défauts. */
   branding: Branding | null;
+  /**
+   * La charte de la COLLECTIVITÉ — celle de la marque de l'en-tête.
+   *
+   * ⚠️ Distincte de `branding`, qui est la charte à PEINDRE : sous le
+   * périmètre d'un organisme, la page prend les couleurs et le logo de cet
+   * organisme, mais le bandeau du haut continue de dire sur quel site on est.
+   * Hors périmètre, les deux sont la même charte.
+   */
+  tenantBranding: Branding | null;
 }
 
 export type OrganismeLoad =
@@ -142,13 +184,16 @@ function readOrganismeSnapshot(body: unknown): OrganismeSnapshot | null {
   return {
     lang: base.lang,
     tenant: base.tenant,
+    villes: base.villes,
     organisme: {
       id: raw.id,
       name: raw.name,
       slug: typeof raw.slug === "string" ? raw.slug : null,
+      logoUrl: typeof raw.logoUrl === "string" ? raw.logoUrl : null,
     },
     demarches: base.demarches,
     branding: base.branding,
+    tenantBranding: base.tenantBranding,
   };
 }
 
@@ -222,6 +267,8 @@ export interface DemarcheSnapshot {
   /** La langue réellement servie — voir `PortalSnapshot.lang`. */
   lang: string;
   tenant: Tenant;
+  /** Les villes de la collectivité — voir `PortalSnapshot.villes`. */
+  villes: Ville[];
   /**
    * L'organisme sous lequel cette démarche est consultée, `null` hors de tout
    * périmètre. Le serveur ne le rend que s'il a vérifié que cet organisme
@@ -231,6 +278,15 @@ export interface DemarcheSnapshot {
   demarche: DemarcheDetail;
   /** La charte graphique ; `null` = couleurs par défaut. Jamais bloquante. */
   branding: Branding | null;
+  /**
+   * La charte de la COLLECTIVITÉ — celle de la marque de l'en-tête.
+   *
+   * ⚠️ Distincte de `branding`, qui est la charte à PEINDRE : sous le
+   * périmètre d'un organisme, la page prend les couleurs et le logo de cet
+   * organisme, mais le bandeau du haut continue de dire sur quel site on est.
+   * Hors périmètre, les deux sont la même charte.
+   */
+  tenantBranding: Branding | null;
 }
 
 export type DemarcheLoad =
@@ -242,9 +298,11 @@ function readDemarcheSnapshot(body: unknown): DemarcheSnapshot | null {
   const raw = body as {
     lang?: unknown;
     tenant?: unknown;
+    villes?: unknown;
     organisme?: unknown;
     demarche?: unknown;
     branding?: unknown;
+    tenantBranding?: unknown;
   };
   const tenant = raw.tenant as Tenant | undefined;
   if (!tenant || typeof tenant.id !== "string" || typeof tenant.name !== "string") return null;
@@ -262,7 +320,12 @@ function readDemarcheSnapshot(body: unknown): DemarcheSnapshot | null {
   // portail qui arrive ici, pas du JSON du Socle. Le re-parser en ferait une
   // seconde vérité, qui divergerait au premier type de champ ajouté.
   const lang = typeof raw.lang === "string" && raw.lang !== "" ? raw.lang : "fr";
-  return { lang, tenant, organisme, demarche, branding };
+  const villes = Array.isArray(raw.villes) ? (raw.villes as Ville[]) : [];
+  const tenantBranding =
+    typeof raw.tenantBranding === "object" && raw.tenantBranding !== null
+      ? (raw.tenantBranding as Branding)
+      : branding;
+  return { lang, tenant, villes, organisme, demarche, branding, tenantBranding };
 }
 
 /**

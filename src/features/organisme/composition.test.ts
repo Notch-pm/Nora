@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import { organismeEmptyKey, visibleOrganismeDemarches } from "./composition.ts";
 
-const ORG = { id: "org-1", name: "Mairie d'Arles", slug: "arles" };
+const ORG = { id: "org-1", name: "Mairie d'Arles", slug: "arles", logoUrl: null };
 
 function demarche(
   id: string,

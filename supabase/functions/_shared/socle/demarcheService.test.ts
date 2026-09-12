@@ -13,8 +13,14 @@ const CATALOGUE = [
     id: "p1",
     name: "Acte de mariage",
     organizations: [
-      { id: "o-accm", name: "ACCM", slug: "laurentville" },
-      { id: "o-arles", name: "Mairie d'Arles", slug: "mairie-d-arles" },
+      { id: "o-accm", name: "ACCM", slug: "laurentville", logo_url: "https://exemple.fr/accm.png" },
+      // Logo servi en clair : écarté comme toute image d'une page publique.
+      {
+        id: "o-arles",
+        name: "Mairie d'Arles",
+        slug: "mairie-d-arles",
+        logo_url: "http://exemple.fr/arles.png",
+      },
       // Organisme auquel personne n'a donné de slug : il n'a pas d'adresse.
       { id: "o-nu", name: "Service sans slug" },
       // Entrée inexploitable : ni identifiant ni nom — écartée, comme avant.
@@ -29,9 +35,9 @@ describe("getPublicDemarches — les organismes et leur adresse", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.demarches[0].organizations).toEqual([
-      { id: "o-accm", name: "ACCM", slug: "laurentville" },
-      { id: "o-arles", name: "Mairie d'Arles", slug: "mairie-d-arles" },
-      { id: "o-nu", name: "Service sans slug", slug: null },
+      { id: "o-accm", name: "ACCM", slug: "laurentville", logoUrl: "https://exemple.fr/accm.png" },
+      { id: "o-arles", name: "Mairie d'Arles", slug: "mairie-d-arles", logoUrl: null },
+      { id: "o-nu", name: "Service sans slug", slug: null, logoUrl: null },
     ]);
   });
 
@@ -43,6 +49,8 @@ describe("getPublicDemarches — les organismes et leur adresse", () => {
     const result = await getPublicDemarches("t1", replying({ kind: "ok", body }), "fr");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.demarches[0].organizations).toEqual([{ id: "o", name: "O", slug: null }]);
+    expect(result.demarches[0].organizations).toEqual([
+      { id: "o", name: "O", slug: null, logoUrl: null },
+    ]);
   });
 });

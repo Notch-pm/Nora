@@ -27,6 +27,35 @@ export interface DemarcheOrganization {
   id: string;
   name: string;
   slug: string | null;
+  /**
+   * Le logo PROPRE de l'organisme — celui qu'il a lui-même, jamais celui dont
+   * il hérite.
+   *
+   * ⚠️ C'est ce qui permet de le reconnaître dans une LISTE (le menu « Ma
+   * ville »). Le Socle sert ici la valeur brute, à la différence de la charte
+   * d'une page : un logo hérité donnerait la même image à chaque ligne, celle
+   * de l'intercommunalité, et la liste ne distinguerait plus rien. `null` veut
+   * donc dire « pas de logo à lui » — on affiche une pastille à sa couleur,
+   * comme l'en-tête le fait déjà, jamais le logo de la collectivité.
+   */
+  logoUrl: string | null;
+}
+
+/**
+ * Une VILLE au sens du portail : un organisme de la collectivité qui a une
+ * page, tel que le menu « Ma ville » le propose.
+ *
+ * Le mot est celui de l'usager — « ma ville » — pas celui du référentiel, où
+ * ce sont des organisations. Ce sont le plus souvent des communes ; ce peut
+ * être un service externe qui tient son propre guichet. Un service INTERNE n'y
+ * figure jamais : le Socle ne le nomme pas, c'est son porteur qui apparaît.
+ */
+export interface Ville {
+  id: string;
+  name: string;
+  /** Jamais `null` ici : sans slug, pas d'adresse, donc pas d'entrée de menu. */
+  slug: string;
+  logoUrl: string | null;
 }
 
 import type { FormSchema } from "./formSchema.ts";
@@ -136,4 +165,36 @@ export function demarchesOfOrganization(
   return demarches.filter((demarche) =>
     demarche.organizations.some((org) => org.id === organizationId)
   );
+}
+
+/** Trie deux villes comme une liste se lit en français. */
+const villeCollator = new Intl.Collator("fr", { sensitivity: "base" });
+
+/**
+ * Les villes de cette collectivité : les organismes qui ont une page, dans
+ * l'ordre où une liste se lit.
+ *
+ * ⚠️ LA LISTE VIENT DU CATALOGUE, et c'est la même règle que pour les pages
+ * elles-mêmes : un organisme y figure tant qu'il propose au moins une démarche
+ * publiée. Lister le sous-arbre entier ferait des entrées de menu qui mènent à
+ * une page inexistante — un lien mort dans une navigation.
+ *
+ * ⚠️ DEUX EXCLUSIONS, toutes deux pour la même raison — l'entrée doit mener
+ * quelque part :
+ *   · la collectivité elle-même, dont la page est l'accueil du portail ;
+ *   · un organisme sans slug, qui n'a pas d'adresse.
+ *
+ * Proche parente de `organizationsOffering` (côté interface), qui sert le
+ * FILTRE de l'accueil : celle-là garde la collectivité, en tête, parce que
+ * filtrer sur elle a un sens. Ici, il s'agit d'aller ailleurs.
+ */
+export function villesOf(demarches: Demarche[], tenantId: string): Ville[] {
+  const byId = new Map<string, Ville>();
+  for (const demarche of demarches) {
+    for (const org of demarche.organizations) {
+      if (org.id === tenantId || org.slug === null || byId.has(org.id)) continue;
+      byId.set(org.id, { id: org.id, name: org.name, slug: org.slug, logoUrl: org.logoUrl });
+    }
+  }
+  return [...byId.values()].sort((a, b) => villeCollator.compare(a.name, b.name));
 }

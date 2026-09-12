@@ -18,7 +18,7 @@
  * texte que des liens morts.
  */
 import { useState } from "react";
-import type { Demarche } from "@fn/_shared/domain/demarche.ts";
+import type { Demarche, Ville } from "@fn/_shared/domain/demarche.ts";
 import type { Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
@@ -43,11 +43,14 @@ import { TexteSection } from "./sections/TexteSection.tsx";
 
 export function HomeComposition({
   tenant,
+  villes,
   demarches,
   page,
   branding,
 }: {
   tenant: Tenant;
+  /** Les villes de la collectivité, pour le menu « Ma ville » de l'en-tête. */
+  villes: Ville[];
   demarches: Demarche[];
   page: HomePage;
   branding: Branding | null;
@@ -92,6 +95,7 @@ export function HomeComposition({
         logoUrl={headerLogoUrl(tenant.theme, branding)}
         theme={tenant.theme}
         languages={tenant.languages}
+        villes={villes}
       />
       <div
         className="flex flex-1 flex-col"
