@@ -173,6 +173,13 @@ liste ordonnée de sections typées. Règles de rendu, toutes dans
   La liste du filtre est l'union des organismes du catalogue, la collectivité
   visitée en tête puis par nom — un organisme qui ne propose rien n'y figure
   pas.
+- **Au-delà de trois organismes, la carte annonce leur NOMBRE** (« 4
+  collectivités ») au lieu de les nommer — `organizationChips`, seuil nommé une
+  fois et valable partout où une dalle apparaît. Quatre noms de communes sur une
+  carte de trois lignes se font tronquer, et une liste illisible renseigne moins
+  qu'un chiffre : celui qui cherche sa commune a le filtre ci-dessus et le menu
+  « Ma ville ». La page de **détail** d'une démarche, elle, les nomme tous : elle
+  en a la place, et c'est là qu'on vérifie si la sienne est dedans.
 - **La recherche est réelle.** Le champ de la section `recherche` filtre les
   grilles `demarches` de la page (normalisation sans accents ni casse) ; sans
   section `recherche`, aucun filtre.
@@ -677,6 +684,19 @@ npm test        # logique pure + client HTTP contre un vrai serveur
 npm run build   # tsc -b puis build de production
 ```
 
+⚠️ **LE SERVEUR DE DÉVELOPPEMENT PEUT SERVIR UN MODULE PÉRIMÉ**, et ça coûte une
+heure si on ne le sait pas. Vu le 2026-09-12 : un champ ajouté à
+`services/portal/portalClient.ts` arrivait `undefined` dans le composant, alors
+que `curl http://localhost:5175/src/services/portal/portalClient.ts` montrait le
+bon code. La cause : l'importateur restait épinglé sur `portalClient.ts?t=<ancien
+horodatage>`, et ni un rechargement, ni un onglet neuf, ni un redémarrage du
+serveur ne l'ont défait (le fichier avait été réécrit par un script, hors de
+l'éditeur). **Le réflexe** : vérifier sur un build de production
+(`npm run build` + n'importe quel serveur statique), qui compile depuis zéro. Ne
+pas conclure à un défaut du code sur la seule foi du serveur de dev — et se
+souvenir que la mesure d'audience exige de toute façon ce build (garde
+`import.meta.env.PROD`).
+
 `supabase/functions/_shared/portalFlow.test.ts` couvre le flux complet contre un
 Socle simulé : domaine connu, domaine inconnu, démarches d'un tenant, tenant sans
 démarche publiée, Socle indisponible, et changement de hostname. Les services
@@ -863,6 +883,8 @@ ouvertes sont dans `docs/roadmap.md` du Socle, section « Portail usagers » :
 Transverse : accessibilité RGAA — la **déclaration** est désormais affichée au
 pied de toutes les pages quand la collectivité l'a écrite, l'audit lui-même
 reste à faire — et les autres mentions obligatoires d'un site public,
-premier domaine réel, et surtout **le multi-collectivités du dépôt** — voir
+~~premier domaine réel~~ (**en ligne depuis le 2026-09-12** :
+`laurentville.edilumen.fr`, construit par Cloudflare **au push sur `main`**), et
+surtout **le multi-collectivités du dépôt** — voir
 « Plusieurs portails, ou un portail multi-collectivités ? ». C'est un choix
 d'architecture, pas une tâche : il conditionne si cette instance reste unique.
