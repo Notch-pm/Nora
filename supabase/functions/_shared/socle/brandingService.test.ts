@@ -11,6 +11,7 @@ const SOCLE_BRANDING = {
   configured: true,
   logo_url: "https://cdn.example/accm.png",
   logo_white_url: null,
+  favicon_url: "https://cdn.example/favicon.png",
   primary_color: "#1F8A5B",
   secondary_color: "#ffcd57",
 };
@@ -45,6 +46,7 @@ describe("toBranding", () => {
     expect(toBranding(SOCLE_BRANDING)).toEqual({
       logoUrl: "https://cdn.example/accm.png",
       logoWhiteUrl: null,
+      faviconUrl: "https://cdn.example/favicon.png",
       primaryColor: "#1f8a5b",
       secondaryColor: "#ffcd57",
     });

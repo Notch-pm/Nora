@@ -13,6 +13,7 @@ import {
   type PortalLoadFailure,
 } from "@/services/portal/portalClient.ts";
 import { rememberBranding } from "@/features/portal/theme.ts";
+import { applyFavicon } from "@/features/portal/favicon.ts";
 
 export type DemarcheState =
   | { status: "loading" }
@@ -39,7 +40,10 @@ export function useDemarche(
         // La charte arrive avec la démarche : on la retient pour l'attente de
         // la prochaine visite (voir `theme.ts`), qu'elle soit encore utile ici
         // ou non.
-        if (result.ok) rememberBranding(result.snapshot.branding);
+        if (result.ok) {
+          rememberBranding(result.snapshot.branding);
+          applyFavicon(result.snapshot.branding);
+        }
         if (!current) return;
         setState(
           result.ok

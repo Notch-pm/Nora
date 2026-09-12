@@ -22,6 +22,7 @@ import {
 const CHARTE: Branding = {
   logoUrl: "https://exemple.fr/logo.png",
   logoWhiteUrl: "https://exemple.fr/logo-blanc.png",
+  faviconUrl: "https://exemple.fr/favicon.png",
   primaryColor: "#2f6fd0",
   secondaryColor: "#ffcd57",
 };
@@ -52,6 +53,7 @@ describe("les couleurs viennent de la charte", () => {
     const style = vars(defaultTheme(), {
       logoUrl: null,
       logoWhiteUrl: null,
+      faviconUrl: null,
       primaryColor: "bleu roi",
       secondaryColor: "#ffcd57",
     });

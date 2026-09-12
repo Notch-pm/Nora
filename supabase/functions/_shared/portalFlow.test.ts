@@ -84,6 +84,7 @@ const ROUTES: Record<string, unknown> = {
     configured: true,
     logo_url: "https://cdn.example/nantes.svg",
     logo_white_url: null,
+    favicon_url: "https://cdn.example/nantes-favicon.png",
     primary_color: "#1F8A5B",
     secondary_color: null,
   },
@@ -289,6 +290,7 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
     expect(nantes.branding).toEqual({
       logoUrl: "https://cdn.example/nantes.svg",
       logoWhiteUrl: null,
+      faviconUrl: "https://cdn.example/nantes-favicon.png",
       primaryColor: "#1f8a5b",
       secondaryColor: null,
     });

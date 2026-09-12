@@ -43,12 +43,19 @@ portal-api
 API d'ingestion d'Iris (requests-api)
 ```
 
-La **charte graphique** (logo, couleur principale, couleur secondaire) vient
-du Socle, héritage déjà résolu. Elle est décorative : absente ou indisponible,
-le portail garde les couleurs de la gamme, il ne tombe pas en erreur. Les
-couleurs n'entrent que sous la forme `#rrggbb` et les logos qu'en `https` —
-ce sont des valeurs injectées dans la page, on ne les « nettoie » pas, on les
-écarte.
+La **charte graphique** (logo, logo blanc, favicon, couleur principale, couleur
+secondaire) vient du Socle, héritage déjà résolu. Elle est décorative : absente
+ou indisponible, le portail garde les couleurs de la gamme, il ne tombe pas en
+erreur. Les couleurs n'entrent que sous la forme `#rrggbb` et les images qu'en
+`https` — ce sont des valeurs injectées dans la page, on ne les « nettoie »
+pas, on les écarte.
+
+Le **favicon** est le seul élément de la charte qui ne se peigne pas dans la
+page : il se pose en `<link rel="icon">` (`features/portal/favicon.ts`), le
+portail étant une instance unique dont l'`index.html` est commun à toutes les
+collectivités. ⚠️ **Son absence n'est pas un effacement** : sans favicon publié,
+l'onglet garde l'icône que le navigateur affichait — le portail n'en a pas
+d'autre à mettre à la place.
 
 Le **thème** vient du Socle lui aussi (`Tenant.theme`), réglé par la
 collectivité dans l'éditeur : typographie, formes, densité, en-tête,
@@ -96,6 +103,7 @@ src/
                            publics du filtre, ordre des épinglées, raccourcis, colonnes, luminance,
                            message de grille vide, « le pied de page final est le bas de la page »
     theme.ts               la charte → --brand-* ; mémoire de la dernière charte connue
+    favicon.ts             l'icône de l'onglet ; l'absence de favicon n'efface rien
     themeStyle.ts          le thème + la charte → toutes les variables CSS de la page
                            (miroir de `Socle/src/features/portal/themeStyle.ts`)
     AccessibilityNotice.tsx la déclaration RGAA, au pied de TOUTES les pages

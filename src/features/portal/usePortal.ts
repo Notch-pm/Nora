@@ -21,6 +21,7 @@ import {
   resetPortalCache,
 } from "@/services/portal/portalService.ts";
 import { rememberBranding } from "./theme.ts";
+import { applyFavicon } from "./favicon.ts";
 
 export type PortalState =
   | { status: "loading" }
@@ -65,7 +66,11 @@ export function usePortal(lang: string): { state: PortalState; retry: () => void
       .then(([tenant, demarches, page, branding, served]) => {
         // Retenue même si ce chargement est périmé : c'est la charte de cette
         // collectivité, et elle sert à peindre l'attente de la prochaine visite.
+        // L'icône de l'onglet se pose pour la même raison — elle appartient au
+        // document, pas au rendu, et un chargement périmé sert la même
+        // collectivité que le courant.
         rememberBranding(branding);
+        applyFavicon(branding);
         if (current) {
           setState({
             status: "ready",

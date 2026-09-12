@@ -5,7 +5,8 @@
  *   - une couleur n'entre que sous la forme `#rrggbb`. Elle finira dans une
  *     variable CSS de la page ; tout ce qui n'est pas une couleur est écarté,
  *     pas « nettoyé » ;
- *   - une URL de logo n'entre qu'en `https`. Le reste est écarté.
+ *   - une URL d'image (logos, favicon) n'entre qu'en `https`. Le reste est
+ *     écarté.
  *
  * Et une règle de service : **la charte est décorative**. Si le Socle ne la
  * sert pas — jamais renseignée, ou indisponible à cet instant précis alors que
@@ -33,8 +34,9 @@ export function color(value: unknown): string | null {
 
 /**
  * URL absolue en https ; tout le reste → `null`. La règle vit dans `urls.ts` :
- * un logo de charte et l'image d'un bloc de page sont deux adresses posées dans
- * la même page publique, elles ne peuvent pas avoir deux règles.
+ * un logo de charte, un favicon et l'image d'un bloc de page sont trois
+ * adresses posées dans la même page publique, elles ne peuvent pas avoir trois
+ * règles.
  */
 export const logoUrl = httpsUrl;
 
@@ -46,6 +48,7 @@ export function toBranding(body: unknown): Branding | null {
   const branding: Branding = {
     logoUrl: logoUrl(raw.logo_url),
     logoWhiteUrl: logoUrl(raw.logo_white_url),
+    faviconUrl: logoUrl(raw.favicon_url),
     primaryColor: color(raw.primary_color),
     secondaryColor: color(raw.secondary_color),
   };

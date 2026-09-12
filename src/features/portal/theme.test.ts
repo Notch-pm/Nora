@@ -3,13 +3,13 @@ import { brandingStyle, parseRememberedBranding } from "./theme.ts";
 
 describe("brandingStyle", () => {
   it("ne pose que les couleurs renseignées — l'autre garde son défaut", () => {
-    expect(brandingStyle({ logoUrl: null, logoWhiteUrl: null, primaryColor: "#1f8a5b", secondaryColor: null }))
+    expect(brandingStyle({ logoUrl: null, logoWhiteUrl: null, faviconUrl: null, primaryColor: "#1f8a5b", secondaryColor: null }))
       .toEqual({ "--brand-primary": "#1f8a5b" });
   });
 
   it("pose les deux quand la charte est complète", () => {
     expect(
-      brandingStyle({ logoUrl: "https://x/l.png", logoWhiteUrl: null, primaryColor: "#1f8a5b", secondaryColor: "#ffcd57" }),
+      brandingStyle({ logoUrl: "https://x/l.png", logoWhiteUrl: null, faviconUrl: null, primaryColor: "#1f8a5b", secondaryColor: "#ffcd57" }),
     ).toEqual({ "--brand-primary": "#1f8a5b", "--brand-secondary": "#ffcd57" });
   });
 
@@ -23,6 +23,7 @@ describe("parseRememberedBranding", () => {
     const branding = {
       logoUrl: "https://cdn/logo.png",
       logoWhiteUrl: null,
+      faviconUrl: "https://cdn/favicon.png",
       primaryColor: "#1f8a5b",
       secondaryColor: "#ffcd57",
     };
@@ -35,6 +36,7 @@ describe("parseRememberedBranding", () => {
     ).toEqual({
       logoUrl: null,
       logoWhiteUrl: null,
+      faviconUrl: null,
       primaryColor: null,
       // Majuscules : le Socle sert du minuscule, ce n'est pas ce qu'il a écrit.
       secondaryColor: null,

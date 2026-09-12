@@ -72,6 +72,7 @@ export function parseRememberedBranding(raw: string | null): Branding | null {
   return {
     logoUrl: storedUrl(stored.logoUrl),
     logoWhiteUrl: storedUrl(stored.logoWhiteUrl),
+    faviconUrl: storedUrl(stored.faviconUrl),
     primaryColor: storedColor(stored.primaryColor),
     secondaryColor: storedColor(stored.secondaryColor),
   };
