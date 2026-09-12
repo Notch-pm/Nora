@@ -22,7 +22,8 @@ import { resolveShortcuts } from "../composition.ts";
 import { imageBackdropStyle } from "../themeStyle.ts";
 import { useT } from "@/i18n/LanguageLayout.tsx";
 
-function SearchIcon() {
+/** Exportée : la page d'un organisme s'en sert pour son propre champ de recherche. */
+export function SearchIcon() {
   return (
     <svg
       width="17"

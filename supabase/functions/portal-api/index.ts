@@ -35,6 +35,11 @@ import { hostnameForRequest } from "../_shared/http/requestHostname.ts";
 import { clientAddress, createRateLimiter, hashKey } from "../_shared/http/rateLimit.ts";
 import { allFields } from "../_shared/domain/formSchema.ts";
 import { AUDIENCES } from "../_shared/domain/requesterConfig.ts";
+import {
+  demarchesOfOrganization,
+  type DemarcheOrganization,
+  organizationBySlug,
+} from "../_shared/domain/demarche.ts";
 import type { AttachmentRef } from "../_shared/domain/demande.ts";
 import type { Tenant } from "../_shared/domain/tenant.ts";
 import { resolveLang } from "../_shared/domain/languages.ts";
@@ -156,6 +161,7 @@ const FAILURE_MESSAGES: Record<PortalFailure, string> = {
   socle_misconfigured: "Le service est momentanément indisponible. Merci de réessayer plus tard.",
   not_configured: "Le portail n'est pas configuré.",
   demarche_unavailable: "Cette démarche n'est plus proposée en ligne.",
+  organisme_unavailable: "Cet organisme ne propose pas de démarche en ligne.",
   submission_rejected:
     "Votre demande n'a pas pu être enregistrée. Merci de contacter votre collectivité.",
   iris_unavailable:
@@ -270,6 +276,47 @@ Deno.serve(async (request: Request): Promise<Response> => {
     const demarches = await getPublicDemarches(tenant.id, socle, lang);
     if (!demarches.ok) return failure(demarches.reason);
 
+    // ── Le périmètre d'un organisme — `?organisme=<slug>`.
+    //
+    // ⚠️ LE CATALOGUE VIENT D'ÊTRE LU POUR LA COLLECTIVITÉ ENTIÈRE, et c'est
+    // voulu : la clé du cache est le chemin demandé au Socle, identique à
+    // celui de l'accueil. La page d'une mairie ne coûte donc pas un appel de
+    // plus, et les deux pages se réchauffent l'une l'autre. Demander au Socle
+    // le catalogue restreint à l'organisme aurait doublé les entrées de cache
+    // pour servir un sous-ensemble de ce qu'on tient déjà.
+    const askedOrganisme = url.searchParams.get("organisme");
+    if (askedOrganisme !== null) {
+      const organisme = organizationBySlug(demarches.demarches, askedOrganisme, tenant.id);
+      // Slug inventé, organisme qui ne publie rien, ou slug de la collectivité
+      // elle-même : même refus que pour une démarche non publiée — « pas
+      // ici ». C'est l'interface qui ramène alors le visiteur à l'accueil.
+      if (organisme === null) return failure("organisme_unavailable");
+
+      // La charte de l'organisme VISITÉ. Le Socle résout l'héritage : un
+      // organisme qui n'a pas la sienne rend celle de sa collectivité, si bien
+      // que la page reste cohérente au lieu de retomber sur les couleurs par
+      // défaut du portail.
+      const organismeBranding = await getBranding(organisme.id, socle);
+      if (!organismeBranding.ok) return failure(organismeBranding.reason);
+
+      return json(
+        200,
+        {
+          lang,
+          tenant,
+          organisme,
+          demarches: demarchesOfOrganization(demarches.demarches, organisme.id),
+          // ⚠️ AUCUNE PAGE COMPOSÉE ICI, et ce n'est pas un manque : le Socle
+          // réserve `portal_pages` aux collectivités racines, et le portail
+          // n'en veut pas — la prose d'une intercommunalité sonnerait faux
+          // sous le logo d'une de ses mairies. Le gabarit est fixe, donc un
+          // appel au Socle en moins que l'accueil.
+          branding: organismeBranding.branding,
+        },
+        { "Cache-Control": "public, max-age=60" },
+      );
+    }
+
     // La page d'accueil telle qu'elle a été publiée. `null` si la collectivité
     // n'a rien composé : le portail rend alors son défaut.
     const page = await getPublishedPage(tenant.id, socle, lang);
@@ -311,15 +358,32 @@ Deno.serve(async (request: Request): Promise<Response> => {
     const result = await getPublicDemarche(resolved.tenant.id, demarcheId, socle, lang);
     if (!result.ok) return failure(result.reason);
 
+    // ── Le périmètre d'un organisme, quand l'usager est arrivé par sa page.
+    //
+    // ⚠️ LE SLUG SE CHERCHE DANS LES ORGANISMES DE CETTE DÉMARCHE : aucun
+    // appel de plus, et cela vérifie du même geste que l'organisme la propose
+    // vraiment. `/mairie-de-x/demarches/{id}` ne peut donc pas afficher, aux
+    // couleurs de cette mairie, une démarche qu'elle n'assure pas.
+    const askedOrganisme = url.searchParams.get("organisme");
+    let organisme: DemarcheOrganization | null = null;
+    if (askedOrganisme !== null) {
+      organisme = organizationBySlug([result.demarche], askedOrganisme, resolved.tenant.id);
+      if (organisme === null) return failure("organisme_unavailable");
+    }
+
     // La charte voyage avec la démarche : la page doit être aux couleurs de la
     // collectivité même quand l'usager y arrive par un lien direct, sans être
     // passé par l'accueil. Décorative comme partout — jamais bloquante.
-    const branding = await getBranding(resolved.tenant.id, socle);
+    //
+    // Sous le périmètre d'un organisme, c'est la SIENNE : rien ne doit changer
+    // d'habillage entre la liste d'une mairie et la démarche qu'on y choisit.
+    const branding = await getBranding(organisme?.id ?? resolved.tenant.id, socle);
     return json(
       200,
       {
         lang,
         tenant: resolved.tenant,
+        organisme,
         demarche: result.demarche,
         branding: branding.ok ? branding.branding : null,
       },
@@ -377,7 +441,12 @@ Deno.serve(async (request: Request): Promise<Response> => {
     const demarcheId = typeof form.get("demarcheId") === "string" ? String(form.get("demarcheId")).trim() : "";
     const fieldId = typeof form.get("fieldId") === "string" ? String(form.get("fieldId")).trim() : "";
     if (demarcheId !== "" && fieldId !== "") {
-      const result = await getPublicDemarche(resolved.tenant.id, demarcheId, socle);
+      const result = await getPublicDemarche(
+        resolved.tenant.id,
+        demarcheId,
+        socle,
+        resolveLang(askedLang, resolved.tenant.languages),
+      );
       if (!result.ok) return failure(result.reason);
       const field = result.demarche.form === null
         ? undefined
@@ -457,7 +526,12 @@ Deno.serve(async (request: Request): Promise<Response> => {
     if (!resolved.ok) return resolved.response;
     const tenant = resolved.tenant;
 
-    const result = await getPublicDemarche(tenant.id, demarcheId, socle);
+    const result = await getPublicDemarche(
+      tenant.id,
+      demarcheId,
+      socle,
+      resolveLang(askedLang, tenant.languages),
+    );
     if (!result.ok) return failure(result.reason);
     const demarche = result.demarche;
 

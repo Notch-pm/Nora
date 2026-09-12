@@ -16,9 +16,9 @@ import {
   resolveShortcuts,
 } from "./composition.ts";
 
-const ACCM = { id: "accm", name: "ACCM" };
-const ARLES = { id: "arles", name: "Mairie d'Arles" };
-const CRAU = { id: "crau", name: "Mairie de Saint-Martin" };
+const ACCM = { id: "accm", name: "ACCM", slug: null };
+const ARLES = { id: "arles", name: "Mairie d'Arles", slug: null };
+const CRAU = { id: "crau", name: "Mairie de Saint-Martin", slug: null };
 
 function demarche(
   id: string,
@@ -61,7 +61,11 @@ describe("organizationsOffering", () => {
 
   it("classe sans tenir compte de la casse ni des accents", () => {
     const demarches = [
-      demarche("a", "A", null, [{ id: "e", name: "Éguilles" }, { id: "b", name: "beaucaire" }, { id: "f", name: "Fos" }]),
+      demarche("a", "A", null, [
+        { id: "e", name: "Éguilles", slug: null },
+        { id: "b", name: "beaucaire", slug: null },
+        { id: "f", name: "Fos", slug: null },
+      ]),
     ];
     expect(organizationsOffering(demarches, "accm").map((o) => o.id)).toEqual(["b", "e", "f"]);
   });

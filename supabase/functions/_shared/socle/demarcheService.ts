@@ -58,7 +58,10 @@ function toOrganizations(raw: unknown): DemarcheOrganization[] {
     const org = candidate as Record<string, unknown>;
     const id = text(org.id);
     const name = text(org.name);
-    if (id !== null && name !== null) organizations.push({ id, name });
+    // Le slug peut manquer — Socle d'avant le contrat 1.22.0, ou organisme
+    // auquel personne n'a donné d'identifiant lisible : il n'ouvre alors
+    // aucune page, et ne change rien au reste de la carte.
+    if (id !== null && name !== null) organizations.push({ id, name, slug: text(org.slug) });
   }
   return organizations;
 }

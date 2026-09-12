@@ -68,3 +68,61 @@ export function localizedPath(lang: string, path: string): string {
   if (lang === PIVOT_LANGUAGE || !LANG_SEGMENT_RE.test(lang)) return bare;
   return bare === "/" ? "/" + lang : "/" + lang + bare;
 }
+
+/**
+ * Les segments de route du portail — ceux qu'un slug d'organisme ne peut pas
+ * être. Un seul aujourd'hui, et c'est déjà une constante : il était écrit en
+ * dur à deux endroits, où il ne pouvait que se désynchroniser.
+ */
+export const ROUTE_SEGMENTS: readonly string[] = ["demarches"];
+
+/**
+ * Sépare un éventuel préfixe d'ORGANISME du chemin réel. `path` est le chemin
+ * nu, tel que `splitLangPath` le rend — la langue en a déjà été retirée.
+ *
+ * ⚠️ LA RÈGLE EST LEXICALE, comme celle des langues, et c'est tout l'intérêt :
+ * elle permet de lire une adresse sans connaître la liste des organismes, donc
+ * sans attendre le serveur pour savoir quel écran afficher. Un premier segment
+ * est un organisme s'il n'est ni un segment de route (`demarches`) ni lisible
+ * comme un code de langue (deux ou trois lettres).
+ *
+ * ⚠️ LE SOCLE TIENT L'AUTRE BOUT DE CETTE RÈGLE : un slug d'organisme y fait au
+ * moins quatre caractères, précisément pour ne jamais pouvoir être pris pour
+ * une langue. Les deux contraintes se lisent ensemble ou pas du tout — c'est
+ * pourquoi `LANG_SEGMENT_RE` est citée dans la migration qui la pose.
+ */
+export function splitOrganismePath(path: string): { organisme: string | null; path: string } {
+  const cleaned = path.startsWith("/") ? path : "/" + path;
+  const [, first = "", ...rest] = cleaned.split("/");
+  if (first === "" || ROUTE_SEGMENTS.includes(first) || LANG_SEGMENT_RE.test(first)) {
+    return { organisme: null, path: cleaned };
+  }
+  const bare = "/" + rest.join("/");
+  return { organisme: first, path: bare === "/" ? "/" : bare.replace(/\/$/, "") };
+}
+
+/**
+ * Ce qu'une adresse du portail dit d'elle-même : la langue demandée,
+ * l'organisme visité, et l'écran. Une seule fonction pour tout le portail —
+ * le routage, les liens et la mesure la partagent, si bien qu'une règle
+ * d'adresse ne peut pas exister en deux versions.
+ */
+export function splitScopedPath(
+  pathname: string,
+): { lang: string | null; organisme: string | null; path: string } {
+  const { lang, path } = splitLangPath(pathname);
+  const { organisme, path: bare } = splitOrganismePath(path);
+  return { lang, organisme, path: bare };
+}
+
+/**
+ * Le chemin d'une page dans le périmètre d'un organisme, langue comprise.
+ * `organisme` à `null` rend simplement le chemin de la collectivité : c'est ce
+ * qui permet aux écrans partagés (une démarche, son formulaire) de construire
+ * leurs liens sans savoir s'ils sont ou non sous un organisme.
+ */
+export function organismePath(lang: string, organisme: string | null, path: string): string {
+  const bare = path.startsWith("/") ? path : "/" + path;
+  const scoped = organisme === null ? bare : "/" + organisme + (bare === "/" ? "" : bare);
+  return localizedPath(lang, scoped);
+}

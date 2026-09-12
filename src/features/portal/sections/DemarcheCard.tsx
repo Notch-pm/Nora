@@ -13,7 +13,21 @@ import { localizedPath } from "@/i18n/localizedPath.ts";
 
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 
-export function DemarcheCard({ demarche, pinned = false }: { demarche: Demarche; pinned?: boolean }) {
+export function DemarcheCard({
+  demarche,
+  pinned = false,
+  basePath = "/demarches",
+}: {
+  demarche: Demarche;
+  pinned?: boolean;
+  /**
+   * La base du lien vers la démarche. Par défaut `/demarches` — le chemin
+   * général du portail. La page d'un organisme y passe `/{slug}/demarches`
+   * pour qu'une démarche commencée depuis elle reste sous le préfixe de cet
+   * organisme, jamais sous l'adresse générale de la collectivité.
+   */
+  basePath?: string;
+}) {
   const { lang } = useLanguage();
   const t = useT();
   return (
@@ -31,7 +45,7 @@ export function DemarcheCard({ demarche, pinned = false }: { demarche: Demarche;
       )}
       <h3 className="text-[length:var(--pt-body)] font-bold leading-tight text-[color:var(--pt-ink)]">
         <Link
-          to={localizedPath(lang, "/demarches/" + encodeURIComponent(demarche.id))}
+          to={localizedPath(lang, basePath + "/" + encodeURIComponent(demarche.id))}
           className="after:absolute after:inset-0 hover:underline focus-visible:underline"
         >
           {demarche.name}

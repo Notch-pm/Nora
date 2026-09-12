@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { localizedPath, servedLanguage, splitLangPath } from "./localizedPath.ts";
+import {
+  localizedPath,
+  organismePath,
+  servedLanguage,
+  splitLangPath,
+  splitOrganismePath,
+  splitScopedPath,
+} from "./localizedPath.ts";
 
 describe("splitLangPath", () => {
   it("reconnaît un préfixe de langue", () => {
@@ -75,5 +82,64 @@ describe("servedLanguage — une réponse périmée ne dicte pas l'adresse", () 
 
   it("ne conclut rien tant que rien n'est chargé", () => {
     expect(servedLanguage(null, "en")).toBeNull();
+  });
+});
+
+describe("splitOrganismePath — l'organisme dans l'adresse", () => {
+  it("reconnaît un organisme et rend le chemin qui reste", () => {
+    expect(splitOrganismePath("/mairie-de-fontvieille"))
+      .toEqual({ organisme: "mairie-de-fontvieille", path: "/" });
+    expect(splitOrganismePath("/mairie-de-fontvieille/demarches/abc"))
+      .toEqual({ organisme: "mairie-de-fontvieille", path: "/demarches/abc" });
+  });
+
+  it("ne prend pas un segment de route pour un organisme", () => {
+    expect(splitOrganismePath("/demarches/abc"))
+      .toEqual({ organisme: null, path: "/demarches/abc" });
+    expect(splitOrganismePath("/")).toEqual({ organisme: null, path: "/" });
+  });
+
+  // ⚠️ C'est LA règle qui rend l'adresse lisible sans le serveur, et le Socle
+  // en tient l'autre bout : un slug y fait au moins quatre caractères. Un
+  // organisme nommé « cae » serait avalé comme un code de langue.
+  it("ne prend pas un segment de deux ou trois lettres pour un organisme", () => {
+    expect(splitOrganismePath("/en")).toEqual({ organisme: null, path: "/en" });
+    expect(splitOrganismePath("/gsw/demarches/abc"))
+      .toEqual({ organisme: null, path: "/gsw/demarches/abc" });
+  });
+});
+
+describe("splitScopedPath — ce qu'une adresse du portail dit d'elle-même", () => {
+  it("lit la langue puis l'organisme, dans cet ordre", () => {
+    expect(splitScopedPath("/en/mairie-de-fontvieille/demarches/abc"))
+      .toEqual({ lang: "en", organisme: "mairie-de-fontvieille", path: "/demarches/abc" });
+    expect(splitScopedPath("/mairie-de-fontvieille"))
+      .toEqual({ lang: null, organisme: "mairie-de-fontvieille", path: "/" });
+    expect(splitScopedPath("/en/demarches/abc/formulaire"))
+      .toEqual({ lang: "en", organisme: null, path: "/demarches/abc/formulaire" });
+    expect(splitScopedPath("/")).toEqual({ lang: null, organisme: null, path: "/" });
+  });
+});
+
+describe("organismePath — les liens d'un écran partagé", () => {
+  it("garde le périmètre de l'organisme, langue comprise", () => {
+    expect(organismePath("fr", "mairie-de-fontvieille", "/demarches/abc"))
+      .toBe("/mairie-de-fontvieille/demarches/abc");
+    expect(organismePath("en", "mairie-de-fontvieille", "/demarches/abc"))
+      .toBe("/en/mairie-de-fontvieille/demarches/abc");
+    expect(organismePath("en", "mairie-de-fontvieille", "/"))
+      .toBe("/en/mairie-de-fontvieille");
+  });
+
+  it("rend le chemin de la collectivité hors de tout organisme", () => {
+    expect(organismePath("fr", null, "/demarches/abc")).toBe("/demarches/abc");
+    expect(organismePath("en", null, "/")).toBe("/en");
+  });
+
+  // Un aller-retour : ce qu'on écrit doit se relire.
+  it("se relit par splitScopedPath", () => {
+    const written = organismePath("en", "mairie-de-fontvieille", "/demarches/abc/formulaire");
+    expect(splitScopedPath(written))
+      .toEqual({ lang: "en", organisme: "mairie-de-fontvieille", path: "/demarches/abc/formulaire" });
   });
 });

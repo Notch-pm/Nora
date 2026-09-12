@@ -11,10 +11,22 @@
  * pas seulement qu'il ne lit pas ses tables, mais qu'il ne parle pas sa langue.
  */
 
-/** Un organisme de la collectivité qui propose une démarche : de quoi le nommer. */
+/**
+ * Un organisme de la collectivité qui propose une démarche : de quoi le nommer,
+ * et de quoi l'atteindre.
+ *
+ * `slug` est l'identifiant lisible que le Socle lui a donné — celui qui ouvre
+ * sa page sur le portail (`/{slug}`).
+ *
+ * ⚠️ `null` EST UN CAS NORMAL, pas une anomalie : un organisme sans slug n'a
+ * pas d'adresse propre, et reste ce qu'il était — une entrée du filtre de
+ * l'accueil, une puce sur les cartes. Un Socle d'avant le contrat 1.22.0 n'en
+ * envoie aucun, et le portail continue de fonctionner sans page d'organisme.
+ */
 export interface DemarcheOrganization {
   id: string;
   name: string;
+  slug: string | null;
 }
 
 import type { FormSchema } from "./formSchema.ts";
@@ -77,4 +89,51 @@ export interface DemarcheDetail extends Demarche {
   /** `null` = démarche sans formulaire : elle s'affiche, sans saisie. */
   form: FormSchema | null;
   requester: RequesterConfig;
+}
+
+/**
+ * L'organisme qu'un slug d'adresse désigne, cherché dans le catalogue lui-même.
+ *
+ * ⚠️ C'EST LE CATALOGUE QUI DIT QUI A UNE PAGE, et non une liste à tenir à
+ * jour : un organisme n'est atteignable que s'il propose au moins une démarche
+ * publiée. Le jour où il n'en propose plus, son adresse s'éteint d'elle-même
+ * au lieu de mener à une page vide — et le jour où il publie, elle s'ouvre
+ * sans que personne n'ait rien à activer.
+ *
+ * ⚠️ LA COLLECTIVITÉ ELLE-MÊME EST ÉCARTÉE (`tenantId`) : sa page, c'est
+ * l'accueil du portail. La servir aussi sous son slug ferait deux adresses
+ * pour la même page, donc deux façons de la partager et de la compter.
+ */
+export function organizationBySlug(
+  demarches: Demarche[],
+  slug: string,
+  tenantId: string,
+): DemarcheOrganization | null {
+  const wanted = slug.trim().toLowerCase();
+  if (wanted === "") return null;
+  for (const demarche of demarches) {
+    for (const org of demarche.organizations) {
+      if (org.id === tenantId) continue;
+      if (org.slug !== null && org.slug.toLowerCase() === wanted) return org;
+    }
+  }
+  return null;
+}
+
+/**
+ * Les démarches que cet organisme propose.
+ *
+ * ⚠️ Définie ICI, dans le domaine, et pas dans l'interface : le serveur (qui
+ * sert la page d'un organisme) et l'interface (qui porte le filtre de
+ * l'accueil) doivent filtrer de la même façon. Deux définitions divergeraient
+ * au premier cas limite — et personne ne s'en apercevrait, puisque les deux
+ * listes ne s'affichent jamais côte à côte.
+ */
+export function demarchesOfOrganization(
+  demarches: Demarche[],
+  organizationId: string,
+): Demarche[] {
+  return demarches.filter((demarche) =>
+    demarche.organizations.some((org) => org.id === organizationId)
+  );
 }

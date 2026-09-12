@@ -204,6 +204,90 @@ liste ordonnée de sections typées. Règles de rendu, toutes dans
   selon la luminance.
 - **Le bloc « Espace usager » est décoratif** tant qu'il n'y a pas de compte.
 
+## Les pages d'organisme
+
+Depuis le 2026-09-12, chaque organisme d'une collectivité — une mairie, un
+service qui reçoit du public — peut avoir **sa propre page**, à son adresse :
+`laurentville.edilumen.fr/mairie-d-arles`. Elle ne montre que les démarches de
+cet organisme, à ses couleurs et avec son logo, et porte un lien de sortie vers
+« les démarches des autres organismes », c'est-à-dire l'accueil de la
+collectivité.
+
+Le besoin est venu des collectivités elles-mêmes : une mairie veut pouvoir
+imprimer une adresse sur ses affiches, et que ce qu'on y trouve soit à elle.
+
+**Six formes d'adresse**, la langue comprise :
+
+| Adresse | Ce qu'elle sert |
+|---|---|
+| `/` · `/en` | L'accueil de la collectivité, composé au Socle |
+| `/demarches/{id}` · `/en/demarches/{id}` | Une démarche, aux couleurs de la collectivité |
+| `/mairie-d-arles` · `/en/mairie-d-arles` | La page de l'organisme |
+| `/mairie-d-arles/demarches/{id}` | La même démarche, aux couleurs de l'organisme |
+| `/mairie-d-arles/demarches/{id}/formulaire` | Son formulaire, aux mêmes couleurs |
+
+L'usager **reste sous l'organisme jusqu'au dépôt** : rien ne change d'habillage
+entre la liste d'une mairie et la démarche qu'on y choisit. Les adresses sans
+préfixe continuent d'exister à l'identique — celles déjà partagées, déjà en
+favori, continuent de fonctionner.
+
+⚠️ **UNE RÈGLE LEXICALE, ET RIEN D'AUTRE, DÉCIDE DE CE QU'EST UN PREMIER
+SEGMENT.** Deux ou trois lettres, c'est une langue (`/en`, `/gsw`) ; le mot
+`demarches`, c'est une route ; tout le reste est un organisme. C'est ce qui
+permet au portail de savoir quel écran afficher **sans rien demander au
+serveur**, et donc sans attendre une réponse pour commencer à rendre. Le Socle
+tient l'autre bout de la règle : un slug d'organisme y fait **au moins quatre
+caractères** (contrainte `organizations_slug_url_form`). Un slug de trois
+caractères serait lu comme une langue, et la page de cet organisme deviendrait
+inatteignable — sans erreur, avec l'accueil à la place. La règle vit en un seul
+endroit, `src/i18n/localizedPath.ts`, et le routage, les liens et la mesure la
+partagent.
+
+⚠️ **LE THÈME VIENT DE LA COLLECTIVITÉ, LA CHARTE DE L'ORGANISME.** C'est la
+séparation que le portail fait déjà partout : le thème dit *comment* peindre
+(typographie, formes, densité, en-tête), la charte dit *avec quoi* (couleurs,
+logo). Une page d'organisme est donc le site de la collectivité, aux couleurs de
+l'organisme visité — et non un site différent. Un organisme qui n'a pas sa propre
+charte **hérite** de celle de sa collectivité (le Socle résout l'héritage) : la
+page reste cohérente au lieu de retomber sur les couleurs par défaut.
+
+⚠️ **PAS DE COMPOSITION PAR ORGANISME**, et ce n'est pas un manque. Le gabarit
+est fixe : logo, nom, recherche, filtre « Je suis… », grille de démarches, lien
+de sortie. Deux raisons : le Socle réserve les pages composées aux collectivités
+racines, et surtout la prose d'une intercommunalité sonnerait faux sous le logo
+d'une de ses mairies (« Bienvenue sur notre site de démarches ! » n'est pas signé
+de la même personne selon la page où on le lit).
+
+**Qui a une page se déduit du catalogue, sans réglage.** Un organisme est
+atteignable tant qu'il propose au moins une démarche publiée — c'est exactement
+ce que le filtre par organisme de l'accueil sait déjà. Le jour où il n'en propose
+plus, son adresse s'éteint d'elle-même plutôt que de mener à une page vide ; le
+jour où il publie, elle s'ouvre sans que personne ait rien à activer. La
+collectivité, elle, est écartée : sa page, c'est l'accueil. Les **services
+internes** n'apparaissent jamais — c'est leur porteur qui est nommé, et c'est
+son adresse qui sort.
+
+Une adresse d'organisme inconnue (slug inventé, organisme qui ne publie plus,
+démarche que cet organisme ne propose pas) **ramène à l'accueil**, comme toute
+adresse inconnue : un portail public n'a rien à gagner à expliquer à un habitant
+qu'il a suivi un lien périmé.
+
+⚠️ **LA PAGE D'UN ORGANISME N'EST PAS ENCORE COMPTÉE** dans la mesure
+d'audience : `page` n'a que trois valeurs au contrat partagé avec le Socle, et en
+ajouter une quatrième demande une migration coordonnée. En revanche, les vues de
+démarche et de formulaire atteintes **par** une page d'organisme sont comptées
+comme les autres — c'est ce que vérifie `pageOf` dans ses tests, et c'était le
+piège de ce lot : sans lui, ouvrir ces adresses aurait éteint la mesure sur ces
+parcours, en silence.
+
+Code : `src/i18n/localizedPath.ts` (la règle d'adresse, pure et testée),
+`src/App.tsx` (les six formes), `src/features/organisme/` (le gabarit et son
+chargement), `src/services/portal/organismeService.ts` ; côté serveur,
+`?organisme=<slug>` sur `GET /v1/bootstrap` et `GET /v1/demarches/{id}` de
+`portal-api`, et les deux fonctions pures `organizationBySlug` /
+`demarchesOfOrganization` de `_shared/domain/demarche.ts`. Contrat public
+**1.22.0** : `slug` sur `PortalOrganizationRef`.
+
 ## Une démarche, pour de vrai
 
 Une démarche se lit, puis se remplit, puis se dépose. Deux écrans, et un seul aller-retour

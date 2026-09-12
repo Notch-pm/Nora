@@ -90,3 +90,40 @@ describe("isArrival — une visite est une arrivée sur le site", () => {
       .toBe(true);
   });
 });
+
+describe("pageOf — sous le périmètre d'un organisme", () => {
+  // ⚠️ LE FILET DE CE LOT : une démarche atteinte par la page d'une mairie doit
+  // continuer à se compter comme une démarche. Sans cela, ouvrir les adresses
+  // d'organisme aurait éteint la mesure sur ces parcours, en silence.
+  it("compte toujours la démarche et son formulaire", () => {
+    expect(pageOf("/mairie-de-fontvieille/demarches/abc"))
+      .toEqual({ page: "demarche", demarcheId: "abc" });
+    expect(pageOf("/mairie-de-fontvieille/demarches/abc/formulaire"))
+      .toEqual({ page: "formulaire", demarcheId: "abc" });
+    expect(pageOf("/en/mairie-de-fontvieille/demarches/abc"))
+      .toEqual({ page: "demarche", demarcheId: "abc" });
+  });
+
+  // ⚠️ Décision assumée : la page d'un organisme n'est pas comptée tant que
+  // `page` n'a que trois valeurs au contrat. La compter « accueil » gonflerait
+  // l'accueil de la collectivité de visites qui ne l'ont jamais vu.
+  it("ne compte pas la page de l'organisme elle-même", () => {
+    expect(pageOf("/mairie-de-fontvieille")).toBeNull();
+    expect(pageOf("/en/mairie-de-fontvieille")).toBeNull();
+  });
+
+  it("ne confond pas le périmètre d'un organisme avec l'accueil", () => {
+    expect(pageOf("/")).toEqual({ page: "accueil", demarcheId: null });
+    expect(pageOf("/en")).toEqual({ page: "accueil", demarcheId: null });
+  });
+
+  // La clé de déduplication ignore le périmètre : la même démarche, vue depuis
+  // l'accueil puis depuis la page d'une mairie, reste la même page.
+  it("rend la même clé de page avec ou sans organisme", () => {
+    const direct = pageOf("/demarches/abc");
+    const scoped = pageOf("/mairie-de-fontvieille/demarches/abc");
+    expect(direct).not.toBeNull();
+    expect(scoped).not.toBeNull();
+    expect(pageKey(direct!)).toBe(pageKey(scoped!));
+  });
+});

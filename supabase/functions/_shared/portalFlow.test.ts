@@ -59,8 +59,9 @@ const ROUTES: Record<string, unknown> = {
       // Proposée par la ville et par l'un de ses quartiers : le Socle sert
       // les organismes dans l'ordre de l'arbre, le portail le conserve.
       organizations: [
-        { id: NANTES, name: "Ville de Nantes" },
-        { id: "q-chantenay", name: "Mairie de quartier de Chantenay" },
+        { id: NANTES, name: "Ville de Nantes", slug: "nantes" },
+        // Son slug lui donne une adresse : `/mairie-de-chantenay`.
+        { id: "q-chantenay", name: "Mairie de quartier de Chantenay", slug: "mairie-de-chantenay" },
         // Illisibles : une puce sans nom ne nomme personne, elle est écartée.
         { id: "sans-nom", name: "" },
         "pas-un-objet",
@@ -72,6 +73,8 @@ const ROUTES: Record<string, unknown> = {
       short_description: null,
       user_description: "Effectuez votre demande en ligne.",
       input_duration_minutes: null,
+      // Sans slug : la ville n'a pas de page d'organisme, son site EST le
+      // portail. Le portail le lit `null`, et n'en fait pas d'adresse.
       organizations: [{ id: NANTES, name: "Ville de Nantes" }],
       audiences: ["citoyen", "entreprise"],
     },
@@ -228,8 +231,12 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
         description: "Signalez un problème rencontré dans l'espace public.",
         estimatedMinutes: 5,
         organizations: [
-          { id: NANTES, name: "Ville de Nantes" },
-          { id: "q-chantenay", name: "Mairie de quartier de Chantenay" },
+          { id: NANTES, name: "Ville de Nantes", slug: "nantes" },
+          {
+            id: "q-chantenay",
+            name: "Mairie de quartier de Chantenay",
+            slug: "mairie-de-chantenay",
+          },
         ],
         audiences: ["citoyen"],
       },
@@ -240,7 +247,7 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
         // la carte n'aurait aucun texte alors que la collectivité en a écrit un.
         description: "Effectuez votre demande en ligne.",
         estimatedMinutes: null,
-        organizations: [{ id: NANTES, name: "Ville de Nantes" }],
+        organizations: [{ id: NANTES, name: "Ville de Nantes", slug: null }],
         // ⚠️ Dans l'ordre du filtre, pas celui du Socle : deux catalogues
         // paramétrés dans un ordre différent doivent se filtrer pareil.
         audiences: ["citoyen", "entreprise"],
@@ -423,7 +430,7 @@ const DETAIL = {
   short_description: "Signalez un problème rencontré dans l'espace public.",
   user_description: "Le service voirie interviendra sous 5 jours ouvrés.",
   input_duration_minutes: 5,
-  organizations: [{ id: NANTES, name: "Ville de Nantes" }],
+  organizations: [{ id: NANTES, name: "Ville de Nantes", slug: "nantes" }],
   category: { id: "cat-1", name: "Espace public" },
   form_schema: {
     version: 1,

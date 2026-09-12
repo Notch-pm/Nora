@@ -44,6 +44,10 @@ const RETRYABLE: Record<PortalLoadFailure, boolean> = {
   network: true,
   // Ce n'est pas une panne : réessayer donnerait le même résultat.
   demarche_unavailable: false,
+  // Idem, et de toute façon l'interface ramène le visiteur à l'accueil plutôt
+  // que de lui afficher ce message : une adresse d'organisme périmée doit
+  // rendre le portail, pas une explication.
+  organisme_unavailable: false,
   // Renvoyer à l'identique serait refusé de la même façon.
   submission_rejected: false,
   iris_unavailable: true,

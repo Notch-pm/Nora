@@ -11,7 +11,11 @@
  * ne peut pas réécrire. C'est ce qui rend inutile toute vérification côté
  * interface : il n'y a rien à falsifier.
  */
-import type { Demarche, DemarcheDetail } from "@fn/_shared/domain/demarche.ts";
+import type {
+  Demarche,
+  DemarcheDetail,
+  DemarcheOrganization,
+} from "@fn/_shared/domain/demarche.ts";
 import type { DemandeReceipt, DemandeSubmission } from "@fn/_shared/domain/demande.ts";
 import type { PieceFailure, PieceReceipt } from "@fn/_shared/iris/pieceService.ts";
 import type { PortalFailure } from "@fn/_shared/domain/failure.ts";
@@ -55,6 +59,7 @@ const KNOWN_FAILURES: readonly PortalLoadFailure[] = [
   "socle_misconfigured",
   "not_configured",
   "demarche_unavailable",
+  "organisme_unavailable",
   "submission_rejected",
   "iris_unavailable",
   "iris_misconfigured",
@@ -100,6 +105,88 @@ function readSnapshot(body: unknown): PortalSnapshot | null {
   return { lang, tenant, demarches, page, branding };
 }
 
+/** Ce que la page d'un organisme reçoit, en un seul aller-retour. */
+export interface OrganismeSnapshot {
+  /** La langue réellement servie — voir `PortalSnapshot.lang`. */
+  lang: string;
+  tenant: Tenant;
+  /**
+   * L'organisme visité. Jamais la collectivité elle-même : le serveur l'écarte,
+   * puisque sa page est l'accueil du portail.
+   */
+  organisme: DemarcheOrganization;
+  /** Les démarches de CET organisme, déjà filtrées par le serveur. */
+  demarches: Demarche[];
+  /** La charte de CET organisme, héritage déjà résolu ; `null` = défauts. */
+  branding: Branding | null;
+}
+
+export type OrganismeLoad =
+  | { ok: true; snapshot: OrganismeSnapshot }
+  | { ok: false; reason: PortalLoadFailure };
+
+/**
+ * ⚠️ Le tronc commun est lu par `readSnapshot` : la page d'un organisme est le
+ * MÊME instantané que l'accueil, sans composition et avec un organisme nommé.
+ * Le relire à part ferait deux tolérances à tenir d'accord (une liste
+ * d'organismes absente, une langue non dite, une charte nulle) — et elles
+ * finiraient par diverger.
+ */
+function readOrganismeSnapshot(body: unknown): OrganismeSnapshot | null {
+  const base = readSnapshot(body);
+  if (base === null) return null;
+  const raw = (body as { organisme?: unknown }).organisme as DemarcheOrganization | undefined;
+  // Sans organisme nommé, il n'y a pas de page : c'est une réponse d'accueil,
+  // pas celle qu'on a demandée.
+  if (!raw || typeof raw.id !== "string" || typeof raw.name !== "string") return null;
+  return {
+    lang: base.lang,
+    tenant: base.tenant,
+    organisme: {
+      id: raw.id,
+      name: raw.name,
+      slug: typeof raw.slug === "string" ? raw.slug : null,
+    },
+    demarches: base.demarches,
+    branding: base.branding,
+  };
+}
+
+/**
+ * Charge la page d'un organisme : sa collectivité, ses démarches, sa charte.
+ *
+ * Le slug voyage en paramètre, jamais la collectivité — elle se déduit du
+ * domaine visité, comme partout ailleurs. Un slug qui ne désigne personne qui
+ * publie ici rend `organisme_unavailable`, le même refus qu'une démarche non
+ * publiée : « pas ici », sans dire si quelque chose existe par ailleurs.
+ */
+export async function fetchOrganisme(slug: string, lang: string): Promise<OrganismeLoad> {
+  const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
+  if (!baseUrl) return { ok: false, reason: "not_configured" };
+
+  let response: Response;
+  try {
+    response = await fetch(
+      baseUrl.replace(/\/+$/, "") +
+        "/v1/bootstrap?lang=" +
+        encodeURIComponent(lang) +
+        "&organisme=" +
+        encodeURIComponent(slug),
+    );
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) return { ok: false, reason: readFailure(body) };
+
+  const snapshot = readOrganismeSnapshot(body);
+  // Réponse 200 mais illisible : une indisponibilité, pas une page à moitié
+  // rendue — même règle que l'accueil.
+  if (snapshot === null) return { ok: false, reason: "socle_unavailable" };
+  return { ok: true, snapshot };
+}
+
 /**
  * Charge la collectivité visitée et ses démarches.
  *
@@ -135,6 +222,12 @@ export interface DemarcheSnapshot {
   /** La langue réellement servie — voir `PortalSnapshot.lang`. */
   lang: string;
   tenant: Tenant;
+  /**
+   * L'organisme sous lequel cette démarche est consultée, `null` hors de tout
+   * périmètre. Le serveur ne le rend que s'il a vérifié que cet organisme
+   * propose bien la démarche : l'écran peut s'y fier pour le nommer.
+   */
+  organisme: DemarcheOrganization | null;
   demarche: DemarcheDetail;
   /** La charte graphique ; `null` = couleurs par défaut. Jamais bloquante. */
   branding: Branding | null;
@@ -146,18 +239,30 @@ export type DemarcheLoad =
 
 function readDemarcheSnapshot(body: unknown): DemarcheSnapshot | null {
   if (typeof body !== "object" || body === null) return null;
-  const raw = body as { lang?: unknown; tenant?: unknown; demarche?: unknown; branding?: unknown };
+  const raw = body as {
+    lang?: unknown;
+    tenant?: unknown;
+    organisme?: unknown;
+    demarche?: unknown;
+    branding?: unknown;
+  };
   const tenant = raw.tenant as Tenant | undefined;
   if (!tenant || typeof tenant.id !== "string" || typeof tenant.name !== "string") return null;
   const demarche = raw.demarche as DemarcheDetail | undefined;
   if (!demarche || typeof demarche.id !== "string" || typeof demarche.name !== "string") return null;
   const branding =
     typeof raw.branding === "object" && raw.branding !== null ? (raw.branding as Branding) : null;
+  // Absent d'un serveur d'avant les pages d'organisme, et absent chaque fois
+  // qu'on consulte une démarche hors périmètre : `null` est le cas courant.
+  const organisme =
+    typeof raw.organisme === "object" && raw.organisme !== null
+      ? (raw.organisme as DemarcheOrganization)
+      : null;
   // Le serveur a déjà traduit ET parsé les deux schémas : c'est le modèle du
   // portail qui arrive ici, pas du JSON du Socle. Le re-parser en ferait une
   // seconde vérité, qui divergerait au premier type de champ ajouté.
   const lang = typeof raw.lang === "string" && raw.lang !== "" ? raw.lang : "fr";
-  return { lang, tenant, demarche, branding };
+  return { lang, tenant, organisme, demarche, branding };
 }
 
 /**
@@ -169,7 +274,16 @@ function readDemarcheSnapshot(body: unknown): DemarcheSnapshot | null {
  * qu'un identifiant inventé, sans jamais révéler qu'une démarche existe mais
  * n'est pas ouverte.
  */
-export async function fetchDemarche(demarcheId: string, lang: string): Promise<DemarcheLoad> {
+export async function fetchDemarche(
+  demarcheId: string,
+  lang: string,
+  /**
+   * L'organisme sous lequel la démarche est consultée, quand l'usager est
+   * arrivé par sa page. Le serveur en tire deux choses : la charte à servir, et
+   * la vérification que cet organisme propose bien cette démarche.
+   */
+  organisme: string | null = null,
+): Promise<DemarcheLoad> {
   const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
   if (!baseUrl) return { ok: false, reason: "not_configured" };
 
@@ -180,7 +294,8 @@ export async function fetchDemarche(demarcheId: string, lang: string): Promise<D
         "/v1/demarches/" +
         encodeURIComponent(demarcheId) +
         "?lang=" +
-        encodeURIComponent(lang),
+        encodeURIComponent(lang) +
+        (organisme === null ? "" : "&organisme=" + encodeURIComponent(organisme)),
     );
   } catch {
     return { ok: false, reason: "network" };

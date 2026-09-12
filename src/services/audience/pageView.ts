@@ -17,6 +17,8 @@
  * écartée du périmètre de la mesure.
  */
 
+import { splitScopedPath } from "@/i18n/localizedPath.ts";
+
 export const AUDIENCE_PAGES = ["accueil", "demarche", "formulaire"] as const;
 export type AudiencePage = (typeof AUDIENCE_PAGES)[number];
 
@@ -39,14 +41,23 @@ export interface PageIdentity {
  * compteurs de la page qu'il est en train de lire.
  */
 export function pageOf(pathname: string): PageIdentity | null {
-  const segments = pathname.split("/").filter((s) => s !== "");
-  // Un premier segment de deux ou trois lettres est un code de langue : les
-  // routes du portail commencent toutes par « demarches ».
-  if (segments.length > 0 && /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/.test(segments[0]) && segments[0] !== "demarches") {
-    segments.shift();
-  }
+  // ⚠️ LA LECTURE DE L'ADRESSE N'EST PAS REFAITE ICI. Elle l'était — le même
+  // motif de langue et la même exception « demarches » recopiés — et une
+  // adresse d'organisme, ajoutée ailleurs, aurait suffi à faire diverger les
+  // deux versions en silence : les vues de démarche atteintes par
+  // `/mairie-de-x/demarches/{id}` auraient tout simplement cessé d'être
+  // comptées, sans erreur ni trace.
+  const { organisme, path } = splitScopedPath(pathname);
+  const segments = path.split("/").filter((s) => s !== "");
 
-  if (segments.length === 0) return { page: "accueil", demarcheId: null };
+  if (segments.length === 0) {
+    // ⚠️ LA PAGE D'UN ORGANISME N'EST PAS COMPTÉE à ce stade : `page` n'a que
+    // trois valeurs au contrat partagé avec le Socle, et en ajouter une
+    // quatrième passe par une migration. La compter « accueil » serait pire
+    // que ne rien compter — l'accueil de la collectivité gonflerait de visites
+    // qui ne l'ont jamais vu, et personne ne pourrait plus démêler les deux.
+    return organisme === null ? { page: "accueil", demarcheId: null } : null;
+  }
   if (segments[0] !== "demarches") return null;
   if (segments.length === 2) return { page: "demarche", demarcheId: segments[1] };
   if (segments.length === 3 && segments[2] === "formulaire") {

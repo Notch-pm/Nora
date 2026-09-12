@@ -17,10 +17,10 @@
  * créer une seconde.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { useLanguage, useT, useTn } from "@/i18n/LanguageLayout.tsx";
 import { errorText } from "@/i18n/t.ts";
-import { localizedPath, servedLanguage } from "@/i18n/localizedPath.ts";
+import { organismePath, servedLanguage, splitScopedPath } from "@/i18n/localizedPath.ts";
 import type { FormValues } from "@fn/_shared/domain/conditions.ts";
 import { isSection } from "@fn/_shared/domain/formSchema.ts";
 import type { DemandeReceipt } from "@fn/_shared/domain/demande.ts";
@@ -56,6 +56,9 @@ function newSubmissionId(): string {
 function Receipt({ receipt, demarcheName }: { receipt: DemandeReceipt; demarcheName: string }) {
   const { lang } = useLanguage();
   const t = useT();
+  // Le périmètre vient de l'adresse — même raison que dans `DemarchePage` :
+  // après un dépôt sous une mairie, on revient à la page de cette mairie.
+  const { organisme } = splitScopedPath(useLocation().pathname);
   return (
     <section className="rounded-[var(--pt-radius)] border border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_6%,white)] p-6">
       <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">
@@ -68,7 +71,7 @@ function Receipt({ receipt, demarcheName }: { receipt: DemandeReceipt; demarcheN
       <p className="mt-1 text-[length:var(--pt-h1)] font-black tracking-tight text-[color:var(--pt-ink)]">{receipt.reference}</p>
       <p className="mt-4 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("receipt.note")}</p>
       <Link
-        to={localizedPath(lang, "/")}
+        to={organismePath(lang, organisme, "/")}
         className="mt-6 inline-flex rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-4 py-2 text-[length:var(--pt-body)] font-semibold hover:bg-[color:var(--pt-surface)]"
       >
         {t("demarche.backHome")}
@@ -93,9 +96,11 @@ function ErrorSummary({ count }: { count: number }) {
 
 export function FormulairePage() {
   const { demarcheId = "" } = useParams();
+  // Le périmètre vient de l'adresse — voir `DemarchePage`.
+  const { organisme } = splitScopedPath(useLocation().pathname);
   const { lang, serve } = useLanguage();
   const t = useT();
-  const { state, retry } = useDemarche(demarcheId, lang);
+  const { state, retry } = useDemarche(demarcheId, lang, organisme);
 
   // Le serveur a tranché la langue : l'adresse s'y aligne (voir `PortalPage`).
   // ⚠️ ON N'ALIGNE L'ADRESSE QUE SUR UNE RÉPONSE À JOUR. Un état « prêt » qui
@@ -143,7 +148,7 @@ export function FormulairePage() {
     return (
       <DemarcheError reason={state.reason} onRetry={retry}>
         <Link
-          to={localizedPath(lang, "/")}
+          to={organismePath(lang, organisme, "/")}
           className="rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] px-4 py-2 text-[length:var(--pt-body)] hover:bg-[color:var(--pt-surface)]"
         >
           {t("demarche.backHome")}
@@ -155,7 +160,11 @@ export function FormulairePage() {
   const { tenant, branding } = state.snapshot;
   const detail = state.snapshot.demarche;
   const schema = detail.form;
-  const backToDemarche = localizedPath(lang, "/demarches/" + encodeURIComponent(detail.id));
+  const backToDemarche = organismePath(
+    lang,
+    organisme,
+    "/demarches/" + encodeURIComponent(detail.id),
+  );
 
   if (receipt !== null) {
     return (

@@ -24,6 +24,8 @@ export type DemarcheState =
 export function useDemarche(
   demarcheId: string,
   lang: string,
+  /** L'organisme sous lequel la démarche est consultée, `null` sinon. */
+  organisme: string | null = null,
 ): { state: DemarcheState; retry: () => void } {
   const [state, setState] = useState<DemarcheState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -35,13 +37,18 @@ export function useDemarche(
     let current = true;
     setState({ status: "loading" });
 
-    fetchDemarche(demarcheId, lang)
+    fetchDemarche(demarcheId, lang, organisme)
       .then((result) => {
         // La charte arrive avec la démarche : on la retient pour l'attente de
         // la prochaine visite (voir `theme.ts`), qu'elle soit encore utile ici
         // ou non.
+        //
+        // ⚠️ SAUF SOUS UN ORGANISME : la charte reçue est alors la SIENNE, et
+        // la retenir peindrait l'attente de la prochaine visite — y compris
+        // celle de l'accueil de la collectivité — aux couleurs d'une mairie.
+        // L'icône de l'onglet, elle, suit la page qu'on regarde.
         if (result.ok) {
-          rememberBranding(result.snapshot.branding);
+          if (organisme === null) rememberBranding(result.snapshot.branding);
           applyFavicon(result.snapshot.branding);
         }
         if (!current) return;
@@ -58,7 +65,7 @@ export function useDemarche(
     return () => {
       current = false;
     };
-  }, [demarcheId, lang, attempt]);
+  }, [demarcheId, lang, organisme, attempt]);
 
   return { state, retry: () => setAttempt((n) => n + 1) };
 }

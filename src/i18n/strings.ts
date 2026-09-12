@@ -412,6 +412,34 @@ export const STRINGS = {
     zh: "目前暂无在线服务。",
   },
 
+  // ── La page d'un organisme ───────────────────────────────────────────────
+  "organisme.subtitle": {
+    fr: "Les démarches de cet organisme",
+    en: "This organisation's services",
+    es: "Los trámites de este organismo",
+    de: "Die Verfahren dieser Einrichtung",
+    it: "Le pratiche di questo ente",
+    pt: "Os serviços deste organismo",
+    ar: "خدمات هذه الجهة",
+    tr: "Bu kurumun işlemleri",
+    ru: "Услуги этой организации",
+    uk: "Послуги цієї установи",
+    zh: "该机构的办事服务",
+  },
+  "organisme.backToPortal": {
+    fr: "Démarches des autres organismes",
+    en: "Services from other organisations",
+    es: "Trámites de otros organismos",
+    de: "Verfahren anderer Einrichtungen",
+    it: "Pratiche di altri enti",
+    pt: "Serviços de outros organismos",
+    ar: "خدمات الجهات الأخرى",
+    tr: "Diğer kurumların işlemleri",
+    ru: "Услуги других организаций",
+    uk: "Послуги інших установ",
+    zh: "其他机构的办事服务",
+  },
+
   // ── Une démarche ─────────────────────────────────────────────────────────
   "demarche.backHome": {
     fr: "Retour à l'accueil",

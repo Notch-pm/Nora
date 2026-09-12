@@ -17,11 +17,11 @@
  * La nav et « Mon compte » restent décoratifs tant qu'aucune de ces pages
  * n'existe — mieux vaut du gris inerte qu'un lien mort.
  */
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import type { PortalTheme } from "@fn/_shared/domain/theme.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { languageName } from "@/i18n/languageNames.ts";
-import { localizedPath } from "@/i18n/localizedPath.ts";
+import { organismePath, splitScopedPath } from "@/i18n/localizedPath.ts";
 
 export function PageHeader({
   tenantName,
@@ -45,6 +45,13 @@ export function PageHeader({
 }) {
   const { lang, setLang } = useLanguage();
   const t = useT();
+  // ⚠️ « Accueil » DÉPEND DU PÉRIMÈTRE : sous une page d'organisme, la marque
+  // affichée est celle de cet organisme, et la ramener à l'accueil de la
+  // collectivité ferait sortir le visiteur d'un périmètre qu'il n'a pas quitté
+  // — en cliquant sur le logo d'une mairie, il atterrirait chez
+  // l'intercommunalité. Hors de tout organisme, `organismePath` rend
+  // exactement ce que rendait `localizedPath`.
+  const home = organismePath(lang, splitScopedPath(useLocation().pathname).organisme, "/");
 
   const centered = theme?.header.logo === "center";
   return (
@@ -79,7 +86,7 @@ export function PageHeader({
             ligne. Ce qu'on veut, c'est deux lignes — la marque, puis le reste. */}
         <div className="flex min-w-0 items-center gap-3.5">
           <Link
-            to={localizedPath(lang, "/")}
+            to={home}
             aria-label={t("header.home")}
             className="flex shrink-0 items-center rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)] focus-visible:ring-offset-2"
           >

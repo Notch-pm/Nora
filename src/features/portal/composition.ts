@@ -5,7 +5,11 @@
  * l'affichent, mais l'ordre des démarches, le filtre de recherche et la
  * résolution des raccourcis vivent ici, pour être vérifiés sans rendu.
  */
-import type { Demarche, DemarcheOrganization } from "@fn/_shared/domain/demarche.ts";
+import {
+  type Demarche,
+  demarchesOfOrganization,
+  type DemarcheOrganization,
+} from "@fn/_shared/domain/demarche.ts";
 import type { Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import type { FooterColumns, GridColumns } from "@fn/_shared/domain/page.ts";
 
@@ -48,10 +52,14 @@ export function filterDemarchesByOrganization(
   demarches: Demarche[],
   organizationId: string | null,
 ): Demarche[] {
+  // ⚠️ Le filtrage lui-même vit dans le domaine (`demarchesOfOrganization`), et
+  // pas ici : le serveur en a besoin pour servir la page d'un organisme, et
+  // deux définitions du même « appartient à cet organisme » divergeraient au
+  // premier cas limite — sans que personne ne le voie, puisque les deux listes
+  // ne s'affichent jamais côte à côte. Ce qui reste ici est propre au filtre :
+  // « aucun organisme choisi » ne filtre rien.
   if (organizationId === null) return demarches;
-  return demarches.filter((demarche) =>
-    demarche.organizations.some((org) => org.id === organizationId),
-  );
+  return demarchesOfOrganization(demarches, organizationId);
 }
 
 /**

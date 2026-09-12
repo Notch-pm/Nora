@@ -11,20 +11,25 @@
  * n'ont pas à être ressaisies ailleurs pour être annoncées ici.
  */
 import { useEffect } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { allFields } from "@fn/_shared/domain/formSchema.ts";
 import { DemarcheError, DemarcheLoading, DemarcheShell } from "./DemarcheShell.tsx";
 import { useDemarche } from "./useDemarche.ts";
 import { useLanguage, useT, useTn } from "@/i18n/LanguageLayout.tsx";
-import { localizedPath, servedLanguage } from "@/i18n/localizedPath.ts";
+import { organismePath, servedLanguage, splitScopedPath } from "@/i18n/localizedPath.ts";
 
 
 function BackToHome({ subtle = false }: { subtle?: boolean }) {
   const { lang } = useLanguage();
   const t = useT();
+  // Sous un organisme, « revenir à l'accueil » c'est revenir à SA page : c'est
+  // la liste d'où l'usager vient, et celle qui porte le lien vers les autres
+  // organismes. Le renvoyer à l'accueil de la collectivité lui ferait perdre
+  // le périmètre sans l'avoir demandé.
+  const { organisme } = splitScopedPath(useLocation().pathname);
   return (
     <Link
-      to={localizedPath(lang, "/")}
+      to={organismePath(lang, organisme, "/")}
       className={
         subtle
           ? "text-[length:var(--pt-body)] font-semibold text-[color:var(--brand-primary)] hover:underline"
@@ -38,10 +43,14 @@ function BackToHome({ subtle = false }: { subtle?: boolean }) {
 
 export function DemarchePage() {
   const { demarcheId = "" } = useParams();
+  // ⚠️ Le périmètre se lit dans l'ADRESSE, pas dans un paramètre de route : la
+  // même adresse peut porter une langue, un organisme, ou les deux, et seule
+  // `splitScopedPath` sait les distinguer (voir `App.tsx`).
+  const { organisme } = splitScopedPath(useLocation().pathname);
   const { lang, serve } = useLanguage();
   const t = useT();
   const tn = useTn();
-  const { state, retry } = useDemarche(demarcheId, lang);
+  const { state, retry } = useDemarche(demarcheId, lang, organisme);
 
   // Le serveur a tranché la langue : l'adresse s'y aligne (voir `PortalPage`).
   // ⚠️ ON N'ALIGNE L'ADRESSE QUE SUR UNE RÉPONSE À JOUR. Un état « prêt » qui
@@ -160,7 +169,11 @@ export function DemarchePage() {
           </p>
         ) : (
           <Link
-            to={localizedPath(lang, "/demarches/" + encodeURIComponent(demarche.id) + "/formulaire")}
+            to={organismePath(
+              lang,
+              organisme,
+              "/demarches/" + encodeURIComponent(demarche.id) + "/formulaire",
+            )}
             className="inline-flex rounded-[var(--pt-radius-sm)] bg-[color:var(--brand-primary)] px-5 py-3 text-[length:var(--pt-body)] font-bold text-white hover:opacity-90"
           >
             {t("demarche.start")}

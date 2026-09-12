@@ -20,6 +20,12 @@ export type PortalFailure =
   | "not_configured"
   /** La démarche demandée n'est pas (ou plus) au catalogue publié. */
   | "demarche_unavailable"
+  /**
+   * Le slug d'organisme visité ne désigne personne qui publie ici : inventé,
+   * organisme sans démarche publiée, ou slug de la collectivité elle-même
+   * (dont la page est l'accueil).
+   */
+  | "organisme_unavailable"
   /** Le dépôt a été refusé : l'enveloppe est invalide, ou la démarche fermée. */
   | "submission_rejected"
   /** Iris est injoignable, ou a répondu quelque chose d'inattendu. */
@@ -45,6 +51,10 @@ export function httpStatusForFailure(failure: PortalFailure): number {
     case "tenant_unavailable":
       return 404;
     case "demarche_unavailable":
+    case "organisme_unavailable":
+      // Même refus, et pour la même raison : « pas ici ». Distinguer
+      // « existe mais fermé » de « n'existe pas » renseignerait un curieux sur
+      // l'organigramme d'une collectivité sans rien apporter à un usager.
       return 404;
     case "submission_rejected":
       // 422 et non 400 : l'enveloppe était bien formée, c'est son CONTENU que
