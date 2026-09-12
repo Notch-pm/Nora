@@ -8,8 +8,10 @@
  *
  * ⚠️ L'image de fond est posée en CSS, jamais en `<img>` : c'est un FOND, elle
  * ne porte aucune information (le titre et le sous-titre sont posés dessus).
- * Elle recouvre tout le bloc, et sous elle un voile clair garde les textes
- * lisibles quelle que soit la photo — voir `IMAGE_VEIL_ALPHA`.
+ * Elle recouvre tout le bloc, telle qu'elle a été choisie : le voile clair qui
+ * garantissait le contraste a été retiré le 2026-09-12 (décision produit, voir
+ * `imageBackdropStyle`). Il reste au rendu deux gestes pour que les textes se
+ * détachent : l'encre pleine et les puces en blanc, ci-dessous.
  *
  * ⚠️ En **pleine largeur**, `HomeComposition` rend ce bloc HORS de son
  * conteneur centré — c'est la seule façon qu'a un fond d'atteindre les bords de
@@ -83,8 +85,9 @@ export function RechercheSection({
           <p
             className={
               "text-center text-[length:var(--pt-body)] " +
-              // ⚠️ Le gris de texte passe à l'encre pleine sur une image : sous
-              // le voile, il ne tiendrait que 2,1 : 1 (voir `IMAGE_VEIL_ALPHA`).
+              // ⚠️ Le gris de texte passe à l'encre pleine sur une image : il ne
+              // tient sur aucun fond photographique, et il n'y a plus de voile
+              // pour l'aider.
               (hasImage ? "text-[color:var(--pt-ink)]" : "text-[color:var(--pt-muted)]")
             }
           >
@@ -111,8 +114,8 @@ export function RechercheSection({
                 onClick={() => onQueryChange(demarche.name)}
                 className={
                   "rounded-full px-3 py-1.5 text-[length:var(--pt-small)] font-semibold text-[color:var(--pt-ink)] hover:opacity-80 " +
-                  // L'aplat neutre des puces se confondrait avec le voile : sur
-                  // une image, elles se détachent en blanc plein.
+                  // L'aplat neutre des puces se perdrait sur une photo : elles
+                  // se détachent en blanc plein.
                   (hasImage ? "bg-white" : "bg-[color:var(--pt-surface)]")
                 }
               >

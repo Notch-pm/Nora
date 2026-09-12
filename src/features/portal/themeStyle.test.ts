@@ -6,11 +6,9 @@ import {
   DEFAULT_SECONDARY,
   headerLogoUrl,
   imageBackdropStyle,
-  IMAGE_VEIL_ALPHA,
   isDarkColor,
   relativeLuminance,
   themeStyle,
-  VEILED_DARKEST,
 } from "./themeStyle.ts";
 
 /**
@@ -191,10 +189,13 @@ describe("le fond image d'un bloc", () => {
     expect(imageBackdropStyle("   ", true)).toBeUndefined();
   });
 
-  it("empile le voile et la photo dans une seule propriété", () => {
+  // ⚠️ Le voile clair a été retiré le 2026-09-12 (décision produit) : la photo
+  // se voit telle quelle. Ce test l'épingle — un dégradé qui reviendrait ici
+  // serait un voile reposé sans qu'on l'ait décidé.
+  it("ne pose QUE la photo, sans voile par-dessus", () => {
     const style = imageBackdropStyle("https://exemple.fr/a.jpg", false)!;
-    expect(style.backgroundImage).toContain("linear-gradient");
-    expect(style.backgroundImage).toContain('url("https://exemple.fr/a.jpg")');
+    expect(style.backgroundImage).not.toContain("linear-gradient");
+    expect(style.backgroundImage).toBe('url("https://exemple.fr/a.jpg")');
     expect(style.backgroundSize).toBe("cover");
     expect(style.backgroundAttachment).toBe("scroll");
   });
@@ -208,18 +209,18 @@ describe("le fond image d'un bloc", () => {
     expect(style.backgroundImage).toContain('url("https://exemple.fr/a\\".jpg")');
   });
 
-  it("GARANTIT la lisibilité de l'encre sur n'importe quelle photo", () => {
-    // Le pire cas est le voile posé sur du noir pur — toute vraie image donne
-    // un fond plus clair, donc mieux. Les deux encres du portail (ordinaire et
-    // contraste renforcé) doivent y tenir le seuil AA.
-    expect(IMAGE_VEIL_ALPHA).toBe(0.6);
-    for (const ink of ["#1c2220", "#0d1210"]) {
-      expect(ratio(ink, VEILED_DARKEST)).toBeGreaterThanOrEqual(4.5);
-    }
-  });
-
-  it("EXPLIQUE pourquoi le sous-titre passe à l'encre pleine sur une image", () => {
-    // Le gris de texte, lui, ne tient pas sous le voile.
-    expect(ratio("#5c6663", VEILED_DARKEST)).toBeLessThan(4.5);
+  // ⚠️ CE QUE LE RETRAIT DU VOILE A COÛTÉ, mesuré et épinglé — la décision est
+  // produit (2026-09-12), la conséquence est factuelle : il n'y a PLUS AUCUNE
+  // garantie de lisibilité sur une image. Le voile assurait 5,7 : 1 quelle que
+  // soit la photo ; sur un gris moyen, qui tient lieu de photo quelconque,
+  // l'encre pleine elle-même tombe à 4,1 : 1, sous le seuil AA.
+  //
+  // Le sous-titre passe quand même à l'encre pleine : c'est nettement mieux que
+  // le gris de texte, sans être suffisant. Le jour où il faudra y revenir, la
+  // bonne forme est un voile SOUS LE TEXTE SEUL.
+  it("dit ce que le retrait du voile a coûté sur une image", () => {
+    const photo = "#808080";
+    expect(ratio("#1c2220", photo)).toBeLessThan(4.5);
+    expect(ratio("#1c2220", photo)).toBeGreaterThan(ratio("#5c6663", photo));
   });
 });

@@ -254,3 +254,19 @@ export function organizationChips(
     ? { kind: "compte", count: organizations.length }
     : { kind: "noms", organizations };
 }
+
+/**
+ * La page commence-t-elle par un bandeau pleine largeur ? Alors il EST le haut
+ * de la page : collé à l'en-tête, aucune marge entre les deux.
+ *
+ * Symétrique d'`endsWithFooter`, et pour la même raison : un fond qui va d'un
+ * bord à l'autre de l'écran mais s'arrête à trois pixels sous la barre de
+ * navigation ne ressemble à rien — on voit la bande de page qui reste.
+ */
+export function startsWithFullWidthBanner(
+  sections: { kind: string; imageUrl?: string | null; imageFullWidth?: boolean }[],
+): boolean {
+  const first = sections[0];
+  return first !== undefined && first.kind === "recherche" &&
+    (first.imageUrl ?? null) !== null && first.imageFullWidth === true;
+}

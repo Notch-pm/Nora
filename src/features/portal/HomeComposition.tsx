@@ -32,6 +32,7 @@ import {
   filterDemarchesByOrganization,
   filterDemarchesByQuery,
   organizationsOffering,
+  startsWithFullWidthBanner,
 } from "./composition.ts";
 import { PageHeader } from "./PageHeader.tsx";
 import { CompteSection } from "./sections/CompteSection.tsx";
@@ -101,7 +102,10 @@ export function HomeComposition({
         className="flex flex-1 flex-col"
         style={{
           gap: "var(--pt-gap)",
-          paddingTop: "var(--pt-pad)",
+          // Un bandeau pleine largeur en tête de page touche l'en-tête — voir
+          // `startsWithFullWidthBanner`. Même geste que le pied de page collé
+          // au bas, à l'autre bout.
+          paddingTop: startsWithFullWidthBanner(page.sections) ? 0 : "var(--pt-pad)",
           // Un pied de page composé va au bord ; sans lui, la dernière section
           // garde sa respiration. L'espacement suit la densité du thème.
           paddingBottom: footerLast ? 0 : "var(--pt-pad)",

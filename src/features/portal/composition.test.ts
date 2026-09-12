@@ -12,6 +12,7 @@ import {
   gridColumnsClass,
   isDarkColor,
   organizationChips,
+  startsWithFullWidthBanner,
   orderDemarchesForSection,
   organizationsOffering,
   resolveShortcuts,
@@ -277,5 +278,37 @@ describe("organizationChips — ce qu'une dalle dit des organismes", () => {
     const chips = organizationChips([]);
     expect(chips.kind).toBe("noms");
     if (chips.kind === "noms") expect(chips.organizations).toEqual([]);
+  });
+});
+
+describe("startsWithFullWidthBanner — le haut de la page", () => {
+  const banniere = (imageUrl: string | null, imageFullWidth: boolean) => ({
+    kind: "recherche",
+    imageUrl,
+    imageFullWidth,
+  });
+
+  it("reconnaît un bandeau pleine largeur en tête de page", () => {
+    expect(startsWithFullWidthBanner([banniere("https://exemple.fr/a.jpg", true)])).toBe(true);
+  });
+
+  // Les deux options restent en base quand l'adresse est effacée : c'est au
+  // rendu de les ignorer tant qu'il n'y a rien à habiller.
+  it("ne colle rien sans image, même si l'option pleine largeur traîne", () => {
+    expect(startsWithFullWidthBanner([banniere(null, true)])).toBe(false);
+  });
+
+  it("ne colle rien quand l'image s'arrête aux marges du contenu", () => {
+    expect(startsWithFullWidthBanner([banniere("https://exemple.fr/a.jpg", false)])).toBe(false);
+  });
+
+  // ⚠️ En TÊTE seulement : un bandeau au milieu de la page garde ses voisins,
+  // il ne touche pas l'en-tête.
+  it("ne regarde que la première section", () => {
+    expect(startsWithFullWidthBanner([
+      { kind: "texte" },
+      banniere("https://exemple.fr/a.jpg", true),
+    ])).toBe(false);
+    expect(startsWithFullWidthBanner([])).toBe(false);
   });
 });
