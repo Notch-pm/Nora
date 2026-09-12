@@ -20,6 +20,24 @@
 
 export type GridColumns = 2 | 3 | 4;
 
+/**
+ * Le champ de recherche, et l'habillage que la collectivité lui a donné.
+ *
+ * `imageUrl` est une image de **FOND** : elle recouvre tout le bloc, cadrée au
+ * centre et rognée pour le remplir. Ce n'est pas une illustration — d'où
+ * l'absence de texte alternatif, contrairement à `TexteImageSection` : ce
+ * qu'une synthèse vocale doit lire, ce sont le titre et le sous-titre, posés
+ * dessus. Elle se rend donc en CSS, jamais en `<img>`.
+ *
+ * `null` quand la collectivité n'en a pas mis, ou quand l'adresse servie n'est
+ * pas une `https` absolue (voir `socle/urls.ts`) : le bloc est alors celui
+ * d'avant, sans fond — pas une erreur, et surtout pas une image cassée.
+ *
+ * ⚠️ Les deux options qui suivent sont **déjà remises à `false` sans image**
+ * par la frontière (`pageService.ts`), comme `shortcuts` l'est par
+ * `show_shortcuts` : le rendu n'a pas à connaître l'existence d'un réglage que
+ * le Socle conserve pour permettre le retour en arrière.
+ */
 export interface RechercheSection {
   id: string;
   kind: "recherche";
@@ -28,6 +46,19 @@ export interface RechercheSection {
   placeholder: string;
   /** Démarches en raccourci sous le champ (`Demarche.id`). Vide = pas de raccourcis. */
   shortcuts: string[];
+  /** Image de fond du bloc, ou `null`. */
+  imageUrl: string | null;
+  /** L'image va d'un bord à l'autre de la page, au lieu de s'arrêter aux marges du contenu. */
+  imageFullWidth: boolean;
+  /**
+   * L'image reste fixe pendant que la page défile, le bloc glissant par-dessus
+   * (`background-attachment: fixed`).
+   *
+   * ⚠️ **Ornement** : plusieurs navigateurs mobiles ignorent `fixed` et y font
+   * défiler l'image normalement. Le bloc reste entier, aucune information n'en
+   * dépend.
+   */
+  imageFixed: boolean;
 }
 
 export interface DemarchesSection {

@@ -64,7 +64,11 @@ function toSection(raw: unknown, lang: string): HomeSection | null {
   const tr = row.translations;
   const title = localizedText(text(row.title), tr, lang, "title") ?? "";
   switch (row.kind) {
-    case "recherche":
+    case "recherche": {
+      // ⚠️ `https` absolue ou rien (voir `urls.ts`). Le bloc reste rendu sans
+      // fond : le champ de recherche d'une collectivité n'a pas à disparaître
+      // avec son habillage.
+      const imageUrl = httpsUrl(row.image_url);
       return {
         id,
         kind: "recherche",
@@ -74,7 +78,14 @@ function toSection(raw: unknown, lang: string): HomeSection | null {
         // Raccourcis masqués = pas de raccourcis : le rendu n'a pas à
         // connaître l'existence du commutateur.
         shortcuts: row.show_shortcuts === true ? ids(row.shortcuts) : [],
+        imageUrl,
+        // Même geste : sans image, les deux options n'habillent rien. Le Socle
+        // les conserve (on peut recoller une adresse et retrouver son bandeau),
+        // c'est ICI qu'on les éteint — pas dans le rendu.
+        imageFullWidth: imageUrl !== null && row.image_full_width === true,
+        imageFixed: imageUrl !== null && row.image_fixed === true,
       };
+    }
     case "demarches":
       return {
         id,

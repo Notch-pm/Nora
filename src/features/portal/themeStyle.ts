@@ -286,3 +286,74 @@ export function headerLogoUrl(theme: PortalTheme, branding: Branding | null): st
   }
   return branding?.logoUrl ?? null;
 }
+
+// ── Le fond image d'un bloc ─────────────────────────────────────────────────
+
+/**
+ * L'opacité du **voile clair** posé sur une image de fond — et ce chiffre-là
+ * n'est pas un goût, c'est une garantie.
+ *
+ * Une collectivité choisit sa photo ; personne ne sait ce qu'elle contient. Un
+ * titre en encre sombre posé directement dessus est illisible une fois sur
+ * deux, et rien ne peut le mesurer avant que la page soit affichée.
+ *
+ * À **0,6**, le fond le plus sombre qu'on puisse obtenir est le voile posé sur
+ * du noir pur (`VEILED_DARKEST`, `#999999`) : l'encre du portail y tient
+ * **5,7 : 1**, au-dessus du seuil AA de 4,5 : 1, et toute vraie photo donne
+ * mieux. La lisibilité est acquise AVANT de savoir quelle image arrive.
+ *
+ * ⚠️ **Ce n'est pas un réglage, et ce serait une mauvaise idée d'en faire un** :
+ * baisser le voile, c'est reprendre la garantie. À 0,5 l'encre tombe à 4,1 : 1
+ * et la page d'accueil d'une collectivité cesse d'être conforme sans que
+ * personne ne l'ait décidé.
+ *
+ * ⚠️ **Le gris de texte, lui, n'y résiste pas** (2,1 : 1 dans le pire cas) :
+ * un bloc à fond image passe son sous-titre à l'encre pleine. C'est la seule
+ * conséquence de ce voile sur le rendu du bloc.
+ *
+ * ⚠️ **Miroir volontaire** de `Socle/src/features/portal/themeStyle.ts`, comme
+ * le reste de ce fichier : l'éditeur montre le voile que le site pose. Testé
+ * des deux côtés.
+ */
+export const IMAGE_VEIL_ALPHA = 0.6;
+
+/** Le voile sur du noir pur : le fond le plus sombre qu'une image puisse donner. */
+export const VEILED_DARKEST = (() => {
+  const level = Math.round(255 * IMAGE_VEIL_ALPHA).toString(16).padStart(2, "0");
+  return `#${level}${level}${level}`;
+})();
+
+/**
+ * Le fond d'un bloc habillé d'une image : la photo, cadrée au centre et rognée
+ * pour couvrir tout le bloc, sous son voile.
+ *
+ * ⚠️ Les deux couches voyagent dans **une seule** propriété `background-image` —
+ * le voile est un dégradé d'une seule couleur, pas un élément posé par-dessus.
+ * C'est ce qui permet à `background-attachment` de valoir pour les deux d'un
+ * coup, sans un enfant absolu de plus à empiler.
+ *
+ * ⚠️ L'adresse est sérialisée par `JSON.stringify` : elle vient d'un agent, et
+ * une URL https peut contenir un guillemet. Sans échappement, le navigateur
+ * rejetterait la déclaration entière et le fond disparaîtrait sans que rien ne
+ * le dise.
+ *
+ * Rend `undefined` sans image : un bloc sans fond ne doit porter aucun style.
+ */
+export function imageBackdropStyle(
+  imageUrl: string | null,
+  fixed: boolean,
+): CSSProperties | undefined {
+  const url = (imageUrl ?? "").trim();
+  if (url === "") return undefined;
+  const veil = `rgba(255, 255, 255, ${IMAGE_VEIL_ALPHA})`;
+  return {
+    backgroundImage: `linear-gradient(${veil}, ${veil}), url(${JSON.stringify(url)})`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+    // `fixed` : l'image s'ancre à la fenêtre, le bloc glisse par-dessus elle.
+    // Ignoré par plusieurs navigateurs mobiles — c'est un ornement, le bloc
+    // reste entier sans lui.
+    backgroundAttachment: fixed ? "fixed" : "scroll",
+  };
+}

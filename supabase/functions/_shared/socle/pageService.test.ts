@@ -148,6 +148,61 @@ describe("getPublishedPage — traduction", () => {
     expect(result.page.sections[0]).toMatchObject({ kind: "recherche", shortcuts: [] });
   });
 
+  it("garde le fond du bloc de recherche et ses deux options", async () => {
+    const body = {
+      ...PUBLISHED,
+      sections: [
+        {
+          ...PUBLISHED.sections[0],
+          image_url: "https://medias.ville.fr/hotel-de-ville.jpg",
+          image_full_width: true,
+          image_fixed: true,
+        },
+      ],
+    };
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body }), "fr");
+    if (!result.ok || !result.page) throw new Error("attendu une page");
+    expect(result.page.sections[0]).toMatchObject({
+      kind: "recherche",
+      imageUrl: "https://medias.ville.fr/hotel-de-ville.jpg",
+      imageFullWidth: true,
+      imageFixed: true,
+    });
+  });
+
+  it("ÉTEINT les deux options sans image — le rendu n'a pas à connaître le réglage", async () => {
+    // Le Socle CONSERVE « pleine largeur » quand l'adresse est effacée, pour
+    // qu'on puisse en recoller une et retrouver son bandeau. C'est ici que ça
+    // s'éteint, comme les raccourcis masqués juste au-dessus — pas dans le
+    // rendu, qui n'aurait rien à habiller.
+    const body = {
+      ...PUBLISHED,
+      sections: [{ ...PUBLISHED.sections[0], image_url: "", image_full_width: true, image_fixed: true }],
+    };
+    const result = await getPublishedPage("t1", replying({ kind: "ok", body }), "fr");
+    if (!result.ok || !result.page) throw new Error("attendu une page");
+    expect(result.page.sections[0]).toMatchObject({
+      imageUrl: null,
+      imageFullWidth: false,
+      imageFixed: false,
+    });
+  });
+
+  it("écarte un fond qui n'est pas une https absolue, sans perdre le bloc", async () => {
+    // Le portail est servi en https et n'héberge aucun média de collectivité :
+    // `http://` serait bloqué comme contenu mixte, un chemin absolu ferait 404.
+    for (const image_url of ["http://exemple.fr/a.jpg", "/media/a.jpg", "javascript:alert(1)"]) {
+      const body = { ...PUBLISHED, sections: [{ ...PUBLISHED.sections[0], image_url }] };
+      const result = await getPublishedPage("t1", replying({ kind: "ok", body }), "fr");
+      if (!result.ok || !result.page) throw new Error("attendu une page");
+      expect(result.page.sections[0], image_url).toMatchObject({
+        kind: "recherche",
+        title: "Trouvez",
+        imageUrl: null,
+      });
+    }
+  });
+
   it("demande la page d'accueil de la collectivité résolue", async () => {
     const asked: string[] = [];
     const socle: SocleClient = {

@@ -5,9 +5,12 @@ import {
   DEFAULT_PRIMARY,
   DEFAULT_SECONDARY,
   headerLogoUrl,
+  imageBackdropStyle,
+  IMAGE_VEIL_ALPHA,
   isDarkColor,
   relativeLuminance,
   themeStyle,
+  VEILED_DARKEST,
 } from "./themeStyle.ts";
 
 /**
@@ -169,5 +172,52 @@ describe("headerLogoUrl", () => {
 
   it("sans charte du tout, il n'y a pas de logo — la pastille prend sa place", () => {
     expect(headerLogoUrl(defaultTheme(), null)).toBeNull();
+  });
+});
+
+describe("le fond image d'un bloc", () => {
+  /** Rapport de contraste WCAG entre deux `#rrggbb`. */
+  function ratio(a: string, b: string): number {
+    const la = relativeLuminance(a)!;
+    const lb = relativeLuminance(b)!;
+    const [hi, lo] = la > lb ? [la, lb] : [lb, la];
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  it("rend `undefined` sans image : un bloc sans fond ne porte aucun style", () => {
+    expect(imageBackdropStyle(null, false)).toBeUndefined();
+    expect(imageBackdropStyle("   ", true)).toBeUndefined();
+  });
+
+  it("empile le voile et la photo dans une seule propriété", () => {
+    const style = imageBackdropStyle("https://exemple.fr/a.jpg", false)!;
+    expect(style.backgroundImage).toContain("linear-gradient");
+    expect(style.backgroundImage).toContain('url("https://exemple.fr/a.jpg")');
+    expect(style.backgroundSize).toBe("cover");
+    expect(style.backgroundAttachment).toBe("scroll");
+  });
+
+  it("ancre l'image à la fenêtre quand elle est fixe", () => {
+    expect(imageBackdropStyle("https://exemple.fr/a.jpg", true)!.backgroundAttachment).toBe("fixed");
+  });
+
+  it("échappe l'adresse : un guillemet ne doit pas casser la valeur CSS", () => {
+    const style = imageBackdropStyle('https://exemple.fr/a".jpg', false)!;
+    expect(style.backgroundImage).toContain('url("https://exemple.fr/a\\".jpg")');
+  });
+
+  it("GARANTIT la lisibilité de l'encre sur n'importe quelle photo", () => {
+    // Le pire cas est le voile posé sur du noir pur — toute vraie image donne
+    // un fond plus clair, donc mieux. Les deux encres du portail (ordinaire et
+    // contraste renforcé) doivent y tenir le seuil AA.
+    expect(IMAGE_VEIL_ALPHA).toBe(0.6);
+    for (const ink of ["#1c2220", "#0d1210"]) {
+      expect(ratio(ink, VEILED_DARKEST)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("EXPLIQUE pourquoi le sous-titre passe à l'encre pleine sur une image", () => {
+    // Le gris de texte, lui, ne tient pas sous le voile.
+    expect(ratio("#5c6663", VEILED_DARKEST)).toBeLessThan(4.5);
   });
 });

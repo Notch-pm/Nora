@@ -111,6 +111,22 @@ export function HomeComposition({
               </div>
             );
           }
+          // ⚠️ Le conteneur centré est ce qui EMPÊCHE un fond d'atteindre les
+          // bords de l'écran : un bandeau « pleine largeur » se rend donc hors
+          // de lui, comme le pied de page. Le bloc remet lui-même les marges
+          // pour son contenu — sans quoi le champ de recherche s'étalerait sur
+          // toute la largeur.
+          if (section.kind === "recherche" && section.imageFullWidth) {
+            return (
+              <RechercheSection
+                key={section.id}
+                section={section}
+                demarches={demarches}
+                query={query}
+                onQueryChange={setQuery}
+              />
+            );
+          }
           return (
             <div key={section.id} className="mx-auto w-full max-w-5xl px-6">
               {(() => {
