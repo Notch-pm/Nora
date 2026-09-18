@@ -15,8 +15,10 @@ import type { StringKey } from "@/i18n/strings.ts";
 import { uploadPiece, type PieceUploadFailure } from "@/services/portal/portalClient.ts";
 import { piecesOf, type UploadedPiece } from "./formulaire.ts";
 
+// ⚠️ Le contour d'un champ de saisie tient 3 : 1 (RGAA 3.3) — `--pt-field-border`,
+// pas `--pt-border` (1,24 : 1, réservé aux cartes et séparateurs décoratifs).
 const inputClass =
-  "w-full rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-3 py-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] " +
+  "w-full rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-field-border)] bg-white px-3 py-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] " +
   "placeholder:text-[color:var(--pt-muted)] focus:border-[color:var(--brand-primary)] focus:outline-none " +
   "focus:ring-2 focus:ring-[color:var(--brand-primary)]/30";
 
@@ -57,6 +59,7 @@ function AttachmentInput({
   inputId,
   demarcheId,
   invalid,
+  describedBy,
 }: {
   field: AttachmentField;
   value: unknown;
@@ -64,6 +67,8 @@ function AttachmentInput({
   inputId: string;
   demarcheId: string | null;
   invalid: boolean;
+  /** L'aide et l'erreur du champ, comme pour tout autre contrôle (RGAA 11.10). */
+  describedBy: string | undefined;
 }) {
   const t = useT();
   const tn = useTn();
@@ -128,8 +133,12 @@ function AttachmentInput({
         <label
           className={
             "flex cursor-pointer flex-col gap-1 rounded-[var(--pt-radius-sm)] border border-dashed px-3 py-3 " +
-            (invalid ? "border-red-500 " : "border-[color:var(--pt-border)] ") +
-            "bg-[color:var(--pt-surface)] hover:border-[color:var(--brand-primary)]"
+            (invalid ? "border-red-500 " : "border-[color:var(--pt-field-border)] ") +
+            "bg-[color:var(--pt-surface)] hover:border-[color:var(--brand-primary)] " +
+            // ⚠️ Le contrôle réel (l'input file) est en `sr-only` : c'est cette
+            // zone qui doit montrer le focus (RGAA 10.7), via `:has()` — sans
+            // lui, atteindre le dépôt au clavier ne se voyait pas.
+            "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[color:var(--brand-primary)]"
           }
         >
           <span className="text-[length:var(--pt-body)] font-semibold text-[color:var(--brand-primary)]">
@@ -146,6 +155,11 @@ function AttachmentInput({
             multiple={field.maxFiles > 1}
             disabled={busy || demarcheId === null}
             aria-invalid={invalid}
+            // ⚠️ Sans lui, le dépôt annonçait « invalide » sans dire pourquoi :
+            // son message d'erreur n'était relié à rien — le défaut du relevé
+            // RGAA sur les groupes, retrouvé ici au contrôle réel dans Chrome
+            // (2026-09-18, « Acte de mariage »).
+            aria-describedby={describedBy}
             onChange={(event) => {
               void onFiles(event.target.files);
               event.target.value = "";
@@ -193,11 +207,15 @@ export function FormFieldControl({
   const describedBy = [field.help ? inputId + "-aide" : null, error ? inputId + "-erreur" : null]
     .filter((id) => id !== null)
     .join(" ");
+  // ⚠️ `undefined`, pas `""` : un `aria-describedby` vide reste un attribut
+  // posé, que certains lecteurs d'écran annoncent comme une description
+  // absente plutôt que comme son absence.
+  const describedByAttr = describedBy === "" ? undefined : describedBy;
   const controlClass = inputClass + (error !== null ? " " + invalidClass : "");
   const shared = {
     id: inputId,
     "aria-invalid": error !== null,
-    "aria-describedby": describedBy === "" ? undefined : describedBy,
+    "aria-describedby": describedByAttr,
     className: controlClass,
   };
 
@@ -212,6 +230,7 @@ export function FormFieldControl({
             inputId={inputId}
             demarcheId={demarcheId}
             invalid={error !== null}
+            describedBy={describedByAttr}
           />
         );
       case "textarea":
@@ -253,9 +272,17 @@ export function FormFieldControl({
         );
       case "radio":
         return (
+          // ⚠️ RGAA 11.10 : le groupe ET chaque bouton portent l'aide/erreur
+          // et l'invalidité — pas seulement le groupe. Un lecteur d'écran qui
+          // atterrit directement sur UN bouton (navigation par formulaire,
+          // lien du résumé) doit entendre l'erreur sans être remonté au
+          // groupe. `aria-invalid` est valide sur `radiogroup` (contrairement
+          // à `group`, voir `checkboxes` ci-dessous) : posé aux deux niveaux.
           <div
             role="radiogroup"
             aria-labelledby={inputId + "-libelle"}
+            aria-describedby={describedByAttr}
+            aria-invalid={error !== null}
             className="flex flex-col gap-1.5"
           >
             {field.options.map((option) => (
@@ -266,6 +293,8 @@ export function FormFieldControl({
                   value={option.value}
                   checked={value === option.value}
                   onChange={() => onChange(option.value)}
+                  aria-describedby={describedByAttr}
+                  aria-invalid={error !== null}
                   className="h-4 w-4 border-[color:var(--pt-border)] accent-[color:var(--brand-primary)]"
                 />
                 <span>{option.label}</span>
@@ -276,9 +305,16 @@ export function FormFieldControl({
       case "checkboxes": {
         const selected = Array.isArray(value) ? (value as string[]) : [];
         return (
+          // ⚠️ Même correction que `radio`, MOINS `aria-invalid` sur le
+          // conteneur : le rôle `group` ne le supporte pas (contrairement à
+          // `radiogroup`) — seule chaque case le porte. C'était le trou
+          // précis du relevé RGAA du 2026-09-15 : une case à cocher affichait
+          // son erreur sans qu'aucun attribut n'y renvoie, la seule des cinq
+          // erreurs qu'un lecteur d'écran ne retrouvait pas.
           <div
             role="group"
             aria-labelledby={inputId + "-libelle"}
+            aria-describedby={describedByAttr}
             className="flex flex-col gap-1.5"
           >
             {field.options.map((option) => (
@@ -293,6 +329,8 @@ export function FormFieldControl({
                         : selected.filter((item) => item !== option.value),
                     )
                   }
+                  aria-describedby={describedByAttr}
+                  aria-invalid={error !== null}
                   className="h-4 w-4 rounded border-[color:var(--pt-border)] accent-[color:var(--brand-primary)]"
                 />
                 <span>{option.label}</span>

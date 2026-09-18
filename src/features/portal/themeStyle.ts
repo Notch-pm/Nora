@@ -45,14 +45,41 @@ const SPACING = { gap: 22, pad: 20, cardPad: 14 } as const;
  * renforcé. Ce sont les seules couleurs FIGÉES du rendu — un gris de texte
  * n'appartient pas à la charte d'une collectivité, il appartient à la
  * lisibilité.
+ *
+ * ⚠️ DEUX BORDURES, ET LA DIFFÉRENCE EST RÉGLEMENTAIRE. `border` dessine les
+ * cartes et les séparateurs : décoratifs, le RGAA ne leur demande rien.
+ * `fieldBorder` est le contour d'un champ de saisie — c'est lui qui dit « ici,
+ * on écrit » — et il doit tenir 3 : 1 (RGAA 3.3) : 3,56 sur blanc, 3,21 sur
+ * l'aplat neutre ; 4,44 en contraste renforcé. Le relevé du 2026-09-15 a
+ * trouvé les champs dessinés avec `border`, à 1,24 : 1.
  */
 const NEUTRALS = {
-  normal: { ink: "#1c2220", muted: "#5c6663", border: "#e4e7e6", surface: "#f1f4f3" },
-  contrast: { ink: "#0d1210", muted: "#3d4844", border: "#acb9b5", surface: "#e6ebe9" },
+  normal: {
+    ink: "#1c2220",
+    muted: "#5c6663",
+    border: "#e4e7e6",
+    fieldBorder: "#808a87",
+    surface: "#f1f4f3",
+  },
+  contrast: {
+    ink: "#0d1210",
+    muted: "#3d4844",
+    border: "#acb9b5",
+    fieldBorder: "#6f7a77",
+    surface: "#e6ebe9",
+  },
 } as const;
 
-/** Le vert de la gamme et son jaune, faute de charte. */
-export const DEFAULT_PRIMARY = "#089b59";
+/**
+ * Le vert de la gamme et son jaune, faute de charte.
+ *
+ * ⚠️ LE VERT A ÉTÉ FONCÉ LE 2026-09-18 (`#089b59` → `#07854c`), sur décision
+ * produit. L'ancien donnait 3,59 : 1 en texte sur blanc et 4,498 au mieux sur
+ * un bouton : une collectivité sans charte publiée était servie hors
+ * conformité RGAA par défaut. Le nouveau tient 4,70 : 1 dans les deux cas —
+ * le plus petit pas qui passe. Mêmes valeurs au Socle.
+ */
+export const DEFAULT_PRIMARY = "#07854c";
 export const DEFAULT_SECONDARY = "#ffcd57";
 
 const WHITE = "#ffffff";
@@ -81,19 +108,46 @@ export function relativeLuminance(hex: string): number | null {
   return 0.2126 * linear(rgb[0]) + 0.7152 * linear(rgb[1]) + 0.0722 * linear(rgb[2]);
 }
 
-/**
- * Le texte se lit-il en clair sur ce fond ? Sous 0,4 de luminance le fond est
- * sombre. Une couleur illisible est traitée comme sombre — le défaut du pied de
- * page l'est.
- */
-export function isDarkColor(hex: string): boolean {
-  const luminance = relativeLuminance(hex);
-  return luminance === null || luminance < 0.4;
+/** Rapport de contraste WCAG, de 1 à 21, ou `null` si l'une des couleurs est illisible. */
+function contrastRatio(a: string, b: string): number | null {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  if (la === null || lb === null) return null;
+  const [hi, lo] = la > lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
 }
 
-/** L'encre qui se lit sur ce fond : le blanc, ou l'encre sombre proposée. */
+/**
+ * L'encre qui se lit sur ce fond : le blanc, ou l'encre sombre proposée —
+ * **celle des deux qui contraste le plus**. À égalité, le blanc.
+ *
+ * ⚠️ LE CHOIX SE FAISAIT SUR UN SEUIL DE LUMINANCE FIXE, 0,4, ET IL ÉTAIT FAUX
+ * (relevé RGAA du 2026-09-15). Le vrai point de bascule entre le blanc et
+ * l'encre du portail est vers 0,21 : entre les deux, le blanc perdait. Un
+ * orange `#e07b39` recevait du blanc à 2,97 : 1 là où l'encre sombre passe à
+ * 5,44 ; un turquoise `#00a3a3`, 3,10 contre 5,21. Comparer les deux contrastes
+ * plutôt que viser un seuil vaut aussi pour l'encre du contraste renforcé, dont
+ * le point de bascule n'est pas le même.
+ *
+ * Une couleur illisible rend le blanc : elle est traitée comme sombre, et le
+ * défaut du pied de page l'est.
+ *
+ * ⚠️ Miroir de `Socle/src/features/portal/contrast.ts` (`readableInk`).
+ */
 function readableInk(background: string, darkInk: string): string {
-  return isDarkColor(background) ? WHITE : darkInk;
+  const onWhite = contrastRatio(background, WHITE);
+  const onInk = contrastRatio(background, darkInk);
+  if (onWhite === null || onInk === null) return WHITE;
+  return onWhite >= onInk ? WHITE : darkInk;
+}
+
+/**
+ * Le texte se lit-il en clair sur ce fond ? Oui quand le blanc y contraste
+ * mieux que l'encre ordinaire du portail — voir `readableInk`. Sert à qui ne
+ * peint pas avec les encres du thème (le pied de page composé).
+ */
+export function isDarkColor(hex: string): boolean {
+  return readableInk(hex, NEUTRALS.normal.ink) === WHITE;
 }
 
 /** La même couleur, transparente. Une couleur illisible rend `transparent`. */
@@ -176,7 +230,7 @@ function brandColors(branding: Branding | null): { primary: string; secondary: s
 export function themeStyle(theme: PortalTheme, branding: Branding | null): CSSProperties {
   const brand = brandColors(branding);
   const strong = theme.accessibility.highContrast;
-  const { ink, muted, border, surface } = strong ? NEUTRALS.contrast : NEUTRALS.normal;
+  const { ink, muted, border, fieldBorder, surface } = strong ? NEUTRALS.contrast : NEUTRALS.normal;
 
   // `highContrast` fonce la couleur principale comme le fait `darkPrimary` :
   // c'est le même geste, demandé pour la même raison.
@@ -221,6 +275,7 @@ export function themeStyle(theme: PortalTheme, branding: Branding | null): CSSPr
     "--pt-ink": ink,
     "--pt-muted": muted,
     "--pt-border": border,
+    "--pt-field-border": fieldBorder,
     "--pt-surface": surface,
     "--pt-primary": primary,
     "--pt-primary-soft": withAlpha(primary, strong ? 0.14 : 0.08),

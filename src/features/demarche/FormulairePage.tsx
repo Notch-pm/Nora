@@ -16,11 +16,13 @@
  * coupure inoffensifs : Iris rend alors la demande déjà créée au lieu d'en
  * créer une seconde.
  */
-import { useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useLanguage, useT, useTn } from "@/i18n/LanguageLayout.tsx";
 import { errorText } from "@/i18n/t.ts";
 import { organismePath, servedLanguage, splitScopedPath } from "@/i18n/localizedPath.ts";
+import { demarcheTitle, errorPageTitle, formulaireTitle, receiptTitle } from "@/i18n/pageTitle.ts";
+import { useDocumentTitle } from "@/i18n/useDocumentTitle.ts";
 import type { FormValues } from "@fn/_shared/domain/conditions.ts";
 import { isSection } from "@fn/_shared/domain/formSchema.ts";
 import type { DemandeReceipt } from "@fn/_shared/domain/demande.ts";
@@ -80,11 +82,21 @@ function Receipt({ receipt, demarcheName }: { receipt: DemandeReceipt; demarcheN
   );
 }
 
-/** Le récapitulatif des erreurs, en tête : le motif RGAA d'un formulaire long. */
-function ErrorSummary({ count }: { count: number }) {
+/**
+ * Le récapitulatif des erreurs, en tête : le motif RGAA d'un formulaire long.
+ *
+ * `tabIndex={-1}` le rend focusable par programme sans l'ajouter à l'ordre de
+ * tabulation — c'est `FormulairePage` qui y amène le focus après un envoi
+ * refusé (RGAA 10.7 / bonne pratique 11.10), via la `ref` transmise ici.
+ */
+const ErrorSummary = forwardRef<HTMLDivElement, { count: number }>(function ErrorSummary(
+  { count },
+  ref,
+) {
   const tn = useTn();
   return (
     <div
+      ref={ref}
       role="alert"
       tabIndex={-1}
       className="rounded-[var(--pt-radius-sm)] border border-red-300 bg-red-50 px-4 py-3 text-[length:var(--pt-body)] text-red-800"
@@ -92,7 +104,7 @@ function ErrorSummary({ count }: { count: number }) {
       {tn("form.errors", count)}
     </div>
   );
-}
+});
 
 export function FormulairePage() {
   const { demarcheId = "" } = useParams();
@@ -126,6 +138,12 @@ export function FormulairePage() {
   const [sendFailure, setSendFailure] = useState<PortalLoadFailure | null>(null);
   const [receipt, setReceipt] = useState<DemandeReceipt | null>(null);
   const [submissionId] = useState(newSubmissionId);
+  // Compte les envois refusés — pas l'erreur elle-même (`errorCount`), qui
+  // change aussi quand l'usager CORRIGE un champ. Sans cette distinction, le
+  // focus reviendrait sur le résumé à chaque champ corrigé plutôt qu'une
+  // seule fois après le clic sur « Envoyer ». Voir l'effet plus bas.
+  const [submitFailedAt, setSubmitFailedAt] = useState(0);
+  const errorSummaryRef = useRef<HTMLDivElement>(null);
 
   const demarche = state.status === "ready" ? state.snapshot.demarche : null;
 
@@ -142,6 +160,43 @@ export function FormulairePage() {
         : requesterFieldsFor(demarche.requester, currentAudience),
     [demarche, currentAudience],
   );
+
+  // Calculé ici, AVANT les retours anticipés ci-dessous : c'est ce qui permet
+  // au titre d'onglet (juste après) et à l'effet de focus (plus bas) de s'en
+  // servir sans dépendre de la branche atteinte au premier rendu.
+  const errorCount =
+    Object.keys(errors).length + Object.keys(requesterErrors).length + (organizationError ? 1 : 0);
+
+  // Le titre de l'onglet (RGAA 8.6), posé avant tout retour anticipé : les
+  // hooks doivent s'exécuter dans le même ordre à chaque rendu, quel que soit
+  // l'état de la démarche. Après un envoi refusé, il se préfixe du nombre
+  // d'erreurs — souvent la première chose qu'un lecteur d'écran annonce.
+  useDocumentTitle(
+    state.status === "error"
+      ? errorPageTitle(lang, errorMessageFor(state.reason, lang).title)
+      : state.status !== "ready"
+        ? t("page.title")
+        : receipt !== null
+          ? receiptTitle(lang, receipt.created, state.snapshot.tenant.name)
+          : state.snapshot.demarche.form === null
+            ? demarcheTitle(state.snapshot.demarche.name, state.snapshot.tenant.name)
+            : formulaireTitle(
+                lang,
+                state.snapshot.demarche.name,
+                state.snapshot.tenant.name,
+                errorCount,
+              ),
+  );
+
+  // Après un envoi refusé, le focus va au résumé plutôt qu'au bouton — sans
+  // quoi personne ne le remarque (RGAA 10.7 / 11.10). `submitFailedAt` ne
+  // bouge qu'au moment du clic manqué, jamais pendant la correction : cet
+  // effet ne se rejoue donc pas à chaque champ que l'usager corrige.
+  useEffect(() => {
+    if (submitFailedAt === 0) return;
+    errorSummaryRef.current?.focus();
+    errorSummaryRef.current?.scrollIntoView();
+  }, [submitFailedAt]);
 
   if (state.status === "loading") return <DemarcheLoading />;
   if (state.status === "error") {
@@ -194,9 +249,7 @@ export function FormulairePage() {
       villes={villes}
     >
         <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">{detail.name}</h1>
-        <p className="mt-3 text-[color:var(--pt-muted)]">
-          Cette démarche ne peut pas encore être remplie en ligne.
-        </p>
+        <p className="mt-3 text-[color:var(--pt-muted)]">{t("demarche.notOnline")}</p>
         <Link
           to={backToDemarche}
           className="mt-6 inline-flex rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] px-4 py-2 text-[length:var(--pt-body)] hover:bg-[color:var(--pt-surface)]"
@@ -250,6 +303,9 @@ export function FormulairePage() {
       Object.keys(identityErrors).length > 0 ||
       missingOrganization
     ) {
+      // Un envoi manqué de plus : l'effet plus haut amène le focus sur le
+      // résumé une fois qu'il est rendu avec le décompte à jour.
+      setSubmitFailedAt((n) => n + 1);
       return;
     }
 
@@ -273,9 +329,6 @@ export function FormulairePage() {
     else setSendFailure(result.reason);
   };
 
-  const errorCount =
-    Object.keys(errors).length + Object.keys(requesterErrors).length + (organizationError ? 1 : 0);
-
   return (
     <DemarcheShell
       tenantName={tenant.name}
@@ -297,7 +350,7 @@ export function FormulairePage() {
       <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">{detail.name}</h1>
 
       <form onSubmit={submit} noValidate className="mt-8 flex flex-col gap-6">
-        {errorCount > 0 && <ErrorSummary count={errorCount} />}
+        {errorCount > 0 && <ErrorSummary ref={errorSummaryRef} count={errorCount} />}
 
         {sendFailure !== null && (
           <div
@@ -331,10 +384,10 @@ export function FormulairePage() {
                 "w-full rounded-[var(--pt-radius-sm)] border bg-white px-3 py-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] focus:outline-none focus:ring-2 " +
                 (organizationError !== null
                   ? "border-red-500 focus:ring-red-500/30"
-                  : "border-[color:var(--pt-border)] focus:border-[color:var(--brand-primary)] focus:ring-[color:var(--brand-primary)]/30")
+                  : "border-[color:var(--pt-field-border)] focus:border-[color:var(--brand-primary)] focus:ring-[color:var(--brand-primary)]/30")
               }
             >
-              <option value="">Choisissez…</option>
+              <option value="">{t("form.choose")}</option>
               {detail.organizations.map((org) => (
                 <option key={org.id} value={org.id}>
                   {org.name}

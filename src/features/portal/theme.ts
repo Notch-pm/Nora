@@ -12,8 +12,8 @@
 import type { CSSProperties } from "react";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
 
-/** Le vert de la gamme (`hsl(153 90% 32%)`) et son jaune, faute de charte. */
-export const DEFAULT_PRIMARY = "#089b59";
+/** Le vert de la gamme (`hsl(153 90% 27%)`) et son jaune, faute de charte — voir `themeStyle.ts`. */
+export const DEFAULT_PRIMARY = "#07854c";
 export const DEFAULT_SECONDARY = "#ffcd57";
 
 /** Variables CSS à poser sur la racine de la page. Vide sans charte. */

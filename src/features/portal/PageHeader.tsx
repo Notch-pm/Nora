@@ -34,6 +34,7 @@ export function PageHeader({
   languages = [],
   villes = [],
   singleLine = false,
+  nameAsHeading = false,
 }: {
   tenantName: string;
   logoUrl: string | null;
@@ -66,6 +67,16 @@ export function PageHeader({
    * ligne CSS (`flex-wrap`), jamais par une media query en JavaScript.
    */
   singleLine?: boolean;
+  /**
+   * ⚠️ DÉCISION PRODUIT DE LAURENT (RGAA 9.1) : sur l'accueil composé
+   * SEULEMENT, le nom de la collectivité EST le `h1` de la page — jamais un
+   * bloc personnalisable de la composition, qui pourrait manquer ou changer
+   * de sens d'une collectivité à l'autre. Ailleurs (page d'un organisme,
+   * démarche, formulaire), ce nom reste un texte simple : ces écrans ont déjà
+   * leur propre `h1`, et en poser un second romprait la hiérarchie des
+   * titres. Rendu IDENTIQUE dans les deux cas — seule la balise change.
+   */
+  nameAsHeading?: boolean;
 }) {
   const { lang, setLang } = useLanguage();
   const t = useT();
@@ -175,9 +186,15 @@ export function PageHeader({
               />
             )}
           </Link>
-          <span className="truncate text-[length:var(--pt-h2)] font-extrabold tracking-tight">
-            {tenantName}
-          </span>
+          {nameAsHeading ? (
+            <h1 className="truncate text-[length:var(--pt-h2)] font-extrabold tracking-tight">
+              {tenantName}
+            </h1>
+          ) : (
+            <span className="truncate text-[length:var(--pt-h2)] font-extrabold tracking-tight">
+              {tenantName}
+            </span>
+          )}
         </div>
         <div className="flex-1" />
         <div className="flex items-center gap-3.5">
@@ -373,7 +390,9 @@ function LanguageSelector({
       <select
         value={languages.includes(value) ? value : languages[0]}
         onChange={(event) => onChange(event.target.value)}
-        className="rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-2 py-1.5 text-[length:var(--pt-small)] text-[color:var(--pt-ink)] focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-primary)]"
+        // ⚠️ Le contour d'un `<select>` est un champ de saisie (RGAA 3.3) :
+        // `--pt-field-border` (≥ 3 : 1), pas `--pt-border` (décoratif).
+        className="rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-field-border)] bg-white px-2 py-1.5 text-[length:var(--pt-small)] text-[color:var(--pt-ink)] focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-primary)]"
       >
         {languages.map((code) => (
           <option key={code} value={code} lang={code}>

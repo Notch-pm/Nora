@@ -52,6 +52,21 @@ export const COVERED_LANGUAGES = [
 
 export const STRINGS = {
   // ── Chrome de page ───────────────────────────────────────────────────────
+  // Le lien d'évitement (RGAA 12.7) : invisible jusqu'au focus, premier
+  // élément tabulable de chaque écran. Voir `SkipLink.tsx`.
+  "skip.toContent": {
+    fr: "Aller au contenu",
+    en: "Skip to content",
+    es: "Ir al contenido",
+    de: "Zum Inhalt springen",
+    it: "Vai al contenuto",
+    pt: "Ir para o conteúdo",
+    ar: "الانتقال إلى المحتوى",
+    tr: "İçeriğe geç",
+    ru: "Перейти к содержимому",
+    uk: "Перейти до змісту",
+    zh: "跳转到内容",
+  },
   "header.language": {
     fr: "Langue",
     en: "Language",
@@ -186,6 +201,50 @@ export const STRINGS = {
     ru: "Код: {code}",
     uk: "Код: {code}",
     zh: "代码：{code}",
+  },
+  // Le titre de l'onglet sur le formulaire (RGAA 8.6) : « Formulaire : {nom
+  // de la démarche} ». Voir `pageTitle.ts`.
+  "page.formTitle": {
+    fr: "Formulaire : {name}",
+    en: "Form: {name}",
+    es: "Formulario: {name}",
+    de: "Formular: {name}",
+    it: "Modulo: {name}",
+    pt: "Formulário: {name}",
+    ar: "نموذج: {name}",
+    tr: "Form: {name}",
+    ru: "Форма: {name}",
+    uk: "Форма: {name}",
+    zh: "表单：{name}",
+  },
+  // ⚠️ Préfixe le titre de l'onglet après un envoi refusé (résumé affiché) —
+  // c'est souvent la première chose qu'un lecteur d'écran annonce à l'arrivée
+  // sur une page, avant même le résumé lui-même. Voir `pageTitle.ts`.
+  "page.errorsPrefix.one": {
+    fr: "{n} erreur",
+    en: "{n} error",
+    es: "{n} error",
+    de: "{n} Fehler",
+    it: "{n} errore",
+    pt: "{n} erro",
+    ar: "خطأ واحد ({n})",
+    tr: "{n} hata",
+    ru: "{n} ошибка",
+    uk: "{n} помилка",
+    zh: "{n} 个错误",
+  },
+  "page.errorsPrefix.other": {
+    fr: "{n} erreurs",
+    en: "{n} errors",
+    es: "{n} errores",
+    de: "{n} Fehler",
+    it: "{n} errori",
+    pt: "{n} erros",
+    ar: "{n} أخطاء",
+    tr: "{n} hata",
+    ru: "{n} ошибок",
+    uk: "{n} помилок",
+    zh: "{n} 个错误",
   },
 
   // ── Accueil ──────────────────────────────────────────────────────────────

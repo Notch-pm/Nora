@@ -14,15 +14,38 @@
  */
 import type { PortalTheme } from "@fn/_shared/domain/theme.ts";
 
+/**
+ * La collectivité a-t-elle écrit une déclaration ? Sert aux cadres de page
+ * (`DemarcheShell`, `OrganismePage`…) pour savoir si le pied de page de
+ * premier niveau a quelque chose à porter, AVANT de poser un repère
+ * `contentinfo` — un repère vide n'aide personne (RGAA 9.2 / 12.6).
+ */
+export function hasAccessibilityDeclaration(theme?: PortalTheme): boolean {
+  return (theme?.accessibility.declaration ?? "").trim() !== "";
+}
+
 export function AccessibilityNotice({ theme }: { theme?: PortalTheme }) {
-  const declaration = theme?.accessibility.declaration ?? "";
-  if (declaration.trim() === "") return null;
+  if (!hasAccessibilityDeclaration(theme)) return null;
   return (
     <p
       className="px-6 py-4 text-center text-[length:var(--pt-tiny)] text-[color:var(--pt-muted)]"
       style={{ background: "var(--pt-surface)" }}
     >
-      {declaration}
+      {theme?.accessibility.declaration}
     </p>
+  );
+}
+
+/**
+ * Le pied de page de premier niveau (`contentinfo`) des écrans qui n'ont que
+ * la déclaration à y mettre — pas de pied composé à côté. L'accueil, qui peut
+ * en avoir un, compose le sien lui-même (voir `HomeComposition`).
+ */
+export function AccessibilityFooter({ theme }: { theme?: PortalTheme }) {
+  if (!hasAccessibilityDeclaration(theme)) return null;
+  return (
+    <footer>
+      <AccessibilityNotice theme={theme} />
+    </footer>
   );
 }

@@ -3,6 +3,12 @@
  * fond choisie, sous-blocs répartis sur une à trois colonnes dans l'ordre.
  * Rendu HORS du conteneur centré de la page — c'est `HomeComposition` qui le
  * place — et le texte se lit en clair ou en sombre selon le fond.
+ *
+ * ⚠️ SA RACINE EST UN `<div>`, PAS UN `<footer>` (RGAA 9.2 / 12.6) : c'est
+ * `HomeComposition` qui pose le `<footer>` de premier niveau (le repère
+ * `contentinfo`) quand ce bloc termine la page — un second `<footer>` imbriqué
+ * dedans serait un repère en double, et un `<footer>` qui reste dans `main`
+ * (bloc composé ailleurs qu'en dernière position) n'en serait pas un non plus.
  */
 import type { FooterSection as FooterSectionData } from "@fn/_shared/domain/page.ts";
 import { footerColumnsClass, isDarkColor } from "../composition.ts";
@@ -10,7 +16,7 @@ import { footerColumnsClass, isDarkColor } from "../composition.ts";
 export function FooterSection({ section }: { section: FooterSectionData }) {
   const dark = isDarkColor(section.background);
   return (
-    <footer
+    <div
       className={dark ? "text-white" : "text-[color:var(--pt-ink)]"}
       style={{ backgroundColor: section.background }}
     >
@@ -37,6 +43,6 @@ export function FooterSection({ section }: { section: FooterSectionData }) {
           ))}
         </div>
       </div>
-    </footer>
+    </div>
   );
 }

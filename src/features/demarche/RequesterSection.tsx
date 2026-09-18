@@ -14,12 +14,15 @@
 import type { Audience, RequesterField } from "@fn/_shared/domain/requesterConfig.ts";
 import { AUDIENCES } from "@fn/_shared/domain/requesterConfig.ts";
 import type { FieldErrors } from "./formulaire.ts";
+import { autocompleteFor } from "./autocomplete.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { errorText } from "@/i18n/t.ts";
 import type { StringKey } from "@/i18n/strings.ts";
 
+// ⚠️ Le contour d'un champ de saisie tient 3 : 1 (RGAA 3.3) — `--pt-field-border`,
+// pas `--pt-border` (1,24 : 1, réservé aux cartes et séparateurs décoratifs).
 const inputClass =
-  "w-full rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-3 py-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] " +
+  "w-full rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-field-border)] bg-white px-3 py-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] " +
   "focus:border-[color:var(--brand-primary)] focus:outline-none " +
   "focus:ring-2 focus:ring-[color:var(--brand-primary)]/30";
 
@@ -74,6 +77,7 @@ function RequesterInput({
           id={inputId}
           className={className}
           value={value}
+          autoComplete={autocompleteFor(field.key)}
           aria-invalid={error !== null}
           aria-describedby={describedBy}
           onChange={(event) => onChange(event.target.value)}
@@ -91,6 +95,7 @@ function RequesterInput({
           rows={2}
           className={className}
           value={value}
+          autoComplete={autocompleteFor(field.key)}
           aria-invalid={error !== null}
           aria-describedby={describedBy}
           onChange={(event) => onChange(event.target.value)}
@@ -101,7 +106,7 @@ function RequesterInput({
           type={INPUT_TYPES[field.key] ?? "text"}
           className={className}
           value={value}
-          autoComplete={field.key === "courriel" ? "email" : undefined}
+          autoComplete={autocompleteFor(field.key)}
           aria-invalid={error !== null}
           aria-describedby={describedBy}
           onChange={(event) => onChange(event.target.value)}
@@ -139,58 +144,80 @@ export function RequesterSection({
   if (audiences.length === 0) return null;
 
   return (
-    <section className="flex flex-col gap-4 rounded-[var(--pt-radius)] border border-[color:var(--pt-border)] p-5">
-      <div>
-        <h2 className="text-[length:var(--pt-h2)] font-bold text-[color:var(--pt-ink)]">{t("requester.title")}</h2>
-        <p className="mt-1 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("requester.subtitle")}</p>
+    // ⚠️ `<fieldset>` / `<legend>` réels (RGAA 11.6), pas un `<section>` avec un
+    // titre décoratif : un lecteur d'écran qui entre dans un champ annonce
+    // alors « Vos informations » avant son étiquette. Le `<legend>` DOIT être
+    // l'enfant direct du `<fieldset>` — le sous-titre passe donc dans un
+    // conteneur séparé, avec un `mt-1` qui reproduit l'espacement qu'il avait
+    // avec le titre quand les deux vivaient dans le même bloc.
+    //
+    // ⚠️ LE CADRE EST SUR UN `<div>` AUTOUR, PAS SUR LE `<fieldset>`. Un
+    // `fieldset` bordé fait passer sa `legend` DANS le trait (l'entaille
+    // native), et le titre du bloc se retrouvait à cheval sur le contour. Sans
+    // bordure, la `legend` est une ligne comme une autre. `min-w-0` : un
+    // `fieldset` refuse par défaut de rétrécir sous son contenu, et la grille
+    // des champs déborderait sur un téléphone.
+    <div className="rounded-[var(--pt-radius)] border border-[color:var(--pt-border)] p-5">
+    <fieldset className="min-w-0">
+      <legend className="text-[length:var(--pt-h2)] font-bold text-[color:var(--pt-ink)]">
+        {t("requester.title")}
+      </legend>
+      <div className="mt-1 flex flex-col gap-4">
+        <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("requester.subtitle")}</p>
+
+        {/* Un seul public ouvert : pas de question à poser, la réponse est faite. */}
+        {audiences.length > 1 && (
+          <div role="radiogroup" aria-label={t("requester.audience")} className="flex flex-wrap gap-2">
+            {AUDIENCES.filter((candidate) => audiences.includes(candidate.key)).map((candidate) => {
+              const active = candidate.key === audience;
+              return (
+                <label
+                  key={candidate.key}
+                  className={
+                    "cursor-pointer rounded-full border px-3.5 py-1.5 text-[length:var(--pt-body)] font-semibold " +
+                    // ⚠️ Le contrôle réel est en `sr-only` : c'est ce `<label>`
+                    // qui doit montrer le focus (RGAA 10.7), via `:has()` sur
+                    // son radio caché — sans lui, tabuler jusqu'à une pilule
+                    // ne se voyait pas.
+                    "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[color:var(--brand-primary)] has-[:focus-visible]:ring-offset-2 " +
+                    (active
+                      ? "border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_10%,white)] text-[color:var(--brand-primary)]"
+                      : "border-[color:var(--pt-border)] text-[color:var(--pt-muted)]")
+                  }
+                >
+                  <input
+                    type="radio"
+                    name="public-requerant"
+                    className="sr-only"
+                    checked={active}
+                    onChange={() => onAudienceChange(candidate.key)}
+                  />
+                  {candidate.label}
+                </label>
+              );
+            })}
+          </div>
+        )}
+
+        {fields.length === 0 ? (
+          // Public ouvert, mais tous les champs masqués : la collectivité ne
+          // demande rien de plus. Le dire vaut mieux qu'un cadre vide.
+          <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("requester.none")}</p>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {fields.map((field) => (
+              <RequesterInput
+                key={field.key}
+                field={field}
+                value={values[field.key] ?? ""}
+                onChange={(value) => onChange(field.key, value)}
+                error={errorText(lang, errors[field.key])}
+              />
+            ))}
+          </div>
+        )}
       </div>
-
-      {/* Un seul public ouvert : pas de question à poser, la réponse est faite. */}
-      {audiences.length > 1 && (
-        <div role="radiogroup" aria-label={t("requester.audience")} className="flex flex-wrap gap-2">
-          {AUDIENCES.filter((candidate) => audiences.includes(candidate.key)).map((candidate) => {
-            const active = candidate.key === audience;
-            return (
-              <label
-                key={candidate.key}
-                className={
-                  "cursor-pointer rounded-full border px-3.5 py-1.5 text-[length:var(--pt-body)] font-semibold " +
-                  (active
-                    ? "border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_10%,white)] text-[color:var(--brand-primary)]"
-                    : "border-[color:var(--pt-border)] text-[color:var(--pt-muted)]")
-                }
-              >
-                <input
-                  type="radio"
-                  name="public-requerant"
-                  className="sr-only"
-                  checked={active}
-                  onChange={() => onAudienceChange(candidate.key)}
-                />
-                {candidate.label}
-              </label>
-            );
-          })}
-        </div>
-      )}
-
-      {fields.length === 0 ? (
-        // Public ouvert, mais tous les champs masqués : la collectivité ne
-        // demande rien de plus. Le dire vaut mieux qu'un cadre vide.
-        <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("requester.none")}</p>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {fields.map((field) => (
-            <RequesterInput
-              key={field.key}
-              field={field}
-              value={values[field.key] ?? ""}
-              onChange={(value) => onChange(field.key, value)}
-              error={errorText(lang, errors[field.key])}
-            />
-          ))}
-        </div>
-      )}
-    </section>
+    </fieldset>
+    </div>
   );
 }

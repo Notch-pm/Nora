@@ -4,9 +4,10 @@
 
 /* La charte graphique de la collectivité, posée par HomeComposition quand
    elle existe. Ces défauts sont ceux de la gamme : le vert d'Edilumen
-   (hsl(153 90% 32%)) et son jaune. */
+   (hsl(153 90% 27%), foncé le 2026-09-18 pour tenir 4,5 : 1 — voir
+   `DEFAULT_PRIMARY` dans `themeStyle.ts`) et son jaune. */
 :root {
-  --brand-primary: #089b59;
+  --brand-primary: #07854c;
   --brand-secondary: #ffcd57;
 }
 
@@ -39,9 +40,10 @@
   --pt-ink: #1c2220;
   --pt-muted: #5c6663;
   --pt-border: #e4e7e6;
+  --pt-field-border: #808a87;
   --pt-surface: #f1f4f3;
-  --pt-primary: #089b59;
-  --pt-primary-soft: rgb(8 155 89 / 0.08);
+  --pt-primary: #07854c;
+  --pt-primary-soft: rgb(7 133 76 / 0.08);
   --pt-on-primary: #ffffff;
   --pt-accent: #ffcd57;
   --pt-accent-soft: rgb(255 205 87 / 0.35);
@@ -58,12 +60,12 @@
   --pt-nav-pad: 0;
   --pt-nav-radius: 0;
 
-  --pt-account-bg: #089b59;
+  --pt-account-bg: #07854c;
   --pt-account-fg: #ffffff;
-  --pt-account-border: #089b59;
+  --pt-account-border: #07854c;
   --pt-account-pad: 8px 14px;
 
-  --pt-mark-bg: #089b59;
+  --pt-mark-bg: #07854c;
 }
 
 /* La police du thème vaut pour TOUTE la page — y compris les écrans qui ne

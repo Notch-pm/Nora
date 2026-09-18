@@ -31,24 +31,37 @@ import { Link, Navigate, useLocation } from "react-router-dom";
 import type { Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import { audiencesOffered, gridColumnsClass } from "@/features/portal/composition.ts";
 import { errorMessageFor } from "@/features/portal/errorMessages.ts";
-import { AccessibilityNotice } from "@/features/portal/AccessibilityNotice.tsx";
+import { AccessibilityFooter } from "@/features/portal/AccessibilityNotice.tsx";
 import { PageHeader } from "@/features/portal/PageHeader.tsx";
 import { PortalLoader } from "@/features/portal/PortalLoader.tsx";
+import { SkipLink } from "@/features/portal/SkipLink.tsx";
 import { AudienceFilter } from "@/features/portal/sections/AudienceFilter.tsx";
 import { DemarcheCard } from "@/features/portal/sections/DemarcheCard.tsx";
 import { SearchIcon } from "@/features/portal/sections/RechercheSection.tsx";
 import { headerLogoUrl, themeStyle } from "@/features/portal/themeStyle.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { localizedPath, servedLanguage, splitScopedPath } from "@/i18n/localizedPath.ts";
+import { errorPageTitle, organismeTitle } from "@/i18n/pageTitle.ts";
+import { useDocumentTitle } from "@/i18n/useDocumentTitle.ts";
 import { organismeEmptyKey, visibleOrganismeDemarches } from "./composition.ts";
 import { useOrganisme } from "./useOrganisme.ts";
 
-/** Même gabarit que l'écran d'erreur du portail (`PortalPage`, non exporté). */
+/**
+ * Même gabarit que l'écran d'erreur du portail (`PortalPage`, non exporté) :
+ * le lien d'évitement avant `<main>`, jamais dedans (RGAA 12.7).
+ */
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto min-h-screen max-w-3xl px-6 py-12 text-[color:var(--pt-ink)]">
-      {children}
-    </main>
+    <>
+      <SkipLink />
+      <main
+        id="contenu"
+        tabIndex={-1}
+        className="mx-auto min-h-screen max-w-3xl px-6 py-12 text-[color:var(--pt-ink)] focus:outline-none"
+      >
+        {children}
+      </main>
+    </>
   );
 }
 
@@ -74,6 +87,20 @@ export function OrganismePage() {
   useEffect(() => {
     if (served !== null) serve(served);
   }, [served, serve]);
+
+  // Le titre de l'onglet (RGAA 8.6), posé avant tout retour anticipé : les
+  // hooks doivent s'exécuter dans le même ordre à chaque rendu. Le cas
+  // `organisme_unavailable` redirige aussitôt (voir plus bas) : son titre n'a
+  // pas d'importance, la page suivante pose le sien.
+  useDocumentTitle(
+    state.status === "error"
+      ? state.reason === "organisme_unavailable"
+        ? t("page.title")
+        : errorPageTitle(lang, errorMessageFor(state.reason, lang).title)
+      : state.status !== "ready"
+        ? t("page.title")
+        : organismeTitle(state.organisme.name, state.tenant.name),
+  );
 
   if (state.status === "loading") return <PortalLoader />;
 
@@ -124,7 +151,11 @@ export function OrganismePage() {
   const basePath = "/" + encodeURIComponent(organisme.slug ?? slug) + "/demarches";
 
   return (
+    // ⚠️ LE STYLE DU THÈME VIT SUR CETTE RACINE (RGAA 9.2 / 12.6) : header et
+    // footer en ont besoin aussi. Le lien d'évitement, l'en-tête et le pied
+    // de premier niveau sont ses seuls enfants directs, hors `<main>`.
     <div style={themeStyle(tenant.theme, branding)} className="min-h-screen bg-white">
+      <SkipLink />
       <PageHeader
         tenantName={tenant.name}
         logoUrl={marqueLogoUrl}
@@ -137,75 +168,93 @@ export function OrganismePage() {
         singleLine
       />
 
-      {/* Le bloc d'identification : le logo de l'en-tête (28 px) ne suffit
-          pas à le rendre « bien visible » — c'est ici, en plus grand, à côté
-          du nom porté par le seul `h1` de la page. */}
-      <section
-        className="border-b border-[color:var(--pt-border)]"
-        style={{ background: "var(--pt-surface)" }}
-      >
-        <div className="mx-auto flex max-w-5xl flex-col items-center gap-4 px-6 py-10 text-center sm:flex-row sm:text-left">
-          {logoUrl ? (
-            <img
-              src={logoUrl}
-              alt=""
-              className="h-16 w-16 shrink-0 rounded-[var(--pt-radius-sm)] object-contain sm:h-20 sm:w-20"
-            />
-          ) : (
-            <div
-              className="h-16 w-16 shrink-0 rounded-[var(--pt-radius-sm)] sm:h-20 sm:w-20"
-              style={{ background: "var(--pt-mark-bg)" }}
-              aria-hidden="true"
-            />
-          )}
-          <div>
-            <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">
-              {organisme.name}
-            </h1>
-            <p className="mt-1 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
-              {t("organisme.subtitle")}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <main className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-6 py-8">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex h-10 min-w-[220px] flex-1 items-center gap-2 rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-3 shadow-[var(--pt-shadow)]">
-            <SearchIcon />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t("search.placeholder")}
-              aria-label={t("search.placeholder")}
-              className="w-full border-0 bg-transparent p-0 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] outline-none placeholder:text-[color:var(--pt-muted)] focus:outline-none focus:ring-0"
-            />
-          </div>
-          <AudienceFilter audiences={audiences} value={audience} onChange={setAudience} />
-        </div>
-
-        {visible.length === 0 ? (
-          <p className="rounded-[var(--pt-radius-sm)] border border-dashed border-[color:var(--pt-border)] py-6 text-center text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
-            {t(organismeEmptyKey(searchActive, audience))}
-          </p>
-        ) : (
-          <ul className={"grid gap-3 " + gridColumnsClass(3)}>
-            {visible.map((demarche) => (
-              <DemarcheCard key={demarche.id} demarche={demarche} basePath={basePath} />
-            ))}
-          </ul>
-        )}
-
-        <Link
-          to={localizedPath(lang, "/")}
-          className="mt-4 self-center text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline focus-visible:underline"
+      {/* Tout le contenu propre à cette page — identification, recherche,
+          grille — vit dans CE `<main>` : le bloc d'identification portait le
+          seul `h1` de la page, mais restait hors de `main` avant cette
+          correction. */}
+      <main id="contenu" tabIndex={-1} className="focus:outline-none">
+        {/* Le bloc d'identification : le logo de l'en-tête (28 px) ne suffit
+            pas à le rendre « bien visible » — c'est ici, en plus grand, à côté
+            du nom porté par le seul `h1` de la page. */}
+        <section
+          className="border-b border-[color:var(--pt-border)]"
+          style={{ background: "var(--pt-surface)" }}
         >
-          {t("organisme.backToPortal")}
-        </Link>
+          <div className="mx-auto flex max-w-5xl flex-col items-center gap-4 px-6 py-10 text-center sm:flex-row sm:text-left">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt=""
+                className="h-16 w-16 shrink-0 rounded-[var(--pt-radius-sm)] object-contain sm:h-20 sm:w-20"
+              />
+            ) : (
+              <div
+                className="h-16 w-16 shrink-0 rounded-[var(--pt-radius-sm)] sm:h-20 sm:w-20"
+                style={{ background: "var(--pt-mark-bg)" }}
+                aria-hidden="true"
+              />
+            )}
+            <div>
+              <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">
+                {organisme.name}
+              </h1>
+              <p className="mt-1 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
+                {t("organisme.subtitle")}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-6 py-8">
+          {/* Les cartes sont des `h3` : sans ce `h2`, la page sautait du `h1` au
+              `h3` (RGAA 9.1). Invisible — l'écran n'a pas de titre de liste à
+              montrer, c'est la structure qui en a besoin. */}
+          <h2 className="sr-only">{t("header.demarches")}</h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <div
+              className={
+                "flex h-10 min-w-[220px] flex-1 items-center gap-2 rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-field-border)] bg-white px-3 shadow-[var(--pt-shadow)] " +
+                // ⚠️ Le champ lui-même est en `focus:outline-none` (sa bordure
+                // est portée par CE conteneur) : l'anneau de focus doit donc
+                // apparaître ici (RGAA 10.7), pas sur l'`<input>`.
+                "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[color:var(--brand-primary)]"
+              }
+            >
+              <SearchIcon />
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={t("search.placeholder")}
+                aria-label={t("search.placeholder")}
+                className="w-full border-0 bg-transparent p-0 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] outline-none placeholder:text-[color:var(--pt-muted)] focus:outline-none focus:ring-0"
+              />
+            </div>
+            <AudienceFilter audiences={audiences} value={audience} onChange={setAudience} />
+          </div>
+
+          {visible.length === 0 ? (
+            <p className="rounded-[var(--pt-radius-sm)] border border-dashed border-[color:var(--pt-border)] py-6 text-center text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
+              {t(organismeEmptyKey(searchActive, audience))}
+            </p>
+          ) : (
+            <ul className={"grid gap-3 " + gridColumnsClass(3)}>
+              {visible.map((demarche) => (
+                <DemarcheCard key={demarche.id} demarche={demarche} basePath={basePath} />
+              ))}
+            </ul>
+          )}
+
+          <Link
+            to={localizedPath(lang, "/")}
+            className="mt-4 self-center text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline focus-visible:underline"
+          >
+            {t("organisme.backToPortal")}
+          </Link>
+        </div>
       </main>
 
-      <AccessibilityNotice theme={tenant.theme} />
+      <AccessibilityFooter theme={tenant.theme} />
     </div>
   );
 }

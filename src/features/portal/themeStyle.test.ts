@@ -149,7 +149,47 @@ describe("accessibilité", () => {
       relativeLuminance(normal["--pt-ink"])!,
     );
   });
+
+  it("⚠️ un orange ou un turquoise reçoit l'encre sombre : le blanc y perdait (relevé RGAA)", () => {
+    // Sous l'ancien seuil (0,4), ces deux couleurs recevaient du blanc, à
+    // 2,97 et 3,10 : 1. L'encre sombre y passe à 5,44 et 5,21.
+    expect(isDarkColor("#e07b39")).toBe(false);
+    expect(isDarkColor("#00a3a3")).toBe(false);
+
+    const orange = vars(withHeader({ fill: "color", color: "primary" }), {
+      ...CHARTE,
+      primaryColor: "#e07b39",
+    });
+    expect(orange["--pt-header-ink"]).toBe("#1c2220");
+    expect(orange["--pt-on-primary"]).toBe("#1c2220");
+    expect(ratio(orange["--pt-on-primary"], "#e07b39")).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("le blanc reste là où il contraste le mieux", () => {
+    // La charte de SNA27 : 5,02 : 1 en blanc, 3,22 en encre sombre.
+    expect(isDarkColor("#3b7788")).toBe(true);
+    const sna = vars(defaultTheme(), { ...CHARTE, primaryColor: "#3b7788" });
+    expect(sna["--pt-on-primary"]).toBe("#ffffff");
+  });
+
+  it("le contour d'un champ tient 3 : 1, en ordinaire comme en contraste renforcé", () => {
+    const strongTheme: PortalTheme = {
+      ...defaultTheme(),
+      accessibility: { ...defaultTheme().accessibility, highContrast: true },
+    };
+    for (const v of [vars(defaultTheme()), vars(strongTheme)]) {
+      expect(ratio(v["--pt-field-border"], "#ffffff")).toBeGreaterThanOrEqual(3);
+      expect(ratio(v["--pt-field-border"], v["--pt-surface"])).toBeGreaterThanOrEqual(3);
+      // La bordure décorative, elle, reste claire : c'est un choix, pas un oubli.
+      expect(v["--pt-border"]).not.toBe(v["--pt-field-border"]);
+    }
+  });
 });
+
+function ratio(a: string, b: string): number {
+  const [hi, lo] = [relativeLuminance(a)!, relativeLuminance(b)!].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
 
 describe("headerLogoUrl", () => {
   it("le logo blanc ne sert que sur un bandeau de couleur", () => {

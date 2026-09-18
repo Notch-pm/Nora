@@ -20,11 +20,11 @@
 import { useState } from "react";
 import type { Demarche, Ville } from "@fn/_shared/domain/demarche.ts";
 import type { Audience } from "@fn/_shared/domain/requesterConfig.ts";
-import type { HomePage } from "@fn/_shared/domain/page.ts";
+import type { FooterSection as FooterSectionData, HomePage } from "@fn/_shared/domain/page.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
 import { headerLogoUrl, themeStyle } from "./themeStyle.ts";
-import { AccessibilityNotice } from "./AccessibilityNotice.tsx";
+import { AccessibilityNotice, hasAccessibilityDeclaration } from "./AccessibilityNotice.tsx";
 import {
   audiencesOffered,
   endsWithFooter,
@@ -35,12 +35,16 @@ import {
   startsWithFullWidthBanner,
 } from "./composition.ts";
 import { PageHeader } from "./PageHeader.tsx";
+import { SkipLink } from "./SkipLink.tsx";
 import { CompteSection } from "./sections/CompteSection.tsx";
 import { DemarchesSection } from "./sections/DemarchesSection.tsx";
 import { FooterSection } from "./sections/FooterSection.tsx";
 import { RechercheSection } from "./sections/RechercheSection.tsx";
 import { TexteImageSection } from "./sections/TexteImageSection.tsx";
 import { TexteSection } from "./sections/TexteSection.tsx";
+import { useLanguage } from "@/i18n/LanguageLayout.tsx";
+import { homeTitle } from "@/i18n/pageTitle.ts";
+import { useDocumentTitle } from "@/i18n/useDocumentTitle.ts";
 
 export function HomeComposition({
   tenant,
@@ -56,6 +60,11 @@ export function HomeComposition({
   page: HomePage;
   branding: Branding | null;
 }) {
+  const { lang } = useLanguage();
+  // RGAA 8.6 : le titre d'onglet identifie la page (ici, la collectivité)
+  // puis le site — jamais figé sur « Démarches en ligne », et traduit.
+  useDocumentTitle(homeTitle(lang, tenant.name));
+
   const [query, setQuery] = useState("");
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [audience, setAudience] = useState<Audience | null>(null);
@@ -79,40 +88,69 @@ export function HomeComposition({
   );
 
   // Un pied de page en dernière position EST le bas de la page : il est poussé
-  // au bord (`mt-auto`). Seule la mention d'accessibilité se pose sous lui —
-  // elle n'appartient pas à la composition, elle est due sur toutes les pages.
+  // au bord. Seule la mention d'accessibilité se pose sous lui — elle
+  // n'appartient pas à la composition, elle est due sur toutes les pages.
   const footerLast = endsWithFooter(page.sections);
+  // ⚠️ Le pied composé EN DERNIÈRE POSITION migre hors de `main`, dans le pied
+  // de premier niveau (RGAA 9.2 / 12.6) : c'est lui qui doit être le
+  // `contentinfo` de la page. Un pied composé qui n'est PAS en dernière
+  // position reste dans `main`, comme avant cette correction — voir la boucle
+  // ci-dessous.
+  const lastSection = page.sections[page.sections.length - 1];
+  const topFooterSection: FooterSectionData | null =
+    footerLast && lastSection !== undefined && lastSection.kind === "footer" ? lastSection : null;
+  // Pas de repère `contentinfo` vide : ni pied composé, ni déclaration
+  // d'accessibilité écrite → pas de `<footer>` du tout.
+  const showTopFooter = topFooterSection !== null || hasAccessibilityDeclaration(tenant.theme);
 
   return (
-    <main
+    // ⚠️ LE STYLE DU THÈME VIT SUR CETTE RACINE, PAS SUR `<main>` : header et
+    // footer en dépendent aussi (leurs `--pt-*`).
+    <div
       className="flex min-h-screen flex-col bg-white"
       // ⚠️ TOUT LE THÈME TIENT DANS CET OBJET. Les sections ne le reçoivent pas
       // en props : elles lisent des variables CSS. C'est ce qui rend le thème
       // gratuit — quelques centaines d'octets de style, pas une requête.
       style={{ ...themeStyle(tenant.theme, branding), color: "var(--pt-ink)" }}
     >
+      <SkipLink />
       <PageHeader
         tenantName={tenant.name}
         logoUrl={headerLogoUrl(tenant.theme, branding)}
         theme={tenant.theme}
         languages={tenant.languages}
         villes={villes}
+        // DÉCISION PRODUIT DE LAURENT (RGAA 9.1) : sur l'accueil composé
+        // SEULEMENT, le nom de la collectivité EST le `h1` de la page — jamais
+        // un bloc personnalisable de la composition, qui pourrait manquer ou
+        // changer de sens d'une collectivité à l'autre. Rendu identique,
+        // seule la balise change.
+        nameAsHeading
       />
-      <div
-        className="flex flex-1 flex-col"
+      <main
+        id="contenu"
+        tabIndex={-1}
+        className="flex flex-1 flex-col focus:outline-none"
         style={{
           gap: "var(--pt-gap)",
           // Un bandeau pleine largeur en tête de page touche l'en-tête — voir
           // `startsWithFullWidthBanner`. Même geste que le pied de page collé
           // au bas, à l'autre bout.
           paddingTop: startsWithFullWidthBanner(page.sections) ? 0 : "var(--pt-pad)",
-          // Un pied de page composé va au bord ; sans lui, la dernière section
-          // garde sa respiration. L'espacement suit la densité du thème.
-          paddingBottom: footerLast ? 0 : "var(--pt-pad)",
+          // Sans pied composé, la dernière section garde sa respiration. Avec
+          // lui, c'est l'écart entre deux sections qui la sépare du pied.
+          // ⚠️ Cet écart était le `gap` du conteneur, quand le pied vivait
+          // dedans. Sorti de `main` pour devenir le `contentinfo`, il ne le
+          // reçoit plus : le rendre ici, sinon la dernière section touche le
+          // pied. L'espacement suit la densité du thème.
+          paddingBottom: footerLast ? "var(--pt-gap)" : "var(--pt-pad)",
         }}
       >
-        {page.sections.map((section) => {
+        {page.sections.map((section, index) => {
           if (section.kind === "footer") {
+            // Extrait vers le pied de premier niveau, sous `main` : rendu
+            // là-bas, pas ici.
+            if (footerLast && index === page.sections.length - 1) return null;
             return (
               <div key={section.id} className="mt-auto">
                 <FooterSection section={section} />
@@ -173,10 +211,20 @@ export function HomeComposition({
             </div>
           );
         })}
-      </div>
-      {/* Sous le pied de page composé, et sur toutes les pages du site :
-          c'est une mention obligatoire, pas un bloc de contenu. */}
-      <AccessibilityNotice theme={tenant.theme} />
-    </main>
+      </main>
+      {/* Le pied de page de premier niveau (`contentinfo`) : le pied composé
+          quand il termine la page, puis la mention d'accessibilité — due sur
+          toutes les pages, pas un bloc de la composition.
+          ⚠️ Pas de `mt-auto` ici : `main` porte déjà `flex-1` et absorbe tout
+          l'espace restant, ce qui pousse ce pied au bord exactement comme
+          avant cette correction — lui en ajouter referait le même geste deux
+          fois. */}
+      {showTopFooter && (
+        <footer>
+          {topFooterSection !== null && <FooterSection section={topFooterSection} />}
+          <AccessibilityNotice theme={tenant.theme} />
+        </footer>
+      )}
+    </div>
   );
 }

@@ -94,7 +94,15 @@ export function RechercheSection({
             {section.subtitle}
           </p>
         )}
-        <div className="flex h-12 w-full max-w-[520px] items-center gap-2.5 rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-3.5 shadow-[var(--pt-shadow)]">
+        <div
+          className={
+            "flex h-12 w-full max-w-[520px] items-center gap-2.5 rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-field-border)] bg-white px-3.5 shadow-[var(--pt-shadow)] " +
+            // ⚠️ Le champ lui-même est en `focus:outline-none` (sa bordure est
+            // portée par CE conteneur) : l'anneau de focus doit donc
+            // apparaître ici (RGAA 10.7), pas sur l'`<input>`.
+            "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[color:var(--brand-primary)]"
+          }
+        >
           <SearchIcon />
           <input
             type="search"

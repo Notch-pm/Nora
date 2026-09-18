@@ -18,19 +18,33 @@ import {
 import { errorMessageFor } from "./errorMessages.ts";
 import { HomeComposition } from "./HomeComposition.tsx";
 import { PortalLoader } from "./PortalLoader.tsx";
+import { SkipLink } from "./SkipLink.tsx";
 import { DemarcheCard } from "./sections/DemarcheCard.tsx";
 import { OrganizationFilter } from "./sections/OrganizationFilter.tsx";
 import { usePortal } from "./usePortal.ts";
 import { themeStyle } from "./themeStyle.ts";
-import { AccessibilityNotice } from "./AccessibilityNotice.tsx";
+import { AccessibilityFooter } from "./AccessibilityNotice.tsx";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { servedLanguage } from "@/i18n/localizedPath.ts";
+import { errorPageTitle, homeTitle } from "@/i18n/pageTitle.ts";
+import { useDocumentTitle } from "@/i18n/useDocumentTitle.ts";
 
+/**
+ * Le lien d'évitement avant `<main>`, jamais dedans (RGAA 12.7) — même
+ * gabarit que l'écran d'erreur de la page d'un organisme (`OrganismePage`).
+ */
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto min-h-screen max-w-3xl px-6 py-12 text-[color:var(--pt-ink)]">
-      {children}
-    </main>
+    <>
+      <SkipLink />
+      <main
+        id="contenu"
+        tabIndex={-1}
+        className="mx-auto min-h-screen max-w-3xl px-6 py-12 text-[color:var(--pt-ink)] focus:outline-none"
+      >
+        {children}
+      </main>
+    </>
   );
 }
 
@@ -48,7 +62,11 @@ function DefaultCatalogue({
   demarches: Demarche[];
   branding: Branding | null;
 }) {
+  const { lang } = useLanguage();
   const t = useT();
+  // RGAA 8.6 : cette liste de repli EST l'accueil tant que rien n'a été
+  // composé — même titre d'onglet que `HomeComposition`.
+  useDocumentTitle(homeTitle(lang, tenant.name));
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const organizations = organizationsOffering(demarches, tenant.id);
   const visible = filterDemarchesByOrganization(demarches, organizationId);
@@ -56,16 +74,25 @@ function DefaultCatalogue({
   return (
     <div style={themeStyle(tenant.theme, branding)}>
       <Shell>
-        <header className="border-b border-[color:var(--pt-border)] pb-6">
+        {/* Un `<div>`, pas un `<header>` (RGAA 9.2 / 12.6) : ce bloc n'est que
+            le titre de CET écran, à l'intérieur de `<main>` — le vrai `banner`
+            du site, lui, n'existe pas encore ici (pas de composition, pas de
+            nav). Lui donner un rôle qu'il n'a pas créerait un repère de plus,
+            sans navigation à y mettre. */}
+        <div className="border-b border-[color:var(--pt-border)] pb-6">
           <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">
             {tenant.name}
           </h1>
           <p className="mt-1 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
             {t("page.title")}
           </p>
-        </header>
+        </div>
 
         <div className="mt-8 flex flex-col gap-4">
+          {/* Les cartes sont des `h3` : sans ce `h2`, la page sautait du `h1` au
+            `h3` (RGAA 9.1). Invisible — l'écran n'a pas de titre de liste à
+            montrer, c'est la structure qui en a besoin. */}
+          <h2 className="sr-only">{t("header.demarches")}</h2>
           <OrganizationFilter
             organizations={organizations}
             value={organizationId}
@@ -86,7 +113,7 @@ function DefaultCatalogue({
           )}
         </div>
       </Shell>
-      <AccessibilityNotice theme={tenant.theme} />
+      <AccessibilityFooter theme={tenant.theme} />
     </div>
   );
 }
@@ -107,6 +134,18 @@ export function PortalPage() {
   useEffect(() => {
     if (served !== null) serve(served);
   }, [served, serve]);
+
+  // Le titre de l'onglet (RGAA 8.6). L'état « prêt » DÉLÈGUE le sien à
+  // `HomeComposition` ou `DefaultCatalogue` (`null` : voir `useDocumentTitle`)
+  // — sans quoi cet effet, qui se rejoue après le leur, l'écraserait d'un
+  // titre générique.
+  useDocumentTitle(
+    state.status === "error"
+      ? errorPageTitle(lang, errorMessageFor(state.reason, lang).title)
+      : state.status === "loading"
+        ? t("page.title")
+        : null,
+  );
 
   if (state.status === "loading") return <PortalLoader />;
 

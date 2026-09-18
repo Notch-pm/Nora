@@ -212,19 +212,14 @@ export function endsWithFooter(sections: { kind: string }[]): boolean {
 }
 
 /**
- * Le texte se lit-il en clair sur ce fond ? Luminance relative (sRGB, WCAG) :
- * sous 0,4 le fond est sombre. Une couleur illisible est traitée comme sombre
- * — le défaut du pied de page l'est.
+ * Le texte se lit-il en clair sur ce fond ? Le pied de page composé le demande
+ * ici, avec le reste de la composition.
+ *
+ * ⚠️ PLUS DE COPIE LOCALE. Ce fichier en avait une, au même seuil faux que
+ * `themeStyle.ts` (0,4 — voir `readableInk`) : deux implémentations, c'était
+ * deux corrections à ne pas oublier. Il n'y en a plus qu'une.
  */
-export function isDarkColor(hex: string): boolean {
-  if (!/^#[0-9a-f]{6}$/.test(hex)) return true;
-  const channel = (i: number) => {
-    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  };
-  const luminance = 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
-  return luminance < 0.4;
-}
+export { isDarkColor } from "./themeStyle.ts";
 
 /**
  * Au-delà de ce nombre d'organismes, une dalle annonce un COMPTE plutôt que la

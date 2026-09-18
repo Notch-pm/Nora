@@ -26,7 +26,8 @@ export function OrganizationFilter({
       <select
         value={value ?? ""}
         onChange={(event) => onChange(event.target.value === "" ? null : event.target.value)}
-        className="h-9 max-w-[260px] rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-2.5 text-[length:var(--pt-small)] text-[color:var(--pt-ink)] focus:border-[color:var(--brand-primary)] focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-primary)]"
+        // ⚠️ Contour d'un champ de saisie (RGAA 3.3) : `--pt-field-border`.
+        className="h-9 max-w-[260px] rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-field-border)] bg-white px-2.5 text-[length:var(--pt-small)] text-[color:var(--pt-ink)] focus:border-[color:var(--brand-primary)] focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-primary)]"
       >
         <option value="">{t("filter.allOrganizations")}</option>
         {organizations.map((org) => (

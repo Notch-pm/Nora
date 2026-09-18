@@ -13,8 +13,9 @@ import type { PortalLoadFailure } from "@/services/portal/portalClient.ts";
 import { errorMessageFor } from "@/features/portal/errorMessages.ts";
 import { PageHeader } from "@/features/portal/PageHeader.tsx";
 import { PortalLoader } from "@/features/portal/PortalLoader.tsx";
+import { SkipLink } from "@/features/portal/SkipLink.tsx";
 import { headerLogoUrl, themeStyle } from "@/features/portal/themeStyle.ts";
-import { AccessibilityNotice } from "@/features/portal/AccessibilityNotice.tsx";
+import { AccessibilityFooter } from "@/features/portal/AccessibilityNotice.tsx";
 import { defaultTheme, type PortalTheme } from "@fn/_shared/domain/theme.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 
@@ -54,10 +55,14 @@ export function DemarcheShell({
 }) {
   const applied: PortalTheme = theme ?? defaultTheme();
   return (
-    <main
+    // ⚠️ LE STYLE DU THÈME VIT SUR CETTE RACINE, PAS SUR `<main>` : header et
+    // footer en dépendent aussi (leurs `--pt-*`), et un thème posé plus bas ne
+    // les atteindrait plus (RGAA 9.2 / 12.6).
+    <div
       className="flex min-h-screen flex-col bg-white"
       style={{ ...themeStyle(applied, branding), color: "var(--pt-ink)" }}
     >
+      <SkipLink />
       {/* Tant que la collectivité n'est pas connue, l'en-tête reste neutre :
           mieux vaut une barre vide qu'un nom qui change sous les yeux. */}
       <PageHeader
@@ -67,9 +72,11 @@ export function DemarcheShell({
         languages={languages}
         villes={villes}
       />
-      <div className="mx-auto w-full max-w-3xl flex-1 px-6 pb-12 pt-8">{children}</div>
-      <AccessibilityNotice theme={theme} />
-    </main>
+      <main id="contenu" tabIndex={-1} className="mx-auto w-full max-w-3xl flex-1 px-6 pb-12 pt-8 focus:outline-none">
+        {children}
+      </main>
+      <AccessibilityFooter theme={theme} />
+    </div>
   );
 }
 

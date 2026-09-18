@@ -100,19 +100,23 @@ src/
                            TexteImage, Footer + DemarcheCard (la carte, partagée avec le repli),
                            OrganizationFilter et AudienceFilter
     composition.ts         règles pures : filtres (recherche, organisme, public), organismes et
-                           publics du filtre, ordre des épinglées, raccourcis, colonnes, luminance,
+                           publics du filtre, ordre des épinglées, raccourcis, colonnes,
                            message de grille vide, « le pied de page final est le bas de la page »
     theme.ts               la charte → --brand-* ; mémoire de la dernière charte connue
     favicon.ts             l'icône de l'onglet ; l'absence de favicon n'efface rien
-    themeStyle.ts          le thème + la charte → toutes les variables CSS de la page
+    themeStyle.ts          le thème + la charte → toutes les variables CSS de la page, et le
+                           choix de l'encre lisible sur un fond (`readableInk`, `isDarkColor`)
                            (miroir de `Socle/src/features/portal/themeStyle.ts`)
-    AccessibilityNotice.tsx la déclaration RGAA, au pied de TOUTES les pages
+    AccessibilityNotice.tsx la déclaration RGAA, au pied de TOUTES les pages ; `AccessibilityFooter`
+                           ne pose le `<footer>` que s'il a quelque chose à porter
+    SkipLink.tsx           le lien d'évitement, premier tabulable de chaque écran (RGAA 12.7)
     errorMessages.ts       un message par PortalFailure
   features/demarche/     La démarche : la lire, la remplir, la déposer.
     DemarchePage.tsx       la présentation (descriptif, durée, organismes, pièces attendues)
     FormulairePage.tsx     le formulaire, le dépôt, l'accusé
     FormFields.tsx         un contrôle par type de champ — le rendu de référence côté usager
-    RequesterSection.tsx   « Vos informations », piloté par requester_config
+    RequesterSection.tsx   « Vos informations » (`fieldset`), piloté par requester_config
+    autocomplete.ts        le jeton `autocomplete` de chaque champ d'identité (RGAA 11.13)
     DemarcheShell.tsx      le cadre commun (charte, en-tête, chargement, erreur)
     formulaire.ts          règles pures : visibilité, obligation, validation, form_data, identité
     useDemarche.ts         le chargement d'une démarche
@@ -881,8 +885,26 @@ ouvertes sont dans `docs/roadmap.md` du Socle, section « Portail usagers » :
 7. **FranceConnect** — à instruire (habilitation, périmètre).
 
 Transverse : accessibilité RGAA — la **déclaration** est désormais affichée au
-pied de toutes les pages quand la collectivité l'a écrite, l'audit lui-même
-reste à faire — et les autres mentions obligatoires d'un site public,
+pied de toutes les pages quand la collectivité l'a écrite. Un **relevé du
+2026-09-15** (lecture du code, puis mesure dans le DOM de `sna27.edilumen.fr`
+en production) estime le portail **partiellement conforme, ~70 à 75 %**, et
+liste un lot à faire en une fois. ✅ **Ce lot est livré le 2026-09-18** :
+- lien d'évitement ;
+- `h1` de l'accueil, qui est le nom de la collectivité dans l'en-tête ;
+- `header` et `footer` sortis de `main` ;
+- un titre d'onglet par écran ;
+- focus visible sur la recherche et les contrôles en `sr-only` ;
+- l'erreur reliée à son contrôle (groupes et dépôt de fichier) ;
+- `fieldset`, `autocomplete` ;
+- le contour des champs à 3:1 (`--pt-field-border`) ;
+- l'encre choisie par contraste et non plus sur le seuil faux de 0,4 ;
+- le vert par défaut foncé en `#07854c`, pour qu'une collectivité sans charte
+  ne soit plus servie hors conformité.
+
+Restent ouverts : les deux navigations (12.1), les messages de statut (7.5),
+le sélecteur de langue au `onChange` (7.4) et le miroir RTL. L'audit lui-même
+reste à commander ; le détail est dans `docs/roadmap.md` du Socle,
+§ « Accessibilité RGAA ». Et les autres mentions obligatoires d'un site public,
 ~~premier domaine réel~~ (**en ligne depuis le 2026-09-12** :
 `laurentville.edilumen.fr`, construit par Cloudflare **au push sur `main`**), et
 surtout **le multi-collectivités du dépôt** — voir

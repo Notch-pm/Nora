@@ -13,10 +13,13 @@
 import { useEffect } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { allFields } from "@fn/_shared/domain/formSchema.ts";
+import { errorMessageFor } from "@/features/portal/errorMessages.ts";
 import { DemarcheError, DemarcheLoading, DemarcheShell } from "./DemarcheShell.tsx";
 import { useDemarche } from "./useDemarche.ts";
 import { useLanguage, useT, useTn } from "@/i18n/LanguageLayout.tsx";
 import { organismePath, servedLanguage, splitScopedPath } from "@/i18n/localizedPath.ts";
+import { demarcheTitle, errorPageTitle } from "@/i18n/pageTitle.ts";
+import { useDocumentTitle } from "@/i18n/useDocumentTitle.ts";
 
 
 function BackToHome({ subtle = false }: { subtle?: boolean }) {
@@ -64,6 +67,16 @@ export function DemarchePage() {
   useEffect(() => {
     if (served !== null) serve(served);
   }, [served, serve]);
+
+  // Le titre de l'onglet (RGAA 8.6), posé avant tout retour anticipé : les
+  // hooks doivent s'exécuter dans le même ordre à chaque rendu.
+  useDocumentTitle(
+    state.status === "error"
+      ? errorPageTitle(lang, errorMessageFor(state.reason, lang).title)
+      : state.status !== "ready"
+        ? t("page.title")
+        : demarcheTitle(state.snapshot.demarche.name, state.snapshot.tenant.name),
+  );
 
   if (state.status === "loading") return <DemarcheLoading />;
   if (state.status === "error") {
