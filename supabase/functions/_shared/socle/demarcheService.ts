@@ -27,7 +27,9 @@ import type { Audience } from "../domain/requesterConfig.ts";
 import type { PortalFailure } from "../domain/failure.ts";
 import { parseFormSchema } from "../domain/formSchema.ts";
 import { parseRequesterConfig } from "../domain/requesterConfig.ts";
+import { parseUserCommunication } from "../domain/userCommunication.ts";
 import { localizedText } from "../domain/languages.ts";
+import { markdownSummary } from "../domain/markdown.ts";
 import type { SocleClient } from "./socleClient.ts";
 import { httpsUrl } from "./urls.ts";
 
@@ -99,6 +101,9 @@ function toAudiences(raw: unknown): Audience[] {
  * `description` : le résumé court d'abord, le descriptif usager à défaut. Aucun
  * des deux n'est obligatoire au paramétrage — la collectivité qui n'a rempli
  * que le second doit tout de même avoir quelque chose à afficher.
+ * ⚠️ Le descriptif est en MARKDOWN (contrat 1.24.0), le résumé en texte brut :
+ * le repli n'en prend que le premier paragraphe, marques retirées
+ * (`markdownSummary`). Le texte source mettrait des `**` sur une carte.
  *
  * ⚠️ LA LANGUE EST RÉSOLUE ICI, à la frontière, et pas dans les écrans : plus
  * loin, `name` est un intitulé à afficher, pas un français dont il faudrait
@@ -113,11 +118,17 @@ function toDemarche(raw: unknown, lang: string): Demarche | null {
   const id = text(row.id);
   const name = localizedText(text(row.name), row.translations, lang, "name");
   if (id === null || name === null) return null;
+  const userDescription = localizedText(
+    text(row.user_description),
+    row.translations,
+    lang,
+    "user_description",
+  );
   return {
     id,
     name,
     description: localizedText(text(row.short_description), row.translations, lang, "short_description")
-      ?? localizedText(text(row.user_description), row.translations, lang, "user_description"),
+      ?? (userDescription === null ? null : markdownSummary(userDescription)),
     estimatedMinutes:
       typeof row.input_duration_minutes === "number" && Number.isFinite(row.input_duration_minutes)
         ? row.input_duration_minutes
@@ -186,9 +197,12 @@ function toCategory(raw: unknown, lang: string): DemarcheCategory | null {
  * revérifier, et rien à révéler : `demarche_unavailable` dit « pas ici », pas
  * « existe mais fermée ».
  *
- * Les deux schémas sont parsés ICI, à la frontière : les écrans reçoivent un
- * `FormSchema` déjà nettoyé et un `RequesterConfig` complet, jamais du JSON
- * dont il faudrait douter.
+ * Les schémas sont parsés ICI, à la frontière : les écrans reçoivent un
+ * `FormSchema` déjà nettoyé, un `RequesterConfig` et un `UserCommunication`
+ * complets, jamais du JSON dont il faudrait douter.
+ *
+ * ⚠️ `user_communication` ne passe PAS par `localizedText` : le Socle ne le
+ * traduit pas (aucune entrée dans `translations`), il est servi en français.
  */
 export async function getPublicDemarche(
   tenantId: string,
@@ -223,6 +237,9 @@ export async function getPublicDemarche(
     ok: true,
     demarche: {
       ...demarche,
+      // Le RÉSUMÉ SEUL : le descriptif suit en entier sur la même page, le
+      // repli de la carte l'y ferait commencer deux fois.
+      description: localizedText(text(row.short_description), row.translations, lang, "short_description"),
       category: toCategory(row.category, lang),
       userDescription: localizedText(
         text(row.user_description),
@@ -232,6 +249,7 @@ export async function getPublicDemarche(
       ),
       form: parseFormSchema(row.form_schema),
       requester: parseRequesterConfig(row.requester_config),
+      userCommunication: parseUserCommunication(row.user_communication),
     },
   };
 }

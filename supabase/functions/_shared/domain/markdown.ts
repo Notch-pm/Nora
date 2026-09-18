@@ -1,12 +1,25 @@
 /**
  * Markdown → ARBRE, jamais → HTML.
  *
- * La déclaration d'accessibilité est rédigée en Markdown dans l'éditeur du
- * Socle, qui l'aperçoit avec son `renderMarkdown` (`src/features/procedures/
- * markdown.ts`). Ce module lit le MÊME sous-ensemble — titres `#` à `###`,
- * listes `-`/`*`/`1.`, paragraphes et sauts de ligne, `**gras**`, `*italique*`
- * / `_italique_`, `` `code` ``, liens `[texte](url)` — pour que ce que l'agent
+ * Deux textes du Socle arrivent en Markdown : la déclaration d'accessibilité
+ * (onglet « Contenus » de l'éditeur de site) et le descriptif usager d'une
+ * démarche (`user_description`, contrat 1.24.0). L'éditeur du Socle les
+ * aperçoit avec son `renderMarkdown` (`src/features/procedures/markdown.ts`).
+ * Ce module lit le même sous-ensemble — titres `#` à `###`, listes
+ * `-`/`*`/`1.`, paragraphes et sauts de ligne, `**gras**`, `*italique*` /
+ * `_italique_`, `` `code` ``, liens `[texte](url)` — pour que ce que l'agent
  * voit dans l'aperçu soit ce que l'usager lit ici.
+ *
+ * ⚠️ **UN ÉCART, ASSUMÉ : les citations `>`.** L'aperçu du Socle ne les connaît
+ * pas (il affiche le chevron tel quel), mais des descriptifs publiés en portent
+ * — le recensement à 16 ans d'ACCM. Les rendre en texte mettrait un `>` sous
+ * les yeux de l'usager ; l'écart inverse (un aperçu moins riche que le site)
+ * est le moins grave des deux, et se referme en apprenant la citation à
+ * l'aperçu.
+ *
+ * Il vit dans `domain/`, et non dans l'interface, parce que le SERVEUR en a
+ * besoin aussi : `markdownSummary` tire le résumé d'une carte du descriptif
+ * quand la collectivité n'a pas écrit de résumé (`demarcheService.ts`).
  *
  * ⚠️ **AUCUN `innerHTML`.** Le Socle produit une chaîne HTML échappée ; ici on
  * produit des nœuds, que React rend en éléments. Un texte venu d'un serveur
@@ -33,6 +46,8 @@ export type Block =
   | { kind: "heading"; level: 1 | 2 | 3; children: Inline[] }
   /** Chaque ligne du paragraphe, dans l'ordre : l'auteur a choisi ses sauts. */
   | { kind: "paragraph"; lines: Inline[][] }
+  /** Des lignes `>` consécutives : une citation, lignes gardées comme un paragraphe. */
+  | { kind: "quote"; lines: Inline[][] }
   | { kind: "list"; ordered: boolean; items: Inline[][] };
 
 /** Les seuls schémas qu'un lien peut porter. */
@@ -99,8 +114,13 @@ export function parseMarkdown(source: string): Block[] {
   // Ce qui s'accumule entre deux blocs. Un objet plutôt que deux `let` : les
   // fonctions de vidage les réassignent, et TypeScript ne suit pas une
   // réassignation faite dans une fermeture.
-  const pending: { paragraph: string[]; list: { ordered: boolean; items: string[] } | null } = {
+  const pending: {
+    paragraph: string[];
+    quote: string[];
+    list: { ordered: boolean; items: string[] } | null;
+  } = {
     paragraph: [],
+    quote: [],
     list: null,
   };
 
@@ -109,6 +129,13 @@ export function parseMarkdown(source: string): Block[] {
       blocks.push({ kind: "paragraph", lines: pending.paragraph.map(parseInline) });
     }
     pending.paragraph = [];
+  };
+  const flushQuote = () => {
+    // Une ligne `>` vide sépare deux paragraphes de la citation : on la saute,
+    // les lignes restantes gardent leurs sauts.
+    const lines = pending.quote.filter((line) => line !== "");
+    if (lines.length > 0) blocks.push({ kind: "quote", lines: lines.map(parseInline) });
+    pending.quote = [];
   };
   const flushList = () => {
     if (pending.list !== null && pending.list.items.length > 0) {
@@ -125,9 +152,21 @@ export function parseMarkdown(source: string): Block[] {
     const trimmed = line.trim();
     if (trimmed === "") {
       flushParagraph();
+      flushQuote();
       flushList();
       continue;
     }
+
+    // Le chevron en TÊTE de ligne seulement : un `>` au milieu d'une phrase
+    // (« âge > 16 ans ») reste du texte.
+    const quote = /^>\s?(.*)$/.exec(trimmed);
+    if (quote) {
+      flushParagraph();
+      flushList();
+      pending.quote.push(quote[1].trim());
+      continue;
+    }
+    flushQuote();
 
     const heading = /^(#{1,3})\s+(.*)$/.exec(trimmed);
     if (heading) {
@@ -159,6 +198,43 @@ export function parseMarkdown(source: string): Block[] {
   }
 
   flushParagraph();
+  flushQuote();
   flushList();
   return blocks;
+}
+
+/** Le texte que l'usager LIT dans des nœuds en ligne, sans leurs marques. */
+function inlineText(nodes: Inline[]): string {
+  return nodes
+    .map((node) => (node.kind === "text" || node.kind === "code" ? node.text : inlineText(node.children)))
+    .join("");
+}
+
+function blockText(block: Block): string {
+  switch (block.kind) {
+    case "heading":
+      return inlineText(block.children);
+    case "paragraph":
+    case "quote":
+      return block.lines.map(inlineText).join(" ");
+    case "list":
+      return block.items.map(inlineText).join(" · ");
+  }
+}
+
+/**
+ * Un RÉSUMÉ en texte brut, tiré d'un texte Markdown : son premier paragraphe,
+ * à défaut son premier bloc. `null` s'il n'en reste rien.
+ *
+ * Sert là où l'on ne rend PAS de Markdown — la carte d'une démarche, la
+ * recherche — quand la collectivité n'a écrit qu'un descriptif : y mettre le
+ * texte source afficherait ses `**` et ses `- ` en toutes lettres, et le texte
+ * entier transformerait une carte en page.
+ */
+export function markdownSummary(source: string): string | null {
+  const blocks = parseMarkdown(source);
+  const chosen = blocks.find((block) => block.kind === "paragraph") ?? blocks[0];
+  if (chosen === undefined) return null;
+  const summary = blockText(chosen).replace(/\s+/g, " ").trim();
+  return summary === "" ? null : summary;
 }

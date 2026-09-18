@@ -1,13 +1,17 @@
 /**
- * Le rendu de l'arbre produit par `markdown.ts` — des éléments React, jamais
- * de HTML injecté. Voir l'en-tête de `markdown.ts` pour le pourquoi.
+ * Le rendu de l'arbre produit par `domain/markdown.ts` — des éléments React,
+ * jamais de HTML injecté. Voir l'en-tête de `markdown.ts` pour le pourquoi.
  *
- * ⚠️ **Les titres descendent d'un niveau** (`#` → `h2`) : la page porte déjà
- * son `h1` (« Déclaration d'accessibilité »), et un second `h1` casserait la
- * hiérarchie que lit un lecteur d'écran (RGAA 9.1).
+ * Deux pages s'en servent : la déclaration d'accessibilité et la page d'une
+ * démarche (son descriptif usager).
+ *
+ * ⚠️ **Les titres descendent d'un niveau** (`#` → `h2`) : chacune de ces pages
+ * porte déjà son `h1` (« Déclaration d'accessibilité », l'intitulé de la
+ * démarche), et un second `h1` casserait la hiérarchie que lit un lecteur
+ * d'écran (RGAA 9.1).
  */
 import type { ReactNode } from "react";
-import { type Block, type Inline, parseMarkdown } from "./markdown.ts";
+import { type Block, type Inline, parseMarkdown } from "@fn/_shared/domain/markdown.ts";
 
 function renderInline(nodes: Inline[]): ReactNode[] {
   return nodes.map((node, index) => {
@@ -73,6 +77,18 @@ function renderBlock(block: Block, index: number): ReactNode {
         <p key={index} className="mt-3">
           {renderLines(block.lines)}
         </p>
+      );
+    case "quote":
+      // Une mise en garde, le plus souvent (« Conservez l'attestation ») :
+      // détachée par un filet à la couleur de la collectivité, pas estompée —
+      // une citation grisée se lirait comme secondaire.
+      return (
+        <blockquote
+          key={index}
+          className="mt-3 rounded-r-[var(--pt-radius-sm)] border-l-4 border-[color:var(--brand-primary)] bg-[color:var(--pt-surface)] px-4 py-3"
+        >
+          <p>{renderLines(block.lines)}</p>
+        </blockquote>
       );
     case "list": {
       const items = block.items.map((item, i) => (

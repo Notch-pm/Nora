@@ -27,7 +27,7 @@ import {
 } from "@/i18n/localizedPath.ts";
 import { accessibiliteTitle, errorPageTitle } from "@/i18n/pageTitle.ts";
 import { useDocumentTitle } from "@/i18n/useDocumentTitle.ts";
-import { Markdown } from "./Markdown.tsx";
+import { Markdown } from "@/features/portal/Markdown.tsx";
 import { useAccessibilite } from "./useAccessibilite.ts";
 
 function BackToHome({ subtle = false }: { subtle?: boolean }) {

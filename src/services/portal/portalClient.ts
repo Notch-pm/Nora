@@ -24,6 +24,7 @@ import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
 import type { AccessibilityStatement } from "@fn/_shared/domain/accessibilite.ts";
+import { emptyUserCommunication } from "@fn/_shared/domain/userCommunication.ts";
 
 /** Ce que le portail sait de la collectivité visitée, en un seul chargement. */
 export interface PortalSnapshot {
@@ -326,7 +327,22 @@ function readDemarcheSnapshot(body: unknown): DemarcheSnapshot | null {
     typeof raw.tenantBranding === "object" && raw.tenantBranding !== null
       ? (raw.tenantBranding as Branding)
       : branding;
-  return { lang, tenant, villes, organisme, demarche, branding, tenantBranding };
+  // Absent d'un `portal-api` d'avant le contrat 1.24.0 : l'interface (poussée
+  // sur Cloudflare) et la fonction (déployée sur Supabase) ne partent pas
+  // ensemble. Des blocs vides n'affichent rien — l'écran d'avant, exactement.
+  const userCommunication =
+    typeof demarche.userCommunication === "object" && demarche.userCommunication !== null
+      ? demarche.userCommunication
+      : emptyUserCommunication();
+  return {
+    lang,
+    tenant,
+    villes,
+    organisme,
+    demarche: { ...demarche, userCommunication },
+    branding,
+    tenantBranding,
+  };
 }
 
 /**

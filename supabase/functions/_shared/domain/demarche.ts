@@ -60,14 +60,27 @@ export interface Ville {
 
 import type { FormSchema } from "./formSchema.ts";
 import type { Audience, RequesterConfig } from "./requesterConfig.ts";
+import type { UserCommunication } from "./userCommunication.ts";
 
 export interface Demarche {
   id: string;
   /** Intitulé de la démarche. */
   name: string;
-  /** Texte public à afficher, `null` si la collectivité n'en a rempli aucun. */
+  /**
+   * Texte public à afficher, en TEXTE BRUT — `null` si la collectivité n'en a
+   * rempli aucun.
+   *
+   * ⚠️ Sur une carte, c'est le résumé, ou à défaut le premier paragraphe du
+   * descriptif (qui est du Markdown : ses marques sont retirées). Sur le
+   * DÉTAIL, c'est le résumé seul — voir `DemarcheDetail.userDescription`.
+   */
   description: string | null;
-  /** Durée de saisie estimée, en minutes. */
+  /**
+   * Temps pour REMPLIR le formulaire, en minutes.
+   *
+   * ⚠️ Pas le temps pour obtenir une RÉPONSE — c'est
+   * `DemarcheDetail.userCommunication.responseDelay`, qui a son unité.
+   */
   estimatedMinutes: number | null;
   /**
    * Les organismes de la collectivité qui proposent la démarche — elle-même
@@ -109,15 +122,24 @@ export interface DemarcheCategory {
 export interface DemarcheDetail extends Demarche {
   category: DemarcheCategory | null;
   /**
-   * Le descriptif rédigé POUR l'usager, en entier. Distinct de `description`,
-   * qui est le résumé de la carte (et qui retombe déjà sur celui-ci quand la
-   * collectivité n'a pas écrit de résumé). Sur la page d'une démarche, les
-   * deux se lisent l'un après l'autre — d'où deux champs et non un.
+   * Le descriptif rédigé POUR l'usager, en entier, en **MARKDOWN** (contrat
+   * 1.24.0) — à rendre avec `Markdown.tsx`, jamais tel quel.
+   *
+   * Distinct de `description`, qui est ici le RÉSUMÉ SEUL : sur la page d'une
+   * démarche, les deux se lisent l'un après l'autre. Le repli de la carte
+   * (résumé absent → début du descriptif) n'a pas cours ici, sans quoi le
+   * premier paragraphe s'afficherait deux fois.
    */
   userDescription: string | null;
   /** `null` = démarche sans formulaire : elle s'affiche, sans saisie. */
   form: FormSchema | null;
   requester: RequesterConfig;
+  /**
+   * Délai de traitement, public concerné, pièces annoncées, FAQ — voir
+   * `userCommunication.ts`. Jamais `null` : rien d'écrit donne des blocs
+   * vides, et l'écran n'affiche que ce qui est rempli.
+   */
+  userCommunication: UserCommunication;
 }
 
 /**

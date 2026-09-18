@@ -1,5 +1,67 @@
 import { describe, expect, it } from "vitest";
-import { parseInline, parseMarkdown, safeHref } from "./markdown.ts";
+import { markdownSummary, parseInline, parseMarkdown, safeHref } from "./markdown.ts";
+
+describe("parseMarkdown — les citations", () => {
+  // Le descriptif du recensement d'ACCM, tel qu'il est publié.
+  const RECENSEMENT = [
+    "Tout jeune Français doit se faire recenser **dans les trois mois**.",
+    "",
+    "> Conservez soigneusement l'attestation : la mairie n'en délivre pas de duplicata.",
+  ].join("\n");
+
+  it("lit des lignes `>` comme une citation, formatage compris", () => {
+    const blocks = parseMarkdown(RECENSEMENT);
+    expect(blocks.map((b) => b.kind)).toEqual(["paragraph", "quote"]);
+    expect(blocks[1]).toEqual({
+      kind: "quote",
+      lines: [[{ kind: "text", text: "Conservez soigneusement l'attestation : la mairie n'en délivre pas de duplicata." }]],
+    });
+  });
+
+  it("garde ensemble des lignes `>` consécutives, et saute la ligne `>` vide", () => {
+    const [quote] = parseMarkdown("> premier\n>\n> second");
+    expect(quote).toEqual({
+      kind: "quote",
+      lines: [[{ kind: "text", text: "premier" }], [{ kind: "text", text: "second" }]],
+    });
+  });
+
+  it("un `>` au milieu d'une phrase reste du texte", () => {
+    expect(parseMarkdown("âge > 16 ans")[0].kind).toBe("paragraph");
+  });
+
+  it("une ligne ordinaire après la citation la referme", () => {
+    expect(parseMarkdown("> citée\nPlus citée").map((b) => b.kind)).toEqual(["quote", "paragraph"]);
+  });
+});
+
+describe("markdownSummary — un résumé en texte brut", () => {
+  it("prend le premier paragraphe, sans ses marques", () => {
+    expect(
+      markdownSummary(
+        "## Qui est concerné ?\n\nLe **certificat** indique les [règles](https://exemple.fr) applicables.\n\n- a\n- b",
+      ),
+    ).toBe("Le certificat indique les règles applicables.");
+  });
+
+  it("joint les lignes d'un paragraphe d'une espace", () => {
+    expect(markdownSummary("Première ligne\nseconde ligne")).toBe("Première ligne seconde ligne");
+  });
+
+  it("sans paragraphe, se rabat sur le premier bloc", () => {
+    expect(markdownSummary("- **pièce** d'identité\n- livret de famille")).toBe(
+      "pièce d'identité · livret de famille",
+    );
+  });
+
+  it("⚠️ du HTML reste du texte, jamais une balise", () => {
+    expect(markdownSummary("<b>gras</b>")).toBe("<b>gras</b>");
+  });
+
+  it("rien à résumer, c'est `null`", () => {
+    expect(markdownSummary("  \n ")).toBeNull();
+  });
+});
 
 describe("parseMarkdown — les blocs", () => {
   it("lit titres, paragraphes et listes, dans l'ordre", () => {

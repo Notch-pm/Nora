@@ -110,14 +110,17 @@ src/
     AccessibilityNotice.tsx la mention RGAA, au pied de TOUTES les pages, et son lien vers
                            `/accessibilite` ; `AccessibilityFooter` ne pose le `<footer>` que
                            s'il a quelque chose à porter
+    Markdown.tsx           l'arbre de `domain/markdown.ts` → éléments React, titres décalés d'un
+                           niveau ; sert la déclaration d'accessibilité et le descriptif usager
   features/accessibilite/ La déclaration d'accessibilité (`/accessibilite`).
     AccessibilitePage.tsx  la page, dans le cadre d'une démarche (`DemarcheShell`)
-    markdown.ts            Markdown → ARBRE (jamais → HTML) : le sous-ensemble de l'aperçu du Socle
-    Markdown.tsx           l'arbre → éléments React, titres décalés d'un niveau
     SkipLink.tsx           le lien d'évitement, premier tabulable de chaque écran (RGAA 12.7)
     errorMessages.ts       un message par PortalFailure
   features/demarche/     La démarche : la lire, la remplir, la déposer.
-    DemarchePage.tsx       la présentation (descriptif, durée, organismes, pièces attendues)
+    DemarchePage.tsx       la présentation : descriptif (Markdown), temps de saisie, délai de
+                           traitement, organismes, public concerné, pièces, FAQ usager
+    pieces.ts              règle pure : pièces ANNONCÉES et pièces du FORMULAIRE, jamais fondues
+    responseDelay.ts       le délai de traitement en toutes lettres, unité de la donnée
     FormulairePage.tsx     le formulaire, le dépôt, l'accusé
     FormFields.tsx         un contrôle par type de champ — le rendu de référence côté usager
     RequesterSection.tsx   « Vos informations » (`fieldset`), piloté par requester_config
@@ -130,8 +133,10 @@ supabase/functions/
   _shared/
     domain/              Le modèle du PORTAIL — Tenant, Demarche, HomePage, Branding, PortalTheme,
                          PortalFailure, Demande, plus les MIROIRS du schéma possédé par le Socle :
-                         formSchema.ts + conditions.ts (lecture tolérante), requesterConfig.ts
-                         et theme.ts (snake_case du contrat → camelCase du portail).
+                         formSchema.ts + conditions.ts (lecture tolérante), requesterConfig.ts,
+                         userCommunication.ts et theme.ts (snake_case du contrat → camelCase du
+                         portail). Et markdown.ts — Markdown → ARBRE, jamais → HTML —, ici parce
+                         que le serveur en tire le résumé d'une carte (`markdownSummary`).
     socle/               Le seul code qui connaisse la forme des réponses du Socle.
       urls.ts              `https` absolue ou rien — la règle des URL posées dans la page
       socleClient.ts       port HTTP + implémentation
@@ -392,6 +397,40 @@ formulaire a ensuite l'écran pour lui seul.
   un problème d'instruction, pas un motif de rejet » — et le portail ne décide pas l'inverse pour
   lui. La saisie est guidée dans le navigateur ; ce qui arrive incomplet est qualifié par un
   agent.
+
+### Ce que la collectivité écrit pour l'usager
+
+Sur la page d'une démarche (`DemarchePage`), depuis le contrat 1.24.0 du Socle (étape
+« Communication usager » de son paramétrage) : le **descriptif** (`user_description`) et quatre
+blocs, `user_communication` — délai de traitement, public concerné, pièces annoncées, FAQ. Rien
+de tout ça n'est sur la **liste** : le catalogue garde ses neuf champs.
+
+- ⚠️ **Le descriptif est du Markdown**, rendu par `Markdown.tsx` (arbre → éléments, jamais
+  d'`innerHTML`), citations `>` comprises. Sur une **carte** sans résumé, il n'en reste que le
+  premier paragraphe, marques retirées (`markdownSummary`, côté serveur) ; sur le **détail**,
+  `description` est le résumé seul, sans quoi la page commencerait deux fois par le même texte.
+- ⚠️ **Rien d'écrit, rien d'affiché.** `user_communication` a des défauts **vides** (à l'inverse de
+  `communication_config`) : `null`, un bloc absent ou abîmé ne donnent aucune section, et le
+  portail ne compose aucun texte à la place de la collectivité.
+- ⚠️ **Deux durées côte à côte** : « Temps de saisie » (`input_duration_minutes`, pour remplir)
+  et « Délai de traitement habituel » (`delays`, pour obtenir une réponse). Aucune ne se déduit
+  de l'autre. L'unité (`jour_ouvre`, `jour`, `semaine`, `mois`) vient de la donnée ; une unité
+  inconnue ou une valeur hors 1–999 fait taire le délai plutôt que de l'inventer. Jours, semaines
+  et mois s'écrivent avec `Intl.NumberFormat`, les jours ouvrés avec le dictionnaire.
+- ⚠️ **La note de public ne filtre rien** : c'est une phrase. Le filtre « Je suis… » reste
+  `audiences`, qui fait foi.
+- ⚠️ **Pièces annoncées ≠ pièces à téléverser** (`pieces.ts`). L'annonce est la liste quand elle
+  existe ; les champs `attachment` du formulaire sont nommés **à part** (« À joindre en ligne
+  dans le formulaire : … »). Ni concaténées (la même pièce deux fois), ni l'annonce seule (une
+  pièce exigée au dépôt disparaîtrait). Sans annonce, la page liste les pièces du formulaire,
+  comme avant.
+- ⚠️ **La FAQ est celle de l'usager** ; celle de l'agent (`knowledge_base`) ne quitte pas le
+  Socle.
+- ⚠️ **Ces textes ne sont pas traduits** au Socle : ils ne passent pas par `localizedText`, et
+  servis dans une autre langue ils sont marqués `lang="fr"` (RGAA 8.7).
+- **L'interface tolère une fonction plus ancienne** : sans `userCommunication` dans la réponse de
+  `portal-api`, `portalClient` rend des blocs vides — l'interface (Cloudflare, au push) et la
+  fonction (Supabase, à la main) peuvent partir dans n'importe quel ordre.
 
 ### Le dépôt
 
@@ -820,9 +859,12 @@ lien — dans « Composition ».
   dit que la déclaration n'est pas encore publiée. Le lien, lui, n'apparaît
   jamais dans ce cas : le Socle ne sert `declaration_link` que vers une
   déclaration non vide.
-- ⚠️ **Le Markdown n'est jamais injecté** (`markdown.ts`) : parseur → arbre →
-  éléments React, liens limités à `https`/`http`/`mailto`/`tel`. Un texte venu
-  du serveur n'a aucun chemin vers le DOM autrement que comme texte.
+- ⚠️ **Le Markdown n'est jamais injecté** (`domain/markdown.ts`, partagé avec
+  le descriptif d'une démarche) : parseur → arbre → éléments React, liens
+  limités à `https`/`http`/`mailto`/`tel`. Un texte venu du serveur n'a aucun
+  chemin vers le DOM autrement que comme texte. Il lit le sous-ensemble de
+  l'aperçu du Socle, **plus les citations `>`**, que cet aperçu affiche encore
+  en toutes lettres.
 - ⚠️ **Le texte est en français** et n'est pas traduit : servie dans une autre
   langue, la page traduit son titre, prévient l'usager, et marque la
   déclaration `lang="fr"` (RGAA 8.7).

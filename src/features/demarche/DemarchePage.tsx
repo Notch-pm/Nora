@@ -6,20 +6,39 @@
  * sait pas encore ce qu'on va lui demander. « Commencer la démarche » mène au
  * formulaire, qui a alors l'écran pour lui seul.
  *
- * Les pièces attendues sont déduites du formulaire lui-même (ses champs
- * « pièce justificative ») : la collectivité les a paramétrées une fois, elles
- * n'ont pas à être ressaisies ailleurs pour être annoncées ici.
+ * Ce que la collectivité a écrit POUR L'USAGER (contrat 1.24.0) s'y lit dans
+ * l'ordre où il se pose ses questions : de quoi s'agit-il (descriptif), est-ce
+ * pour moi (public concerné), que dois-je préparer (pièces), puis le bouton —
+ * et la FAQ après lui, pour qui a encore un doute.
+ *
+ * ⚠️ **RIEN D'ÉCRIT, RIEN D'AFFICHÉ** : chaque section n'apparaît que si la
+ * collectivité l'a remplie. Aucun texte n'est composé à sa place.
+ *
+ * ⚠️ **CES TEXTES NE SONT PAS TRADUITS** au Socle : servie dans une autre
+ * langue, la page traduit ses titres, et marque le texte de la collectivité
+ * `lang="fr"` (RGAA 8.7) pour qu'un lecteur d'écran le prononce correctement.
  */
 import { useEffect } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { allFields } from "@fn/_shared/domain/formSchema.ts";
 import { errorMessageFor } from "@/features/portal/errorMessages.ts";
+import { Markdown } from "@/features/portal/Markdown.tsx";
 import { DemarcheError, DemarcheLoading, DemarcheShell } from "./DemarcheShell.tsx";
+import { piecesPresentation } from "./pieces.ts";
+import { responseDelayText } from "./responseDelay.ts";
 import { useDemarche } from "./useDemarche.ts";
 import { useLanguage, useT, useTn } from "@/i18n/LanguageLayout.tsx";
-import { organismePath, servedLanguage, splitScopedPath } from "@/i18n/localizedPath.ts";
+import {
+  organismePath,
+  PIVOT_LANGUAGE,
+  servedLanguage,
+  splitScopedPath,
+} from "@/i18n/localizedPath.ts";
 import { demarcheTitle, errorPageTitle } from "@/i18n/pageTitle.ts";
 import { useDocumentTitle } from "@/i18n/useDocumentTitle.ts";
+
+const SECTION_TITLE_CLASS = "text-[length:var(--pt-h2)] font-bold text-[color:var(--pt-ink)]";
+const FACT_LABEL_CLASS =
+  "text-[length:var(--pt-small)] font-bold uppercase tracking-wide text-[color:var(--pt-muted)]";
 
 
 function BackToHome({ subtle = false }: { subtle?: boolean }) {
@@ -88,10 +107,11 @@ export function DemarchePage() {
   }
 
   const { tenant, villes, demarche, branding, tenantBranding } = state.snapshot;
-  const attachments =
-    demarche.form === null
-      ? []
-      : allFields(demarche.form).filter((field) => field.type === "attachment");
+  const { responseDelay, audienceNote, announcedPieces, faq } = demarche.userCommunication;
+  const pieces = piecesPresentation(announcedPieces, demarche.form);
+  // La langue du texte de la collectivité, quand ce n'est pas celle de la
+  // page : `userCommunication` n'est jamais traduit (voir l'en-tête).
+  const collectiviteLang = state.snapshot.lang !== PIVOT_LANGUAGE ? PIVOT_LANGUAGE : undefined;
 
   return (
     <DemarcheShell
@@ -119,19 +139,28 @@ export function DemarchePage() {
       </header>
 
       <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-3 border-y border-[color:var(--pt-border)] py-4">
+        {/* ⚠️ Deux durées côte à côte, qui ne se déduisent pas l'une de
+            l'autre : remplir le formulaire (minutes), obtenir une réponse
+            (l'unité de la collectivité). Chaque étiquette nomme la sienne. */}
         {demarche.estimatedMinutes !== null && (
           <div>
-            <dt className="text-[length:var(--pt-small)] font-bold uppercase tracking-wide text-[color:var(--pt-muted)]">
-              {t("demarche.duration")}
-            </dt>
+            <dt className={FACT_LABEL_CLASS}>{t("demarche.fillDuration")}</dt>
             <dd className="text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
               {t("card.duration", { n: demarche.estimatedMinutes })}
             </dd>
           </div>
         )}
+        {responseDelay !== null && (
+          <div>
+            <dt className={FACT_LABEL_CLASS}>{t("demarche.responseDelay")}</dt>
+            <dd className="text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
+              {responseDelayText(lang, responseDelay)}
+            </dd>
+          </div>
+        )}
         {demarche.organizations.length > 0 && (
           <div>
-            <dt className="text-[length:var(--pt-small)] font-bold uppercase tracking-wide text-[color:var(--pt-muted)]">
+            <dt className={FACT_LABEL_CLASS}>
               {tn("demarche.organizations", demarche.organizations.length)}
             </dt>
             <dd className="text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
@@ -141,36 +170,79 @@ export function DemarchePage() {
         )}
       </dl>
 
-      {/* Le descriptif usager est saisi en texte libre au Socle : les sauts de
-          ligne de son auteur sont conservés, c'est sa seule mise en forme.
-          Il n'est répété que s'il apporte autre chose que le résumé — sans
-          résumé, `description` EST déjà ce descriptif. */}
+      {/* Le descriptif est du MARKDOWN (contrat 1.24.0) : rendu en éléments,
+          jamais injecté. Il n'est répété que s'il apporte autre chose que le
+          résumé de l'en-tête. */}
       {demarche.userDescription !== null && demarche.userDescription !== demarche.description && (
-        <p className="mt-6 whitespace-pre-line text-[color:var(--pt-ink)]">{demarche.userDescription}</p>
+        <div className="mt-3">
+          <Markdown source={demarche.userDescription} />
+        </div>
       )}
 
-      {attachments.length > 0 && (
+      {/* ⚠️ Une phrase à LIRE, pas un filtre : les publics admis restent
+          `audiences`, qui font foi en cas de contradiction. */}
+      {audienceNote !== null && (
         <section className="mt-8">
-          <h2 className="text-[length:var(--pt-h2)] font-bold text-[color:var(--pt-ink)]">{t("demarche.attachments")}</h2>
-          <ul className="mt-3 flex flex-col gap-2">
-            {attachments.map((field) => (
-              <li key={field.id} className="flex gap-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
-                <span aria-hidden="true" className="text-[color:var(--pt-muted)]">
-                  •
-                </span>
-                <span>
-                  {field.label}
-                  {field.type === "attachment" && field.acceptedFormats.length > 0 && (
-                    <span className="text-[color:var(--pt-muted)]">
-                      {" "}
-                      ({field.acceptedFormats.map((f) => f.toUpperCase()).join(", ")})
+          <h2 className={SECTION_TITLE_CLASS}>{t("demarche.audienceNote")}</h2>
+          <p lang={collectiviteLang} className="mt-3 text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
+            {audienceNote}
+          </p>
+        </section>
+      )}
+
+      {pieces.kind !== "none" && (
+        <section className="mt-8">
+          <h2 className={SECTION_TITLE_CLASS}>{t("demarche.attachments")}</h2>
+          {pieces.kind === "announced" ? (
+            <>
+              <ul lang={collectiviteLang} className="mt-3 flex flex-col gap-2">
+                {pieces.announced.map((piece, index) => (
+                  <li key={index} className="flex gap-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
+                    <span aria-hidden="true" className="text-[color:var(--pt-muted)]">
+                      •
                     </span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("demarche.attachmentsLater")}</p>
+                    <span>
+                      {piece.label}
+                      {piece.description !== null && (
+                        <span className="block text-[color:var(--pt-muted)]">{piece.description}</span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {/* Ce que le formulaire fera téléverser, nommé À PART : fondu
+                  dans la liste, il ferait demander deux fois la même pièce ;
+                  omis, il cacherait une pièce exigée au dépôt. */}
+              {pieces.online.length > 0 && (
+                <p className="mt-3 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
+                  {t("demarche.attachmentsOnline")}{" "}
+                  <span lang={collectiviteLang}>{pieces.online.map((field) => field.label).join(" · ")}</span>
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <ul lang={collectiviteLang} className="mt-3 flex flex-col gap-2">
+                {pieces.online.map((field) => (
+                  <li key={field.id} className="flex gap-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
+                    <span aria-hidden="true" className="text-[color:var(--pt-muted)]">
+                      •
+                    </span>
+                    <span>
+                      {field.label}
+                      {field.acceptedFormats.length > 0 && (
+                        <span className="text-[color:var(--pt-muted)]">
+                          {" "}
+                          ({field.acceptedFormats.map((f) => f.toUpperCase()).join(", ")})
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("demarche.attachmentsInForm")}</p>
+            </>
+          )}
         </section>
       )}
 
@@ -195,6 +267,26 @@ export function DemarchePage() {
           </Link>
         )}
       </div>
+
+      {/* La FAQ USAGER — jamais celle de l'agent, qui ne quitte pas le Socle.
+          Après le bouton : elle répond à qui hésite encore, sans retarder qui
+          sait déjà. Les questions sont des titres, pour qu'un lecteur d'écran
+          passe de l'une à l'autre. */}
+      {faq.length > 0 && (
+        <section className="mt-12">
+          <h2 className={SECTION_TITLE_CLASS}>{t("demarche.faq")}</h2>
+          <div lang={collectiviteLang}>
+            {faq.map((entry, index) => (
+              <div key={index} className="mt-5">
+                <h3 className="text-[length:var(--pt-body)] font-bold text-[color:var(--pt-ink)]">{entry.question}</h3>
+                <p className="mt-1 whitespace-pre-line text-[length:var(--pt-body)] leading-relaxed text-[color:var(--pt-ink)]">
+                  {entry.answer}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </DemarcheShell>
   );
 }
