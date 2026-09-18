@@ -107,8 +107,13 @@ src/
     themeStyle.ts          le thème + la charte → toutes les variables CSS de la page, et le
                            choix de l'encre lisible sur un fond (`readableInk`, `isDarkColor`)
                            (miroir de `Socle/src/features/portal/themeStyle.ts`)
-    AccessibilityNotice.tsx la déclaration RGAA, au pied de TOUTES les pages ; `AccessibilityFooter`
-                           ne pose le `<footer>` que s'il a quelque chose à porter
+    AccessibilityNotice.tsx la mention RGAA, au pied de TOUTES les pages, et son lien vers
+                           `/accessibilite` ; `AccessibilityFooter` ne pose le `<footer>` que
+                           s'il a quelque chose à porter
+  features/accessibilite/ La déclaration d'accessibilité (`/accessibilite`).
+    AccessibilitePage.tsx  la page, dans le cadre d'une démarche (`DemarcheShell`)
+    markdown.ts            Markdown → ARBRE (jamais → HTML) : le sous-ensemble de l'aperçu du Socle
+    Markdown.tsx           l'arbre → éléments React, titres décalés d'un niveau
     SkipLink.tsx           le lien d'évitement, premier tabulable de chaque écran (RGAA 12.7)
     errorMessages.ts       un message par PortalFailure
   features/demarche/     La démarche : la lire, la remplir, la déposer.
@@ -779,6 +784,7 @@ d'accueil, servi dans `Tenant.theme` (contrat 1.17.0).
 | `accessibility.high_contrast` | Encres, bordures **et** couleur principale assombries. |
 | `accessibility.dark_primary` | La couleur de la charte foncée d'un cran (clarté × 0,75) — **au rendu**, la charte ne bouge pas. |
 | `accessibility.declaration` | La mention RGAA, au pied de toutes les pages. Vide = rien d'affiché ; le portail n'invente pas de déclaration. |
+| `accessibility.declaration_link` | Un lien « Déclaration d'accessibilité » vers `/accessibilite`, dans la mention (contrat 1.25.0). **Résolu par le Socle** : vrai seulement si une déclaration non vide est publiée. |
 
 ⚠️ **Le thème n'est jamais absent.** Une collectivité qui n'a rien publié, un
 Socle d'avant le contrat 1.17.0, une réponse abîmée : `parseTheme` rend les
@@ -793,6 +799,33 @@ mêmes facteurs, mêmes encres, mêmes noms de variables. C'est ce qui fait que
 l'aperçu de l'éditeur ressemble au site. S'ils divergent, c'est l'éditeur qui
 ment, et personne ne s'en aperçoit avant la publication — d'où les tests des
 deux côtés.
+
+## La déclaration d'accessibilité
+
+Obligatoire pour un site public (RGAA, article 47 de la loi du 11 février
+2005) : une **mention** au pied de chaque page, et une **page** qui porte la
+déclaration complète. La collectivité rédige la seconde dans l'onglet
+« Contenus » de l'éditeur du Socle, et règle la première — sa phrase, son
+lien — dans « Composition ».
+
+- **`/accessibilite`** (et `/en/accessibilite`…) : `AccessibilitePage`, qui
+  appelle `GET /v1/accessibilite` de `portal-api`, qui lit
+  `GET /v1/portal/content?slug=accessibilite` au Socle. Même cadre qu'une
+  démarche : en-tête, menu « Ma ville », charte de la collectivité.
+- ⚠️ **Page de la COLLECTIVITÉ** : sous un organisme
+  (`/mairie-de-x/accessibilite`), elle ramène à `/accessibilite`. Le segment
+  est réservé des deux côtés — `ROUTE_SEGMENTS` ici,
+  `organizations_slug_url_form` au Socle.
+- ⚠️ **Rien de publié n'est pas une erreur** : `statement: null`, et la page
+  dit que la déclaration n'est pas encore publiée. Le lien, lui, n'apparaît
+  jamais dans ce cas : le Socle ne sert `declaration_link` que vers une
+  déclaration non vide.
+- ⚠️ **Le Markdown n'est jamais injecté** (`markdown.ts`) : parseur → arbre →
+  éléments React, liens limités à `https`/`http`/`mailto`/`tel`. Un texte venu
+  du serveur n'a aucun chemin vers le DOM autrement que comme texte.
+- ⚠️ **Le texte est en français** et n'est pas traduit : servie dans une autre
+  langue, la page traduit son titre, prévient l'usager, et marque la
+  déclaration `lang="fr"` (RGAA 8.7).
 
 ## Mesure d'audience sans cookie
 

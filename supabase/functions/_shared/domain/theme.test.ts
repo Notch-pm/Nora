@@ -21,12 +21,27 @@ describe("parseTheme — ce qui n'est pas un thème", () => {
     expect(parseTheme(undefined)).toEqual(defaultTheme());
   });
 
-  it("les défauts n'activent aucun correctif d'accessibilité", () => {
+  it("les défauts n'activent aucun correctif d'accessibilité, ni de lien", () => {
     expect(defaultTheme().accessibility).toEqual({
       highContrast: false,
       darkPrimary: false,
       declaration: "",
+      declarationLink: false,
     });
+  });
+
+  it("⚠️ un Socle d'avant le contrat 1.25.0 ne sert pas de lien : la mention reste un texte", () => {
+    const theme = parseTheme({ accessibility: { declaration: "Partiellement conforme" } });
+    expect(theme.accessibility.declaration).toBe("Partiellement conforme");
+    expect(theme.accessibility.declarationLink).toBe(false);
+  });
+
+  it("lit le lien résolu par le Socle", () => {
+    const theme = parseTheme({ accessibility: { declaration: "", declaration_link: true } });
+    expect(theme.accessibility.declarationLink).toBe(true);
+    // Une valeur qui n'est pas un booléen ne vaut pas « oui ».
+    expect(parseTheme({ accessibility: { declaration_link: "oui" } }).accessibility.declarationLink)
+      .toBe(false);
   });
 
   it("aucune couleur ne franchit — elles vivent dans la charte", () => {

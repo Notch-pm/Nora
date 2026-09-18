@@ -544,6 +544,52 @@ export const STRINGS = {
     zh: "其他机构的办事服务",
   },
 
+  // ── La déclaration d'accessibilité ──────────────────────────────────────
+  // Le libellé du lien de la mention (pied de page) ET le titre de la page
+  // `/accessibilite` : un lien qui annonce sa destination (RGAA 6.1).
+  "accessibilite.title": {
+    fr: "Déclaration d'accessibilité",
+    en: "Accessibility statement",
+    es: "Declaración de accesibilidad",
+    de: "Erklärung zur Barrierefreiheit",
+    it: "Dichiarazione di accessibilità",
+    pt: "Declaração de acessibilidade",
+    ar: "بيان إمكانية الوصول",
+    tr: "Erişilebilirlik beyanı",
+    ru: "Заявление о доступности",
+    uk: "Заява про доступність",
+    zh: "无障碍声明",
+  },
+  // La collectivité n'a rien publié : ce n'est pas une panne, c'est un état.
+  "accessibilite.unpublished": {
+    fr: "{name} n'a pas encore publié sa déclaration d'accessibilité.",
+    en: "{name} has not yet published its accessibility statement.",
+    es: "{name} todavía no ha publicado su declaración de accesibilidad.",
+    de: "{name} hat die Erklärung zur Barrierefreiheit noch nicht veröffentlicht.",
+    it: "{name} non ha ancora pubblicato la dichiarazione di accessibilità.",
+    pt: "{name} ainda não publicou a declaração de acessibilidade.",
+    ar: "لم تنشر {name} بعد بيان إمكانية الوصول.",
+    tr: "{name} henüz erişilebilirlik beyanını yayımlamadı.",
+    ru: "{name} ещё не опубликовала заявление о доступности.",
+    uk: "{name} ще не опублікувала заяву про доступність.",
+    zh: "{name} 尚未发布无障碍声明。",
+  },
+  // La déclaration est rédigée en français et n'est pas traduite : on le dit
+  // plutôt que de laisser croire à une page cassée.
+  "accessibilite.frenchOnly": {
+    fr: "Cette déclaration n'est disponible qu'en français.",
+    en: "This statement is only available in French.",
+    es: "Esta declaración solo está disponible en francés.",
+    de: "Diese Erklärung ist nur auf Französisch verfügbar.",
+    it: "Questa dichiarazione è disponibile solo in francese.",
+    pt: "Esta declaração só está disponível em francês.",
+    ar: "هذا البيان متاح باللغة الفرنسية فقط.",
+    tr: "Bu beyan yalnızca Fransızca olarak mevcuttur.",
+    ru: "Это заявление доступно только на французском языке.",
+    uk: "Ця заява доступна лише французькою мовою.",
+    zh: "本声明仅提供法语版本。",
+  },
+
   // ── Une démarche ─────────────────────────────────────────────────────────
   "demarche.backHome": {
     fr: "Retour à l'accueil",

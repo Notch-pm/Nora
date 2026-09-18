@@ -11,8 +11,18 @@
  * l'écrit dans l'éditeur du Socle ; vide, la bande ne s'affiche pas du tout.
  * Afficher « Non conforme » ou « Conformité inconnue » à sa place serait une
  * déclaration que personne n'a faite — et une déclaration est un acte engageant.
+ *
+ * ⚠️ **Le lien vers la déclaration complète (`/accessibilite`) ne se décide pas
+ * ici** : le Socle sert `declarationLink` déjà résolu — vrai seulement si la
+ * collectivité l'a demandé ET qu'une déclaration non vide est publiée. Le
+ * portail ne peut donc pas afficher un lien vers une page vide. Il peut, en
+ * revanche, n'afficher QUE le lien, quand la collectivité n'a pas écrit de
+ * phrase : c'est encore une mention.
  */
+import { Link, useLocation } from "react-router-dom";
 import type { PortalTheme } from "@fn/_shared/domain/theme.ts";
+import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
+import { localizedPath, splitScopedPath } from "@/i18n/localizedPath.ts";
 
 /**
  * La collectivité a-t-elle écrit une déclaration ? Sert aux cadres de page
@@ -21,17 +31,37 @@ import type { PortalTheme } from "@fn/_shared/domain/theme.ts";
  * `contentinfo` — un repère vide n'aide personne (RGAA 9.2 / 12.6).
  */
 export function hasAccessibilityDeclaration(theme?: PortalTheme): boolean {
-  return (theme?.accessibility.declaration ?? "").trim() !== "";
+  if (theme === undefined) return false;
+  return theme.accessibility.declaration.trim() !== "" || theme.accessibility.declarationLink;
 }
 
 export function AccessibilityNotice({ theme }: { theme?: PortalTheme }) {
-  if (!hasAccessibilityDeclaration(theme)) return null;
+  // Les hooks d'abord : l'ordre des appels ne doit pas dépendre du thème.
+  const { lang } = useLanguage();
+  const t = useT();
+  const { pathname } = useLocation();
+  if (theme === undefined || !hasAccessibilityDeclaration(theme)) return null;
+
+  const text = theme.accessibility.declaration.trim();
+  const link = theme.accessibility.declarationLink;
+  // Sur la déclaration elle-même, le lien dit qu'il désigne la page courante.
+  const here = splitScopedPath(pathname).path === "/accessibilite";
   return (
     <p
       className="px-6 py-4 text-center text-[length:var(--pt-tiny)] text-[color:var(--pt-muted)]"
       style={{ background: "var(--pt-surface)" }}
     >
-      {theme?.accessibility.declaration}
+      {text}
+      {text !== "" && link ? " · " : null}
+      {link && (
+        <Link
+          to={localizedPath(lang, "/accessibilite")}
+          aria-current={here ? "page" : undefined}
+          className="font-semibold text-[color:var(--pt-ink)] underline hover:no-underline"
+        >
+          {t("accessibilite.title")}
+        </Link>
+      )}
     </p>
   );
 }

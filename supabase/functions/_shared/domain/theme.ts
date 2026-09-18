@@ -90,9 +90,17 @@ export interface PortalTheme {
     /**
      * Mention d'accessibilité **obligatoire (RGAA)** d'un site public, affichée
      * au pied des pages. Chaîne vide = la collectivité ne l'a pas encore
-     * écrite ; le portail n'invente rien à sa place.
+     * écrite, ou l'a masquée ; le portail n'invente rien à sa place.
      */
     declaration: string;
+    /**
+     * La mention porte-t-elle un lien vers la déclaration d'accessibilité
+     * (`/accessibilite`) ? Contrat 1.25.0, **résolu par le Socle** : vrai
+     * seulement si la collectivité l'a demandé ET qu'une déclaration non vide
+     * est publiée. Le portail n'a donc rien à vérifier — et ne sert jamais un
+     * lien vers une page vide.
+     */
+    declarationLink: boolean;
   };
 }
 
@@ -110,7 +118,14 @@ export function defaultTheme(): PortalTheme {
       sticky: true,
       account: "prominent",
     },
-    accessibility: { highContrast: false, darkPrimary: false, declaration: "" },
+    accessibility: {
+      highContrast: false,
+      darkPrimary: false,
+      declaration: "",
+      // Un Socle d'avant le contrat 1.25.0 ne sert pas ce champ : pas de lien,
+      // exactement comme avant.
+      declarationLink: false,
+    },
   };
 }
 
@@ -177,6 +192,7 @@ export function parseTheme(value: unknown): PortalTheme {
         typeof declaration === "string" && declaration.trim().length <= MAX_DECLARATION_LENGTH
           ? declaration.trim()
           : "",
+      declarationLink: bool(accessibility.declaration_link, fallback.accessibility.declarationLink),
     },
   };
 }

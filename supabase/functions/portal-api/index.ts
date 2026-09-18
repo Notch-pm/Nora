@@ -24,6 +24,7 @@
 import { getPublicDemarche, getPublicDemarches } from "../_shared/socle/demarcheService.ts";
 import { getPublishedPage } from "../_shared/socle/pageService.ts";
 import { getBranding } from "../_shared/socle/brandingService.ts";
+import { getAccessibilityStatement } from "../_shared/socle/accessibiliteService.ts";
 import { resolveTenant } from "../_shared/socle/tenantService.ts";
 import { createSocleClient } from "../_shared/socle/socleClient.ts";
 import { withCache } from "../_shared/socle/cachedSocleClient.ts";
@@ -362,6 +363,47 @@ Deno.serve(async (request: Request): Promise<Response> => {
       // Le catalogue d'une collectivité change à la journée, et une page
       // publique est servie à beaucoup de visiteurs : une minute de cache
       // navigateur épargne autant d'allers-retours, sans montrer la veille.
+      { "Cache-Control": "public, max-age=60" },
+    );
+  }
+
+  // ── GET /v1/accessibilite — la déclaration d'accessibilité de la collectivité.
+  //
+  // Un écran à part entière (`/accessibilite`), vers lequel mène la mention du
+  // pied de page quand le Socle sert `declaration_link`. Il porte le même
+  // chrome que les autres — en-tête, menu « Ma ville », charte —, d'où les
+  // mêmes lectures de confort que la page d'une démarche : catalogue (pour les
+  // villes) et charte, jamais bloquants, et les mêmes entrées de cache.
+  //
+  // ⚠️ RIEN DE PUBLIÉ N'EST PAS UNE ERREUR : `statement: null`, et l'écran dit
+  // que la déclaration n'est pas encore publiée. Un lien partagé vers cette
+  // adresse ne doit pas tomber sur un message de panne.
+  if (request.method === "GET" && path === "/v1/accessibilite") {
+    const resolved = await tenantOf(request, socle);
+    if (!resolved.ok) return resolved.response;
+    const tenant = resolved.tenant;
+    const lang = resolveLang(askedLang, tenant.languages);
+
+    const statement = await getAccessibilityStatement(tenant.id, socle);
+    if (!statement.ok) return failure(statement.reason);
+
+    const catalogue = await getPublicDemarches(tenant.id, socle, lang);
+    const villes = catalogue.ok ? villesOf(catalogue.demarches, tenant.id) : [];
+    const branding = await getBranding(tenant.id, socle);
+    const painted = branding.ok ? branding.branding : null;
+
+    return json(
+      200,
+      {
+        lang,
+        tenant,
+        villes,
+        statement: statement.statement,
+        branding: painted,
+        // La page est celle de la collectivité : la charte peinte EST celle de
+        // la marque, comme à l'accueil.
+        tenantBranding: painted,
+      },
       { "Cache-Control": "public, max-age=60" },
     );
   }

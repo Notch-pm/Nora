@@ -71,10 +71,15 @@ export function localizedPath(lang: string, path: string): string {
 
 /**
  * Les segments de route du portail — ceux qu'un slug d'organisme ne peut pas
- * être. Un seul aujourd'hui, et c'est déjà une constante : il était écrit en
- * dur à deux endroits, où il ne pouvait que se désynchroniser.
+ * être. Une constante, parce qu'ils étaient écrits en dur à deux endroits, où
+ * ils ne pouvaient que se désynchroniser.
+ *
+ * ⚠️ `accessibilite` (2026-09-18) : sans lui, `/accessibilite` se lirait comme
+ * la page d'un organisme de ce nom. Le Socle l'interdit d'ailleurs comme slug
+ * depuis le 2026-09-12 (`organizations_slug_url_form`) — les deux listes se
+ * lisent ensemble.
  */
-export const ROUTE_SEGMENTS: readonly string[] = ["demarches"];
+export const ROUTE_SEGMENTS: readonly string[] = ["demarches", "accessibilite"];
 
 /**
  * Sépare un éventuel préfixe d'ORGANISME du chemin réel. `path` est le chemin

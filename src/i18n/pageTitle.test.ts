@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  accessibiliteTitle,
   demarcheTitle,
   errorPageTitle,
   formulaireTitle,
@@ -15,6 +16,15 @@ describe("homeTitle", () => {
 
   it("traduit le nom du site dans la langue servie", () => {
     expect(homeTitle("en", "Laurentville")).toBe("Laurentville — Online services");
+  });
+});
+
+describe("accessibiliteTitle", () => {
+  it("nomme la page dans la langue servie, puis la collectivité", () => {
+    expect(accessibiliteTitle("fr", "Laurentville")).toBe(
+      "Déclaration d'accessibilité — Laurentville",
+    );
+    expect(accessibiliteTitle("en", "Laurentville")).toBe("Accessibility statement — Laurentville");
   });
 });
 

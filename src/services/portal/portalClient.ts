@@ -23,6 +23,7 @@ import type { PortalFailure } from "@fn/_shared/domain/failure.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
+import type { AccessibilityStatement } from "@fn/_shared/domain/accessibilite.ts";
 
 /** Ce que le portail sait de la collectivité visitée, en un seul chargement. */
 export interface PortalSnapshot {
@@ -368,6 +369,82 @@ export async function fetchDemarche(
   if (!response.ok) return { ok: false, reason: readFailure(body) };
 
   const snapshot = readDemarcheSnapshot(body);
+  if (snapshot === null) return { ok: false, reason: "socle_unavailable" };
+  return { ok: true, snapshot };
+}
+
+/** La déclaration d'accessibilité et la collectivité qui l'a publiée, en un chargement. */
+export interface AccessibiliteSnapshot {
+  /** La langue réellement servie — voir `PortalSnapshot.lang`. */
+  lang: string;
+  tenant: Tenant;
+  /** Les villes de la collectivité — voir `PortalSnapshot.villes`. */
+  villes: Ville[];
+  /**
+   * La déclaration publiée, ou `null` : la collectivité ne l'a pas encore
+   * publiée. Ce n'est pas une erreur, et l'écran le dit comme tel.
+   */
+  statement: AccessibilityStatement | null;
+  /** La charte de la collectivité ; `null` = couleurs par défaut. */
+  branding: Branding | null;
+  tenantBranding: Branding | null;
+}
+
+export type AccessibiliteLoad =
+  | { ok: true; snapshot: AccessibiliteSnapshot }
+  | { ok: false; reason: PortalLoadFailure };
+
+function readAccessibiliteSnapshot(body: unknown): AccessibiliteSnapshot | null {
+  if (typeof body !== "object" || body === null) return null;
+  const raw = body as {
+    lang?: unknown;
+    tenant?: unknown;
+    villes?: unknown;
+    statement?: unknown;
+    branding?: unknown;
+    tenantBranding?: unknown;
+  };
+  const tenant = raw.tenant as Tenant | undefined;
+  if (!tenant || typeof tenant.id !== "string" || typeof tenant.name !== "string") return null;
+  // Le serveur a déjà lu et vérifié la déclaration (`parseStatement`) : ici on
+  // ne s'assure que de sa forme, sans en faire une seconde vérité.
+  const statement =
+    typeof raw.statement === "object" && raw.statement !== null &&
+      typeof (raw.statement as AccessibilityStatement).body === "string"
+      ? (raw.statement as AccessibilityStatement)
+      : null;
+  const branding =
+    typeof raw.branding === "object" && raw.branding !== null ? (raw.branding as Branding) : null;
+  const tenantBranding =
+    typeof raw.tenantBranding === "object" && raw.tenantBranding !== null
+      ? (raw.tenantBranding as Branding)
+      : branding;
+  const lang = typeof raw.lang === "string" && raw.lang !== "" ? raw.lang : "fr";
+  const villes = Array.isArray(raw.villes) ? (raw.villes as Ville[]) : [];
+  return { lang, tenant, villes, statement, branding, tenantBranding };
+}
+
+/**
+ * Charge la déclaration d'accessibilité de la collectivité visitée — déduite
+ * du domaine, comme partout ailleurs.
+ */
+export async function fetchAccessibilite(lang: string): Promise<AccessibiliteLoad> {
+  const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
+  if (!baseUrl) return { ok: false, reason: "not_configured" };
+
+  let response: Response;
+  try {
+    response = await fetch(
+      baseUrl.replace(/\/+$/, "") + "/v1/accessibilite?lang=" + encodeURIComponent(lang),
+    );
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) return { ok: false, reason: readFailure(body) };
+
+  const snapshot = readAccessibiliteSnapshot(body);
   if (snapshot === null) return { ok: false, reason: "socle_unavailable" };
   return { ok: true, snapshot };
 }

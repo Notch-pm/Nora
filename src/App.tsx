@@ -1,8 +1,10 @@
 /**
  * Les routes du portail.
  *
- * Quatre écrans : la page d'accueil composée par la collectivité, la page d'un
- * organisme, la présentation d'une démarche, et son formulaire. Le découpage en
+ * Cinq écrans : la page d'accueil composée par la collectivité, la page d'un
+ * organisme, la présentation d'une démarche, son formulaire, et la déclaration
+ * d'accessibilité (`/accessibilite`, où mène la mention du pied de page). Le
+ * découpage en
  * deux pages pour une même démarche est délibéré — l'usager lit ce qu'on va lui
  * demander avant de s'engager dans la saisie, comme sur les portails de service
  * public.
@@ -22,6 +24,7 @@
  * donc que d'une chose : combien de segments précèdent l'écran.
  */
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { AccessibilitePage } from "@/features/accessibilite/AccessibilitePage.tsx";
 import { DemarchePage } from "@/features/demarche/DemarchePage.tsx";
 import { FormulairePage } from "@/features/demarche/FormulairePage.tsx";
 import { OrganismePage } from "@/features/organisme/OrganismePage.tsx";
@@ -56,6 +59,14 @@ export function App() {
           <Route path="/" element={<PortalPage />} />
           <Route path="/demarches/:demarcheId" element={<DemarchePage />} />
           <Route path="/demarches/:demarcheId/formulaire" element={<FormulairePage />} />
+          {/* ⚠️ `accessibilite` est un segment STATIQUE, comme `demarches` : il
+              passe avant les jokers ci-dessous, et `ROUTE_SEGMENTS` l'exclut
+              des slugs d'organisme. Sous une langue (`/en/accessibilite`) ou,
+              par un lien périmé, sous un organisme — la page ramène alors à
+              l'adresse de la collectivité. */}
+          <Route path="/accessibilite" element={<AccessibilitePage />} />
+          <Route path=":scopeA/accessibilite" element={<AccessibilitePage />} />
+          <Route path=":scopeA/:scopeB/accessibilite" element={<AccessibilitePage />} />
 
           {/* Un segment libre, ou deux : une langue, un organisme, ou les deux.
               ⚠️ `demarches` étant un segment STATIQUE, react-router le classe
