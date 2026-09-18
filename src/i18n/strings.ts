@@ -604,6 +604,65 @@ export const STRINGS = {
     uk: "На головну",
     zh: "返回首页",
   },
+  // Le nom du fil d'Ariane, lu par les lecteurs d'écran : c'est lui qui
+  // distingue cette navigation de celle de l'en-tête.
+  "demarche.breadcrumb": {
+    fr: "Fil d'Ariane",
+    en: "Breadcrumb",
+    es: "Ruta de navegación",
+    de: "Brotkrümelnavigation",
+    it: "Percorso di navigazione",
+    pt: "Caminho de navegação",
+    ar: "مسار التنقل",
+    tr: "Gezinti yolu",
+    ru: "Навигационная цепочка",
+    uk: "Навігаційний ланцюжок",
+    zh: "导航路径",
+  },
+  // Le titre de l'encadré qui porte le bouton, les deux durées et les
+  // organismes — à droite sur grand écran, sous l'en-tête sur téléphone.
+  "demarche.essentials": {
+    fr: "L'essentiel",
+    en: "At a glance",
+    es: "Lo esencial",
+    de: "Auf einen Blick",
+    it: "In sintesi",
+    pt: "O essencial",
+    ar: "أهم المعلومات",
+    tr: "Özetle",
+    ru: "Главное",
+    uk: "Головне",
+    zh: "要点",
+  },
+  // Le titre de la carte qui porte le descriptif usager (Markdown).
+  "demarche.description": {
+    fr: "Descriptif",
+    en: "About this service",
+    es: "Descripción",
+    de: "Beschreibung",
+    it: "Descrizione",
+    pt: "Descrição",
+    ar: "الوصف",
+    tr: "Açıklama",
+    ru: "Описание",
+    uk: "Опис",
+    zh: "服务说明",
+  },
+  // Le bandeau du bas de la page, au-dessus du second bouton : il s'adresse à
+  // qui vient de lire les pièces à fournir. Sans accord de genre (« Prêt ? »).
+  "demarche.readyTitle": {
+    fr: "Vous avez tout ce qu'il faut ?",
+    en: "Do you have everything you need?",
+    es: "¿Tiene todo lo necesario?",
+    de: "Haben Sie alles Nötige?",
+    it: "Ha tutto il necessario?",
+    pt: "Tem tudo o que precisa?",
+    ar: "هل لديك كل ما تحتاجه؟",
+    tr: "Her şey hazır mı?",
+    ru: "Всё готово?",
+    uk: "Усе готово?",
+    zh: "准备好了吗？",
+  },
   // ⚠️ DEUX DURÉES CÔTE À CÔTE, qui ne disent pas la même chose : le temps
   // pour REMPLIR le formulaire (`estimatedMinutes`) et le temps pour obtenir
   // une RÉPONSE (`responseDelay`). « Durée » tout court se lisait comme l'une

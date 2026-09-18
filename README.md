@@ -117,8 +117,10 @@ src/
     SkipLink.tsx           le lien d'évitement, premier tabulable de chaque écran (RGAA 12.7)
     errorMessages.ts       un message par PortalFailure
   features/demarche/     La démarche : la lire, la remplir, la déposer.
-    DemarchePage.tsx       la présentation : descriptif (Markdown), temps de saisie, délai de
-                           traitement, organismes, public concerné, pièces, FAQ usager
+    DemarchePage.tsx       la présentation, en deux colonnes : fil d'Ariane, puis en cartes le
+                           descriptif (Markdown), le public concerné, les pièces, la FAQ usager
+                           (repliable) ; à côté, « L'essentiel » — le bouton, temps de saisie,
+                           délai de traitement, organismes — qui suit le défilement
     pieces.ts              règle pure : pièces ANNONCÉES et pièces du FORMULAIRE, jamais fondues
     responseDelay.ts       le délai de traitement en toutes lettres, unité de la donnée
     FormulairePage.tsx     le formulaire, le dépôt, l'accusé

@@ -26,6 +26,7 @@ export function DemarcheShell({
   theme,
   languages,
   villes = [],
+  layout = "narrow",
   children,
 }: {
   tenantName: string | null;
@@ -51,16 +52,30 @@ export function DemarcheShell({
    * collectivité n'est pas connue — on prend alors les défauts.
    */
   theme?: PortalTheme;
+  /**
+   * `narrow` : une colonne de lecture (le formulaire, la déclaration).
+   * `wide` : la présentation d'une démarche, en deux colonnes — le contenu, et
+   * l'essentiel à côté. Elle se pose sur un fond à peine teinté, pour que ses
+   * blocs se détachent en cartes.
+   */
+  layout?: "narrow" | "wide";
   children: ReactNode;
 }) {
   const applied: PortalTheme = theme ?? defaultTheme();
+  const wide = layout === "wide";
   return (
     // ⚠️ LE STYLE DU THÈME VIT SUR CETTE RACINE, PAS SUR `<main>` : header et
     // footer en dépendent aussi (leurs `--pt-*`), et un thème posé plus bas ne
     // les atteindrait plus (RGAA 9.2 / 12.6).
     <div
-      className="flex min-h-screen flex-col bg-white"
-      style={{ ...themeStyle(applied, branding), color: "var(--pt-ink)" }}
+      className="flex min-h-screen flex-col"
+      style={{
+        ...themeStyle(applied, branding),
+        color: "var(--pt-ink)",
+        // Le neutre du thème, éclairci de moitié : assez pour détacher une
+        // carte blanche, pas assez pour peser sur la lecture.
+        background: wide ? "color-mix(in srgb, var(--pt-surface) 55%, white)" : "white",
+      }}
     >
       <SkipLink />
       {/* Tant que la collectivité n'est pas connue, l'en-tête reste neutre :
@@ -72,7 +87,13 @@ export function DemarcheShell({
         languages={languages}
         villes={villes}
       />
-      <main id="contenu" tabIndex={-1} className="mx-auto w-full max-w-3xl flex-1 px-6 pb-12 pt-8 focus:outline-none">
+      <main
+        id="contenu"
+        tabIndex={-1}
+        className={
+          "mx-auto w-full flex-1 px-6 pb-12 pt-8 focus:outline-none " + (wide ? "max-w-5xl pb-16" : "max-w-3xl")
+        }
+      >
         {children}
       </main>
       <AccessibilityFooter theme={theme} />

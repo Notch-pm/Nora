@@ -13,8 +13,11 @@ import type { Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import { useT } from "@/i18n/LanguageLayout.tsx";
 import type { StringKey } from "@/i18n/strings.ts";
 
-/** Le mot de chaque public dans le sélecteur — traduit comme le reste de l'outil. */
-const AUDIENCE_KEY: Record<Audience, StringKey> = {
+/**
+ * Le mot de chaque public — traduit comme le reste de l'outil. Sert aussi les
+ * pastilles « Public concerné » de la page d'une démarche.
+ */
+export const AUDIENCE_KEY: Record<Audience, StringKey> = {
   citoyen: "audience.citoyen",
   entreprise: "audience.entreprise",
   association: "audience.association",
