@@ -13,7 +13,7 @@ import type { AttachmentField, Field, FieldOption } from "@fn/_shared/domain/for
 import { useT, useTn } from "@/i18n/LanguageLayout.tsx";
 import type { StringKey } from "@/i18n/strings.ts";
 import { uploadPiece, type PieceUploadFailure } from "@/services/portal/portalClient.ts";
-import { piecesOf, type UploadedPiece } from "./formulaire.ts";
+import { piecesOf, type UploadedPiece } from "@fn/_shared/domain/formulaire.ts";
 
 // ⚠️ Le contour d'un champ de saisie tient 3 : 1 (RGAA 3.3) — `--pt-field-border`,
 // pas `--pt-border` (1,24 : 1, réservé aux cartes et séparateurs décoratifs).

@@ -21,12 +21,12 @@
  *     son identifiant. Une pièce obligatoire est donc obligatoire comme n'importe
  *     quel champ, et le nombre de fichiers est borné par la démarche.
  */
-import type { Condition, FormValues } from "@fn/_shared/domain/conditions.ts";
-import { evaluateCondition } from "@fn/_shared/domain/conditions.ts";
-import type { AttachmentRef } from "@fn/_shared/domain/demande.ts";
-import type { Field, FormNode, FormSchema, Section } from "@fn/_shared/domain/formSchema.ts";
-import { isSection } from "@fn/_shared/domain/formSchema.ts";
-import type { RequesterField } from "@fn/_shared/domain/requesterConfig.ts";
+import type { Condition, FormValues } from "./conditions.ts";
+import { evaluateCondition } from "./conditions.ts";
+import type { AttachmentRef } from "./demande.ts";
+import type { Field, FormNode, FormSchema, Section } from "./formSchema.ts";
+import { isSection } from "./formSchema.ts";
+import type { RequesterField } from "./requesterConfig.ts";
 
 /** Erreurs de saisie, indexées par `id` de champ (ou clé de champ requérant). */
 /**

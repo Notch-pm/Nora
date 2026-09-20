@@ -128,7 +128,6 @@ src/
     RequesterSection.tsx   « Vos informations » (`fieldset`), piloté par requester_config
     autocomplete.ts        le jeton `autocomplete` de chaque champ d'identité (RGAA 11.13)
     DemarcheShell.tsx      le cadre commun (charte, en-tête, chargement, erreur)
-    formulaire.ts          règles pures : visibilité, obligation, validation, form_data, identité
     useDemarche.ts         le chargement d'une démarche
 
 supabase/functions/
@@ -139,6 +138,9 @@ supabase/functions/
                          userCommunication.ts et theme.ts (snake_case du contrat → camelCase du
                          portail). Et markdown.ts — Markdown → ARBRE, jamais → HTML —, ici parce
                          que le serveur en tire le résumé d'une carte (`markdownSummary`).
+                         Et formulaire.ts — règles pures du formulaire : visibilité, obligation,
+                         validation, form_data, identité —, ici pour que le serveur puisse
+                         appliquer les mêmes règles que l'écran (l'écran l'importe par `@fn`).
     socle/               Le seul code qui connaisse la forme des réponses du Socle.
       urls.ts              `https` absolue ou rien — la règle des URL posées dans la page
       socleClient.ts       port HTTP + implémentation

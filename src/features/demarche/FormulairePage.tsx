@@ -42,7 +42,7 @@ import {
   validateRequester,
   visibleNodes,
   type FieldErrors,
-} from "./formulaire.ts";
+} from "@fn/_shared/domain/formulaire.ts";
 import { useDemarche } from "./useDemarche.ts";
 
 /** Un identifiant de dépôt, stable pour cet écran. */

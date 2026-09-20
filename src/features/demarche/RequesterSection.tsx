@@ -13,7 +13,7 @@
  */
 import type { Audience, RequesterField } from "@fn/_shared/domain/requesterConfig.ts";
 import { AUDIENCES } from "@fn/_shared/domain/requesterConfig.ts";
-import type { FieldErrors } from "./formulaire.ts";
+import type { FieldErrors } from "@fn/_shared/domain/formulaire.ts";
 import { autocompleteFor } from "./autocomplete.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { errorText } from "@/i18n/t.ts";

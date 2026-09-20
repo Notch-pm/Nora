@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { FormSchema } from "@fn/_shared/domain/formSchema.ts";
-import { isSection } from "@fn/_shared/domain/formSchema.ts";
+import type { FormSchema } from "./formSchema.ts";
+import { isSection } from "./formSchema.ts";
 import {
   isFieldRequired,
   toAttachments,
