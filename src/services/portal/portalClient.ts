@@ -20,6 +20,7 @@ import type {
 import type { DemandeReceipt, DemandeSubmission } from "@fn/_shared/domain/demande.ts";
 import type { PieceFailure, PieceReceipt } from "@fn/_shared/iris/pieceService.ts";
 import type { PortalFailure } from "@fn/_shared/domain/failure.ts";
+import { closedAssistant } from "@fn/_shared/domain/assistant.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
@@ -95,6 +96,26 @@ function readFailure(body: unknown): PortalLoadFailure {
     : "socle_unavailable";
 }
 
+/**
+ * La collectivité telle que le serveur la rend — commune aux trois lectures
+ * (accueil, démarche, déclaration d'accessibilité).
+ *
+ * Un serveur d'avant l'assistant ne dit rien de lui : il est FERMÉ, et aucun
+ * composant n'a de cas d'absence à porter.
+ */
+function readTenant(raw: unknown): Tenant | null {
+  const served = raw as Tenant | undefined;
+  if (!served || typeof served.id !== "string" || typeof served.name !== "string") return null;
+  const assistant = served.assistant;
+  return {
+    ...served,
+    assistant:
+      typeof assistant === "object" && assistant !== null && assistant.enabled === true
+        ? { enabled: true, depositEnabled: assistant.depositEnabled === true }
+        : closedAssistant(),
+  };
+}
+
 function readSnapshot(body: unknown): PortalSnapshot | null {
   if (typeof body !== "object" || body === null) return null;
   const raw = body as {
@@ -106,8 +127,8 @@ function readSnapshot(body: unknown): PortalSnapshot | null {
     branding?: unknown;
     tenantBranding?: unknown;
   };
-  const tenant = raw.tenant as Tenant | undefined;
-  if (!tenant || typeof tenant.id !== "string" || typeof tenant.name !== "string") return null;
+  const tenant = readTenant(raw.tenant);
+  if (tenant === null) return null;
   if (!Array.isArray(raw.demarches)) return null;
   // Une page absente (serveur d'avant, ou jamais publiée) vaut « pas de
   // composition » : le portail rend son défaut, il ne tombe pas en erreur.
@@ -306,8 +327,8 @@ function readDemarcheSnapshot(body: unknown): DemarcheSnapshot | null {
     branding?: unknown;
     tenantBranding?: unknown;
   };
-  const tenant = raw.tenant as Tenant | undefined;
-  if (!tenant || typeof tenant.id !== "string" || typeof tenant.name !== "string") return null;
+  const tenant = readTenant(raw.tenant);
+  if (tenant === null) return null;
   const demarche = raw.demarche as DemarcheDetail | undefined;
   if (!demarche || typeof demarche.id !== "string" || typeof demarche.name !== "string") return null;
   const branding =
@@ -420,8 +441,8 @@ function readAccessibiliteSnapshot(body: unknown): AccessibiliteSnapshot | null 
     branding?: unknown;
     tenantBranding?: unknown;
   };
-  const tenant = raw.tenant as Tenant | undefined;
-  if (!tenant || typeof tenant.id !== "string" || typeof tenant.name !== "string") return null;
+  const tenant = readTenant(raw.tenant);
+  if (tenant === null) return null;
   // Le serveur a déjà lu et vérifié la déclaration (`parseStatement`) : ici on
   // ne s'assure que de sa forme, sans en faire une seconde vérité.
   const statement =

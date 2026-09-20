@@ -19,6 +19,7 @@ import { resolveLang } from "./domain/languages.ts";
 import { getPublishedPage } from "./socle/pageService.ts";
 import { getBranding } from "./socle/brandingService.ts";
 import { resolveTenant } from "./socle/tenantService.ts";
+import { closedAssistant } from "./domain/assistant.ts";
 import { defaultTheme } from "./domain/theme.ts";
 import type { SocleClient, SocleReply } from "./socle/socleClient.ts";
 
@@ -169,6 +170,9 @@ describe("1. domaine connu → tenant correctement identifié", () => {
       // jamais `null`. C'est ce qui permet à un portail à jour de parler à un
       // Socle d'avant le contrat 1.17.0.
       theme: defaultTheme(),
+      // Ni d'assistant (contrat 1.28.0) : il est FERMÉ, jamais absent. Au doute,
+      // le portail ne dépense pas le crédit IA d'une collectivité.
+      assistant: closedAssistant(),
     });
   });
 

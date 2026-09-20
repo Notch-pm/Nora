@@ -13,6 +13,7 @@
  * Ce fichier est aussi le seul, avec `demarcheService`, à connaître la forme
  * des réponses du Socle. Il traduit vers le modèle du portail (`domain/tenant`).
  */
+import { parseAssistant } from "../domain/assistant.ts";
 import type { Tenant } from "../domain/tenant.ts";
 import type { PortalFailure } from "../domain/failure.ts";
 import { parseLanguages } from "../domain/languages.ts";
@@ -48,6 +49,10 @@ function toTenant(body: unknown, hostname: string): Tenant | null {
     // champ : `parseTheme` rend alors les défauts, jamais `null` — le portail
     // a toujours de quoi peindre.
     theme: parseTheme(raw.theme),
+    // L'assistant du portail (contrat 1.28.0). Un Socle plus ancien ne sert pas
+    // ce champ : `parseAssistant` rend alors un assistant FERMÉ — au doute, le
+    // portail ne dépense pas le crédit IA d'une collectivité.
+    assistant: parseAssistant(raw.assistant),
   };
 }
 

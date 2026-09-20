@@ -7,6 +7,7 @@
  * forme des réponses du Socle est `socle/tenantService.ts`, qui traduit vers ce
  * type. Tout le reste du portail — interface comprise — ne voit que celui-ci.
  */
+import type { PortalAssistant } from "./assistant.ts";
 import type { PortalTheme } from "./theme.ts";
 
 export interface Tenant {
@@ -38,4 +39,12 @@ export interface Tenant {
    * thème dit comment peindre, la charte dit avec quoi.
    */
   theme: PortalTheme;
+  /**
+   * Ce que la collectivité a ouvert de l'assistant conversationnel — réglé au
+   * Socle par son super administrateur, pas dans l'éditeur du site.
+   *
+   * ⚠️ **Jamais absent, et fermé au doute** (voir `domain/assistant.ts`) : un
+   * composant lit `tenant.assistant.enabled` sans cas d'absence à porter.
+   */
+  assistant: PortalAssistant;
 }
