@@ -69,14 +69,59 @@ const UNIT_LABELS: Record<ResponseDelayUnit, [string, string]> = {
   mois: ["mois", "mois"],
 };
 
+/**
+ * Les règles du RECUEIL — envoyées seulement quand l'usager remplit une démarche
+ * dans la conversation. ⚠️ Elles ne sont PAS dans `BASE_RULES` (ni dans l'agent
+ * de la console) : hors recueil, l'assistant ne demande rien à l'usager.
+ *
+ * Le modèle n'a ici qu'un pouvoir : DIRE ce qu'il a compris. C'est le serveur
+ * qui retient ou non (`applyUpdates`), et c'est l'écran qui pose la question
+ * suivante, en carte — d'où « ne pose pas toi-même la question suivante » : deux
+ * voix qui demandent deux choses différentes perdraient l'usager.
+ */
+const COLLECT_RULES = [
+  "MODE RECUEIL — l'usager remplit la démarche consultée, dans cette conversation.",
+  "- La liste « INFORMATIONS À RECUEILLIR » donne, dans l'ordre, ce qu'il reste à renseigner. Pour chaque information marquée [écrit] que le DERNIER message de l'usager fournit, ajoute { \"id\", \"value\" } dans `field_updates`, avec ses mots à lui, sans rien inventer, compléter ni corriger. Un même message peut en fournir plusieurs.",
+  "- Ne remplis JAMAIS une information marquée [carte] (choix, date, pièce jointe) : l'usager y répond avec la carte affichée sous ton message.",
+  "- Ne demande ni nom, ni adresse personnelle, ni téléphone, ni courriel du demandeur : une carte dédiée s'en charge à la fin. Les informations de la liste, elles, font partie du formulaire : tu peux les recevoir.",
+  "- Ne pose pas toi-même la question suivante : l'écran l'affiche. Réponds brièvement — accuse réception de ce que tu as compris, ou réponds à la question de l'usager à partir des données.",
+  "- Si l'usager veut corriger une réponse déjà donnée, dis-lui qu'il pourra la modifier sur le récapitulatif, avant l'envoi.",
+].join("\n");
+
+/** Un champ à recueillir, tel que le modèle le voit : de quoi le reconnaître, rien de plus. */
+export interface CollectableField {
+  id: string;
+  label: string;
+  help: string | null;
+  required: boolean;
+  /** `true` : on y répond en écrivant ; `false` : une carte s'en charge. */
+  written: boolean;
+}
+
+function collectBlock(fields: CollectableField[]): string {
+  return fields
+    .slice(0, 40)
+    .map(
+      (f) =>
+        `- id: ${f.id} | ${clip(f.label, 120)}${f.help ? ` (${clip(f.help, 160)})` : ""} | ` +
+        `${f.required ? "obligatoire" : "facultatif"} | ${f.written ? "[écrit]" : "[carte]"}`,
+    )
+    .join("\n");
+}
+
 /** Le format de sortie. ⚠️ Le mot « json » DOIT y figurer : le guichet le vérifie avant toute dépense. */
-function outputContract(lang: string): string {
+function outputContract(lang: string, collecting: boolean): string {
   return [
     "FORMAT DE RÉPONSE — un objet json, et rien d'autre :",
-    '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[] }',
+    collecting
+      ? '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[], "field_updates": { "id": string, "value": string }[] }'
+      : '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[] }',
     `- "reply" : ton message à l'usager, rédigé dans la langue de code « ${lang} » (les textes de la collectivité restent cités dans leur langue).`,
     '- "intent" : "suggest" si tu proposes une ou plusieurs démarches, "clarify" si tu poses une question pour choisir, "answer" si tu renseignes, "unknown" si l\'information n\'est pas dans les données, "off_topic" si la demande ne concerne pas les démarches de la collectivité.',
     '- "procedure_ids" : les identifiants (champ id) des démarches que tu proposes, pris dans le catalogue ci-dessous et nulle part ailleurs ; [] sinon.',
+    ...(collecting
+      ? ['- "field_updates" : ce que le dernier message de l\'usager renseigne parmi les informations [écrit] à recueillir (champ id de la liste) ; [] sinon.']
+      : []),
   ].join("\n");
 }
 
@@ -147,12 +192,20 @@ export interface AssistantPromptInput {
   candidates: Demarche[];
   /** La démarche dont on parle, en entier — `null` en phase d'orientation. */
   focus: DemarcheDetail | null;
+  /**
+   * Ce qu'il reste à recueillir, quand l'usager remplit `focus` dans la
+   * conversation — absent hors recueil. ⚠️ Des LIBELLÉS de champs, jamais les
+   * réponses déjà données : le modèle n'a pas à relire ce que l'usager a saisi.
+   */
+  collecting?: CollectableField[] | null;
 }
 
 export function buildAssistantPrompt(input: AssistantPromptInput): string {
+  const collecting = input.collecting ?? null;
   const blocks = [
     BASE_RULES,
-    outputContract(input.lang),
+    collecting === null ? "" : COLLECT_RULES,
+    outputContract(input.lang, collecting !== null),
     fenced("COLLECTIVITÉ", input.tenantName),
     fenced(
       "CATALOGUE — toutes les démarches en ligne de la collectivité",
@@ -163,6 +216,11 @@ export function buildAssistantPrompt(input: AssistantPromptInput): string {
       input.candidates.map(candidateBlock).join("\n\n"),
     ),
     input.focus === null ? "" : fenced("DÉMARCHE CONSULTÉE PAR L'USAGER", focusBlock(input.focus)),
+    collecting === null
+      ? ""
+      : collecting.length === 0
+        ? "INFORMATIONS À RECUEILLIR : plus aucune. L'usager peut relire et envoyer sa demande avec le récapitulatif affiché."
+        : fenced("INFORMATIONS À RECUEILLIR (dans l'ordre)", collectBlock(collecting)),
   ];
   if (input.catalogue.length === 0) {
     blocks.push("La collectivité ne propose aucune démarche en ligne pour le moment : dis-le.");

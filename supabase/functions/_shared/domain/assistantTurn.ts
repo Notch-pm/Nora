@@ -49,6 +49,12 @@ export interface AssistantTurnRequest {
   messages: TurnMessage[];
   /** La démarche dont on parle, si l'usager en a ouvert une. */
   focusDemarcheId?: string | null;
+  /**
+   * Le recueil en cours, s'il y en a un : la démarche que l'usager remplit dans
+   * la conversation, et ses réponses. Tenu par le navigateur, NON signé — le
+   * dépôt refiltre tout (voir `ai/collection.ts`).
+   */
+  collection?: CollectionPayload | null;
   lang?: string;
 }
 
@@ -71,6 +77,20 @@ export interface AssistantTurnReply {
    */
   emergency: boolean;
   turnsLeft: number;
+  /**
+   * Le recueil après ce tour : les réponses que le serveur a RETENUES de ce que
+   * le modèle dit avoir compris. `null` hors recueil — ou si la collectivité
+   * n'a pas ouvert le dépôt par la conversation. L'écran en déduit lui-même le
+   * prochain champ (`viewOf`, même code des deux côtés).
+   */
+  collection: CollectionPayload | null;
+}
+
+/** L'état d'un recueil, tel qu'il voyage — voir `CollectionState` dans `ai/collection.ts`. */
+export interface CollectionPayload {
+  demarcheId: string;
+  values: Record<string, unknown>;
+  skipped: string[];
 }
 
 /**

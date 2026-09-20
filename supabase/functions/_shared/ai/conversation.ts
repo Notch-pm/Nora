@@ -13,6 +13,7 @@
  */
 import type { TurnMessage } from "../domain/assistantTurn.ts";
 import type { Demarche } from "../domain/demarche.ts";
+import { type FieldUpdate, readFieldUpdates } from "./collection.ts";
 
 // --- Avant le modèle ---------------------------------------------------------
 
@@ -109,6 +110,11 @@ export interface AssistantAnswer {
   reply: string;
   intent: AnswerIntent;
   procedureIds: string[];
+  /**
+   * Ce que le modèle dit avoir compris des réponses de l'usager, en recueil —
+   * lu par FORME seulement. C'est `applyUpdates` qui décide ce qu'on en retient.
+   */
+  fieldUpdates: FieldUpdate[];
 }
 
 const MAX_REPLY_CHARS = 2000;
@@ -169,5 +175,5 @@ export function parseAssistantAnswer(raw: string, catalogueIds: ReadonlySet<stri
   const intent: AnswerIntent =
     procedureIds.length > 0 ? (declared === "clarify" ? "clarify" : "suggest")
       : declared === "suggest" ? "answer" : declared;
-  return { reply, intent, procedureIds };
+  return { reply, intent, procedureIds, fieldUpdates: readFieldUpdates(source.field_updates) };
 }

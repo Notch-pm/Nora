@@ -737,6 +737,25 @@ function readAssistantTurnReply(body: unknown): AssistantTurnReply | null {
     suggestions: readSuggestions(raw.suggestions),
     emergency: raw.emergency === true,
     turnsLeft: typeof raw.turnsLeft === "number" && Number.isFinite(raw.turnsLeft) ? raw.turnsLeft : 0,
+    collection: readCollection((body as { collection?: unknown }).collection),
+  };
+}
+
+/**
+ * Le recueil rendu par le serveur — forme seulement. Un serveur d'avant le
+ * recueil n'en rend pas : `null`, et l'écran reste en mode « renseigner ».
+ * L'écran repasse de toute façon cet état par `sanitizeState` contre le
+ * formulaire qu'il a chargé, avant de s'en servir.
+ */
+function readCollection(raw: unknown): AssistantTurnReply["collection"] {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const { demarcheId, values, skipped } = raw as Record<string, unknown>;
+  if (typeof demarcheId !== "string" || demarcheId === "") return null;
+  if (typeof values !== "object" || values === null || Array.isArray(values)) return null;
+  return {
+    demarcheId,
+    values: values as Record<string, unknown>,
+    skipped: Array.isArray(skipped) ? skipped.filter((id): id is string => typeof id === "string") : [],
   };
 }
 

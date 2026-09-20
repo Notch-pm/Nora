@@ -22,8 +22,16 @@ import {
   type TurnMessage,
 } from "../domain/assistantTurn.ts";
 import type { Demarche, DemarcheDetail } from "../domain/demarche.ts";
+import { isFieldRequired } from "../domain/formulaire.ts";
 import type { Tenant } from "../domain/tenant.ts";
 import { verifySolution } from "./challenge.ts";
+import {
+  applyUpdates,
+  type CollectionState,
+  isConversationField,
+  pendingFields,
+  sanitizeState,
+} from "./collection.ts";
 import {
   detectEmergency,
   parseAssistantAnswer,
@@ -83,6 +91,19 @@ function readMessages(raw: unknown): TurnMessage[] | null {
   return messages[messages.length - 1].role === "user" ? messages : null;
 }
 
+/**
+ * La démarche que l'usager remplit dans la conversation — ou `null`.
+ *
+ * ⚠️ PREMIÈRE GARDE DU RECUEIL : l'interrupteur de la collectivité
+ * (`depositEnabled`, réglé au Socle par son super administrateur). Fermé, un
+ * `collection` envoyé par le navigateur est ignoré sans bruit : l'assistant
+ * renseigne et oriente, il ne recueille rien.
+ */
+function collectionDemarcheId(tenant: Tenant, raw: unknown): string | null {
+  if (!tenant.assistant.depositEnabled || !isRecord(raw)) return null;
+  return typeof raw.demarcheId === "string" && UUID_RE.test(raw.demarcheId) ? raw.demarcheId : null;
+}
+
 export async function runAssistantTurn(
   tenant: Tenant,
   lang: string,
@@ -135,8 +156,20 @@ export async function runAssistantTurn(
   if (catalogue === null) return fail("assistant_unavailable");
   // Une démarche « consultée » qui n'est pas au catalogue publié n'existe pas
   // pour l'assistant — on l'ignore sans bruit, comme le portail le ferait.
+  //
+  // EN RECUEIL, la démarche consultée est celle que l'usager remplit : c'est
+  // elle qui fait foi, pas `focusDemarcheId`.
+  const collectId = collectionDemarcheId(tenant, body.collection);
+  const wantedId = collectId ?? focusId;
   const focus =
-    focusId !== null && catalogue.some((d) => d.id === focusId) ? await deps.loadDemarche(focusId) : null;
+    wantedId !== null && catalogue.some((d) => d.id === wantedId) ? await deps.loadDemarche(wantedId) : null;
+
+  // Le recueil n'existe que si la démarche a un formulaire, et qu'elle est
+  // toujours au catalogue publié. Sinon on l'ignore : l'assistant renseigne.
+  let collection: CollectionState | null =
+    collectId !== null && focus !== null && focus.form !== null
+      ? sanitizeState(focus.form, focus.id, body.collection)
+      : null;
 
   const said = messages.filter((m) => m.role === "user").slice(-3).map((m) => m.content).join(" ");
   const lastSaid = messages[messages.length - 1].content;
@@ -146,6 +179,16 @@ export async function runAssistantTurn(
     catalogue,
     candidates: pickCandidates(catalogue, said),
     focus,
+    collecting:
+      collection === null || focus?.form == null
+        ? null
+        : pendingFields(focus.form, collection).map((field) => ({
+            id: field.id,
+            label: field.label,
+            help: field.help ?? null,
+            required: isFieldRequired(field, collection!.values),
+            written: isConversationField(field),
+          })),
   });
 
   const completion = await deps.ai.complete({
@@ -170,6 +213,12 @@ export async function runAssistantTurn(
   const answer = parseAssistantAnswer(completion.answer, new Set(catalogue.map((d) => d.id)));
   if (answer === null) return fail("assistant_unavailable");
 
+  // Ce que le modèle dit avoir compris n'entre que par `applyUpdates` : champ
+  // en attente, auquel on répond en écrivant, valeur valide. Le reste tombe.
+  if (collection !== null && focus?.form != null) {
+    collection = applyUpdates(focus.form, collection, answer.fieldUpdates).state;
+  }
+
   const turn = ticket.turn + 1;
   return {
     ok: true,
@@ -186,6 +235,7 @@ export async function runAssistantTurn(
       }),
       emergency: detectEmergency(lastSaid),
       turnsLeft: MAX_TURNS - turn,
+      collection,
     },
   };
 }

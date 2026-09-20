@@ -125,10 +125,26 @@ describe("sendAssistantTurn", () => {
       suggestions: [{ id: "d1", name: "Recensement", description: null }],
       emergency: false,
       turnsLeft: 19,
+      collection: { demarcheId: "d1", values: { f1: "12 rue de la Paix" }, skipped: [] },
     };
     vi.stubGlobal("fetch", vi.fn(async () => respond(reply)));
     const result = await sendAssistantTurn(REQUEST);
     expect(result).toEqual({ ok: true, reply });
+  });
+
+  it("un serveur d'avant le recueil n'en rend pas : `collection` vaut null, jamais un trou", async () => {
+    const reply = {
+      ticket: "t2",
+      message: { role: "assistant", content: "Bonjour.", signature: "sig2" },
+      suggestions: [],
+      emergency: false,
+      turnsLeft: 19,
+    };
+    for (const collection of [undefined, null, "x", [], { demarcheId: "", values: {} }, { demarcheId: "d1", values: [] }]) {
+      vi.stubGlobal("fetch", vi.fn(async () => respond({ ...reply, collection })));
+      const result = await sendAssistantTurn(REQUEST);
+      expect(result.ok && result.reply.collection).toBeNull();
+    }
   });
 
   it("écarte une suggestion sans identifiant ou sans nom, sans faire échouer le tour", async () => {

@@ -211,6 +211,7 @@ describe("reduceConversation", () => {
         suggestions: [],
         emergency: false,
         turnsLeft: 19,
+        collection: null,
       },
     });
     expect(next.status).toBe("ready");
@@ -229,6 +230,7 @@ describe("reduceConversation", () => {
         suggestions: [],
         emergency: false,
         turnsLeft: 0,
+        collection: null,
       },
     });
     expect(next.status).toBe("ended");
@@ -244,6 +246,7 @@ describe("reduceConversation", () => {
         suggestions: [],
         emergency: false,
         turnsLeft: 18,
+        collection: null,
       },
     });
     expect(next.emergency).toBe(true);

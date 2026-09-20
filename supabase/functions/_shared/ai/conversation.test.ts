@@ -70,7 +70,7 @@ describe("parseAssistantAnswer — le guichet garantit que ça parse, pas que ç
   const ids = new Set(["a", "b"]);
 
   it("lit une réponse conforme, clôturée ou entourée de texte", () => {
-    const expected = { reply: "Voici la démarche.", intent: "suggest", procedureIds: ["b"] };
+    const expected = { reply: "Voici la démarche.", intent: "suggest", procedureIds: ["b"], fieldUpdates: [] };
     const json = '{"reply":"Voici la démarche.","intent":"suggest","procedure_ids":["b"]}';
     for (const raw of [json, "```json\n" + json + "\n```", "Bien sûr : " + json + " Voilà."]) {
       expect(parseAssistantAnswer(raw, ids)).toEqual(expected);
@@ -82,13 +82,13 @@ describe("parseAssistantAnswer — le guichet garantit que ça parse, pas que ç
     expect(parseAssistantAnswer(raw, ids)?.procedureIds).toEqual(["b", "a"]);
     // Tout est tombé : ce n'est plus une proposition.
     const invented = JSON.stringify({ reply: "Voici.", intent: "suggest", procedure_ids: ["zzz"] });
-    expect(parseAssistantAnswer(invented, ids)).toEqual({ reply: "Voici.", intent: "answer", procedureIds: [] });
+    expect(parseAssistantAnswer(invented, ids)).toEqual({ reply: "Voici.", intent: "answer", procedureIds: [], fieldUpdates: [] });
   });
 
   it("borne à trois propositions et ramène une intention inconnue à « answer »", () => {
     const many = new Set(["a", "b", "c", "d"]);
     const raw = JSON.stringify({ reply: "x", intent: "danse", procedure_ids: ["a", "b", "c", "d"] });
-    expect(parseAssistantAnswer(raw, many)).toEqual({ reply: "x", intent: "suggest", procedureIds: ["a", "b", "c"] });
+    expect(parseAssistantAnswer(raw, many)).toEqual({ reply: "x", intent: "suggest", procedureIds: ["a", "b", "c"], fieldUpdates: [] });
   });
 
   it("rend null sur l'illisible — jamais un texte brut non vérifié à l'écran", () => {
