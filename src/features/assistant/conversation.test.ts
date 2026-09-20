@@ -7,6 +7,7 @@ import {
   type ConversationState,
   type ConversationStorage,
   clearConversation,
+  focusDemarcheOf,
   initialConversation,
   loadConversation,
   parseStoredConversation,
@@ -91,6 +92,42 @@ describe("toTurnMessages", () => {
   it("une réponse sans signature part avec une signature vide, jamais `undefined`", () => {
     const messages: AssistantMessageView[] = [{ id: "m1", role: "assistant", content: "x" }];
     expect(toTurnMessages(messages)).toEqual([{ role: "assistant", content: "x", signature: "" }]);
+  });
+});
+
+describe("focusDemarcheOf — la démarche dont on parle", () => {
+  const user = (id: string): AssistantMessageView => ({ id, role: "user", content: "?" });
+  const proposes = (id: string, ...demarches: string[]): AssistantMessageView => ({
+    id,
+    role: "assistant",
+    content: "Voici.",
+    signature: "s",
+    suggestions: demarches.map((d) => ({ id: d, name: d, description: null })),
+  });
+
+  it("sans proposition, c'est la démarche de l'adresse — ou aucune", () => {
+    expect(focusDemarcheOf([user("1")], "venue")).toBe("venue");
+    expect(focusDemarcheOf([user("1")], null)).toBeNull();
+  });
+
+  it("⚠️ après une proposition, on parle de la démarche PROPOSÉE", () => {
+    // Essai réel du 2026-09-20 : sans cela, « que dois-je fournir ? » recevait
+    // « je ne dispose pas de cette information » juste après la bonne carte.
+    expect(focusDemarcheOf([user("1"), proposes("2", "proprete"), user("3")], null)).toBe("proprete");
+  });
+
+  it("la dernière proposition l'emporte, y compris sur l'adresse", () => {
+    const thread = [user("1"), proposes("2", "a"), user("3"), proposes("4", "b"), user("5")];
+    expect(focusDemarcheOf(thread, "venue")).toBe("b");
+  });
+
+  it("⚠️ entre plusieurs candidates, aucune n'est décrite : l'assistant attend un choix", () => {
+    expect(focusDemarcheOf([user("1"), proposes("2", "a", "b"), user("3")], "venue")).toBeNull();
+  });
+
+  it("une réponse sans proposition ne fait pas oublier la précédente", () => {
+    const thread = [user("1"), proposes("2", "a"), user("3"), proposes("4"), user("5")];
+    expect(focusDemarcheOf(thread, null)).toBe("a");
   });
 });
 

@@ -18,6 +18,7 @@ import { fetchAssistantChallenge, sendAssistantTurn } from "@/services/portal/po
 import {
   buildTurnRequest,
   clearConversation,
+  focusDemarcheOf,
   type ConversationState,
   initialConversation,
   loadConversation,
@@ -141,12 +142,13 @@ export function useAssistantConversation(
       if (generationRef.current !== generation) return;
     }
 
-    const { focusDemarcheId: focus, lang: currentLang } = contextRef.current;
+    const { focusDemarcheId: fromAddress, lang: currentLang } = contextRef.current;
     const request = buildTurnRequest({
       ticket,
       challenge,
       messages: messagesForRequest,
-      focusDemarcheId: focus,
+      // La démarche proposée au tour précédent, à défaut celle de l'adresse.
+      focusDemarcheId: focusDemarcheOf(messagesForRequest, fromAddress),
       lang: currentLang,
     });
     if (request === null) {

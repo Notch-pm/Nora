@@ -213,6 +213,34 @@ export function validateMessage(
 
 // ── Construction de la requête ───────────────────────────────────────────────
 
+/**
+ * La démarche DONT ON PARLE — celle dont le serveur décrira le détail au
+ * modèle (pièces à prévoir, délai annoncé, informations du formulaire).
+ *
+ * ⚠️ Trouvé à l'essai réel du 2026-09-20 : l'assistant proposait la bonne
+ * démarche, puis répondait « je ne dispose pas de cette information » à « que
+ * dois-je fournir ? » — parce que seule l'adresse (`?demarche=`) disait quelle
+ * démarche était consultée. Après une proposition, la conversation porte
+ * naturellement sur la démarche proposée.
+ *
+ * La DERNIÈRE réponse qui propose l'emporte sur l'adresse (l'usager venu d'une
+ * démarche peut être réorienté vers une autre). ⚠️ Seulement si elle en propose
+ * UNE : entre deux ou trois candidates, l'assistant attend un choix, et décrire
+ * la première ferait pencher sa réponse. Le serveur revérifie de toute façon que
+ * l'identifiant est au catalogue publié.
+ */
+export function focusDemarcheOf(
+  messages: readonly AssistantMessageView[],
+  fromAddress: string | null,
+): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const suggestions = messages[i].suggestions;
+    if (suggestions === undefined || suggestions.length === 0) continue;
+    return suggestions.length === 1 ? suggestions[0].id : null;
+  }
+  return fromAddress;
+}
+
 /** Le fil, débarrassé de ce qui n'appartient qu'à l'écran (`id`, `suggestions`). */
 export function toTurnMessages(messages: readonly AssistantMessageView[]): TurnMessage[] {
   return messages.map((m) =>
