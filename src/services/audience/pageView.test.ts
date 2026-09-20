@@ -27,6 +27,18 @@ describe("pageOf — quel écran l'adresse désigne", () => {
     }
   });
 
+  // ⚠️ L'assistant (2026-09-20) n'est PAS une des trois pages du contrat, et ne
+  // doit pas être pris pour une démarche par accident : `/assistant` a même
+  // forme lexicale que `/demarches/{id}` (un segment de route suivi d'un
+  // segment libre), mais son premier segment n'est pas `"demarches"`. Décision
+  // assumée — voir la fiche de mission — plutôt que d'ajouter une quatrième
+  // valeur à `page`, qui demanderait une migration côté Socle.
+  it("ne compte pas la page de l'assistant", () => {
+    expect(pageOf("/assistant")).toBeNull();
+    expect(pageOf("/en/assistant")).toBeNull();
+    expect(pageOf("/mairie-de-fontvieille/assistant")).toBeNull();
+  });
+
   // « demarches » fait trois lettres minuscules : sans cette précaution, il
   // serait pris pour un code de langue et l'adresse ne se lirait plus.
   it("ne prend jamais « demarches » pour un code de langue", () => {

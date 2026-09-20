@@ -30,6 +30,7 @@ import { useEffect, useId, useState, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import type { PortalTheme } from "@fn/_shared/domain/theme.ts";
 import type { UserFaqEntry } from "@fn/_shared/domain/userCommunication.ts";
+import { AssistantEntryLink } from "@/features/assistant/AssistantEntryLink.tsx";
 import { MAX_ORGANIZATION_CHIPS } from "@/features/portal/composition.ts";
 import { errorMessageFor } from "@/features/portal/errorMessages.ts";
 import { Markdown } from "@/features/portal/Markdown.tsx";
@@ -415,6 +416,12 @@ export function DemarchePage() {
             ) : (
               <StartLink to={formPath} block />
             )}
+
+            {/* Second point d'entrée de l'assistant (voir la fiche de
+                mission) : sobre, sous le bouton principal — jamais en
+                concurrence avec « Commencer la démarche ». Porte l'identifiant
+                de CETTE démarche, lu à l'ouverture de `/assistant`. */}
+            <AssistantEntryLink enabled={tenant.assistant.enabled} demarcheId={demarche.id} variant="subtle" />
 
             {(demarche.estimatedMinutes !== null ||
               responseDelay !== null ||

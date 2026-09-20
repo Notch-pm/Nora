@@ -1,10 +1,11 @@
 /**
  * Les routes du portail.
  *
- * Cinq écrans : la page d'accueil composée par la collectivité, la page d'un
- * organisme, la présentation d'une démarche, son formulaire, et la déclaration
- * d'accessibilité (`/accessibilite`, où mène la mention du pied de page). Le
- * découpage en
+ * Six écrans : la page d'accueil composée par la collectivité, la page d'un
+ * organisme, la présentation d'une démarche, son formulaire, la déclaration
+ * d'accessibilité (`/accessibilite`, où mène la mention du pied de page), et
+ * l'assistant conversationnel (`/assistant`, réglé par le super administrateur
+ * du Socle — `tenant.assistant.enabled`, fermé au doute). Le découpage en
  * deux pages pour une même démarche est délibéré — l'usager lit ce qu'on va lui
  * demander avant de s'engager dans la saisie, comme sur les portails de service
  * public.
@@ -25,6 +26,7 @@
  */
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AccessibilitePage } from "@/features/accessibilite/AccessibilitePage.tsx";
+import { AssistantPage } from "@/features/assistant/AssistantPage.tsx";
 import { DemarchePage } from "@/features/demarche/DemarchePage.tsx";
 import { FormulairePage } from "@/features/demarche/FormulairePage.tsx";
 import { OrganismePage } from "@/features/organisme/OrganismePage.tsx";
@@ -67,6 +69,14 @@ export function App() {
           <Route path="/accessibilite" element={<AccessibilitePage />} />
           <Route path=":scopeA/accessibilite" element={<AccessibilitePage />} />
           <Route path=":scopeA/:scopeB/accessibilite" element={<AccessibilitePage />} />
+
+          {/* ⚠️ `assistant` est lui aussi un segment STATIQUE (voir
+              `ROUTE_SEGMENTS`) : mêmes trois formes que `accessibilite`, et pour
+              la même raison — la page vaut pour la collectivité entière, le
+              périmètre d'organisme ne sert qu'à construire les liens de retour. */}
+          <Route path="/assistant" element={<AssistantPage />} />
+          <Route path=":scopeA/assistant" element={<AssistantPage />} />
+          <Route path=":scopeA/:scopeB/assistant" element={<AssistantPage />} />
 
           {/* Un segment libre, ou deux : une langue, un organisme, ou les deux.
               ⚠️ `demarches` étant un segment STATIQUE, react-router le classe

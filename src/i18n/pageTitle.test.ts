@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   accessibiliteTitle,
+  assistantTitle,
   demarcheTitle,
   errorPageTitle,
   formulaireTitle,
@@ -25,6 +26,13 @@ describe("accessibiliteTitle", () => {
       "Déclaration d'accessibilité — Laurentville",
     );
     expect(accessibiliteTitle("en", "Laurentville")).toBe("Accessibility statement — Laurentville");
+  });
+});
+
+describe("assistantTitle", () => {
+  it("nomme la page dans la langue servie, puis la collectivité", () => {
+    expect(assistantTitle("fr", "Laurentville")).toBe("Assistant — Laurentville");
+    expect(assistantTitle("en", "Laurentville")).toBe("Assistant — Laurentville");
   });
 });
 

@@ -21,6 +21,13 @@ import type { DemandeReceipt, DemandeSubmission } from "@fn/_shared/domain/deman
 import type { PieceFailure, PieceReceipt } from "@fn/_shared/iris/pieceService.ts";
 import type { PortalFailure } from "@fn/_shared/domain/failure.ts";
 import { closedAssistant } from "@fn/_shared/domain/assistant.ts";
+import type {
+  AssistantChallenge,
+  AssistantFailure,
+  AssistantSuggestion,
+  AssistantTurnReply,
+  AssistantTurnRequest,
+} from "@fn/_shared/domain/assistantTurn.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
@@ -589,4 +596,185 @@ export async function sendDemande(submission: DemandeSubmission): Promise<Demand
     return { ok: false, reason: "iris_unavailable" };
   }
   return { ok: true, receipt };
+}
+
+// ── L'assistant conversationnel ──────────────────────────────────────────────
+//
+// Deux appels, tous deux `POST` : le défi qui ouvre une conversation, et un
+// tour. Voir `@fn/_shared/domain/assistantTurn.ts` pour le contrat — écrit une
+// fois côté serveur, lu ici. Comme le reste de ce fichier, aucun des deux ne
+// dit à `portal-api` À QUELLE collectivité il parle : le domaine visité le dit
+// déjà, par l'en-tête `Origin`.
+
+/**
+ * Échec d'un appel à l'assistant, plus ceux que le serveur ne peut pas
+ * signaler — même motif que `PortalLoadFailure`. `"not_configured"` :
+ * `VITE_PORTAL_API_URL` manque, un geste d'exploitation, pas un message pour
+ * l'usager (voir `error.not_configured.*` côté dictionnaire).
+ */
+export type AssistantClientFailure = AssistantFailure | "not_configured" | "network";
+
+const KNOWN_ASSISTANT_FAILURES: readonly AssistantFailure[] = [
+  "assistant_closed",
+  "assistant_not_configured",
+  "assistant_unavailable",
+  "assistant_quota_exceeded",
+  "assistant_rate_limited",
+  "challenge_required",
+  "conversation_ended",
+  "bad_request",
+];
+
+/**
+ * Lit `{ error: { code, message, retryAfterSeconds? } }` — la forme commune
+ * aux deux routes de l'assistant (`assistantFailure()` côté `portal-api`).
+ * Un `code` inconnu (version d'avant, corps illisible) retombe sur
+ * `assistant_unavailable` : jamais une chaîne arbitraire affichée telle quelle.
+ */
+function readAssistantFailure(
+  body: unknown,
+): { reason: AssistantClientFailure; retryAfterSeconds?: number } {
+  const error = (body as { error?: { code?: unknown; retryAfterSeconds?: unknown } } | null)?.error;
+  const reason = KNOWN_ASSISTANT_FAILURES.includes(error?.code as AssistantFailure)
+    ? (error!.code as AssistantFailure)
+    : "assistant_unavailable";
+  const retryAfterSeconds =
+    typeof error?.retryAfterSeconds === "number" &&
+      Number.isFinite(error.retryAfterSeconds) &&
+      error.retryAfterSeconds > 0
+      ? error.retryAfterSeconds
+      : undefined;
+  return { reason, retryAfterSeconds };
+}
+
+export type AssistantChallengeLoad =
+  | { ok: true; challenge: AssistantChallenge }
+  | { ok: false; reason: AssistantClientFailure };
+
+function readChallenge(body: unknown): AssistantChallenge | null {
+  const challenge = (body as { challenge?: AssistantChallenge } | null)?.challenge;
+  if (
+    typeof challenge !== "object" || challenge === null ||
+    typeof challenge.salt !== "string" || challenge.salt === "" ||
+    typeof challenge.bits !== "number" ||
+    typeof challenge.expires !== "number" ||
+    typeof challenge.signature !== "string" || challenge.signature === ""
+  ) {
+    return null;
+  }
+  return challenge;
+}
+
+/**
+ * Demande un défi (preuve de travail) — à résoudre dans le navigateur
+ * (`solveChallenge`, `@fn/_shared/ai/challenge.ts`) avant le premier tour
+ * d'une conversation. Corps vide : rien à envoyer, le serveur tire son propre
+ * sel et le signe.
+ */
+export async function fetchAssistantChallenge(): Promise<AssistantChallengeLoad> {
+  const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
+  if (!baseUrl) return { ok: false, reason: "not_configured" };
+
+  let response: Response;
+  try {
+    response = await fetch(baseUrl.replace(/\/+$/, "") + "/v1/assistant/defi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) return { ok: false, reason: readAssistantFailure(body).reason };
+
+  const challenge = readChallenge(body);
+  // 200 mais illisible : une indisponibilité, comme partout ailleurs dans ce
+  // fichier — jamais un défi à moitié lu qu'on tenterait quand même de résoudre.
+  if (challenge === null) return { ok: false, reason: "assistant_unavailable" };
+  return { ok: true, challenge };
+}
+
+export type AssistantTurnSend =
+  | { ok: true; reply: AssistantTurnReply }
+  | { ok: false; reason: AssistantClientFailure; retryAfterSeconds?: number };
+
+function readSuggestions(raw: unknown): AssistantSuggestion[] {
+  if (!Array.isArray(raw)) return [];
+  const suggestions: AssistantSuggestion[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const { id, name, description } = entry as Record<string, unknown>;
+    if (typeof id !== "string" || id === "" || typeof name !== "string" || name === "") continue;
+    suggestions.push({ id, name, description: typeof description === "string" ? description : null });
+  }
+  return suggestions;
+}
+
+function readAssistantTurnReply(body: unknown): AssistantTurnReply | null {
+  if (typeof body !== "object" || body === null) return null;
+  const raw = body as {
+    ticket?: unknown;
+    message?: { role?: unknown; content?: unknown; signature?: unknown };
+    suggestions?: unknown;
+    emergency?: unknown;
+    turnsLeft?: unknown;
+  };
+  if (typeof raw.ticket !== "string" || raw.ticket === "") return null;
+  const message = raw.message;
+  if (
+    typeof message !== "object" || message === null ||
+    message.role !== "assistant" ||
+    typeof message.content !== "string" || message.content === "" ||
+    typeof message.signature !== "string" || message.signature === ""
+  ) {
+    return null;
+  }
+  return {
+    ticket: raw.ticket,
+    message: { role: "assistant", content: message.content, signature: message.signature },
+    suggestions: readSuggestions(raw.suggestions),
+    emergency: raw.emergency === true,
+    turnsLeft: typeof raw.turnsLeft === "number" && Number.isFinite(raw.turnsLeft) ? raw.turnsLeft : 0,
+  };
+}
+
+/**
+ * Un tour de conversation. `request` porte soit un `challenge` résolu (premier
+ * tour), soit un `ticket` (tours suivants) — voir `buildTurnRequest` dans
+ * `src/features/assistant/conversation.ts`, qui construit ce corps.
+ *
+ * ⚠️ **Délai au-dessus de la chaîne fournisseur (55 s) < Socle (60 s) <
+ * `portal-api` (75 s)** : sans lui, le navigateur abandonnerait avant que le
+ * serveur ait fini de répondre, sur une conversation qui aurait pourtant
+ * abouti.
+ */
+const ASSISTANT_TURN_TIMEOUT_MS = 90_000;
+
+export async function sendAssistantTurn(request: AssistantTurnRequest): Promise<AssistantTurnSend> {
+  const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
+  if (!baseUrl) return { ok: false, reason: "not_configured" };
+
+  let response: Response;
+  try {
+    response = await fetch(baseUrl.replace(/\/+$/, "") + "/v1/assistant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal: AbortSignal.timeout(ASSISTANT_TURN_TIMEOUT_MS),
+    });
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const { reason, retryAfterSeconds } = readAssistantFailure(body);
+    return { ok: false, reason, retryAfterSeconds };
+  }
+
+  const reply = readAssistantTurnReply(body);
+  if (reply === null) return { ok: false, reason: "assistant_unavailable" };
+  return { ok: true, reply };
 }

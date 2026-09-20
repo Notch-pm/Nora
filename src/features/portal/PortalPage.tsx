@@ -23,6 +23,7 @@ import { DemarcheCard } from "./sections/DemarcheCard.tsx";
 import { OrganizationFilter } from "./sections/OrganizationFilter.tsx";
 import { usePortal } from "./usePortal.ts";
 import { themeStyle } from "./themeStyle.ts";
+import { AssistantEntryLink } from "@/features/assistant/AssistantEntryLink.tsx";
 import { AccessibilityFooter } from "./AccessibilityNotice.tsx";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { servedLanguage } from "@/i18n/localizedPath.ts";
@@ -87,6 +88,14 @@ function DefaultCatalogue({
             {t("page.title")}
           </p>
         </div>
+
+        {/* Hors composition : cette liste de repli n'en a pas — voir la fiche
+            de mission. Rendu à `null` tant que l'assistant est fermé. */}
+        {tenant.assistant.enabled && (
+          <div className="mt-4">
+            <AssistantEntryLink enabled />
+          </div>
+        )}
 
         <div className="mt-8 flex flex-col gap-4">
           {/* Les cartes sont des `h3` : sans ce `h2`, la page sautait du `h1` au

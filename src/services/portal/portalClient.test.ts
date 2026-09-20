@@ -4,7 +4,7 @@
  * c'est qu'une interface plus récente que sa fonction reste debout.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchDemarche } from "./portalClient.ts";
+import { fetchAssistantChallenge, fetchDemarche, sendAssistantTurn } from "./portalClient.ts";
 
 const TENANT = { id: "org-1", name: "ACCM", slug: "laurentville", hostname: "laurentville.edilumen.fr" };
 
@@ -67,5 +67,126 @@ describe("fetchDemarche — une fonction plus ancienne que l'interface", () => {
     );
     const result = await fetchDemarche("d1", "fr");
     expect(result.ok && result.snapshot.demarche.userCommunication).toEqual(userCommunication);
+  });
+});
+
+describe("fetchAssistantChallenge", () => {
+  it("rend le défi tel que `portal-api` le sert", async () => {
+    const challenge = { salt: "s", bits: 15, expires: 123, signature: "sig" };
+    vi.stubGlobal("fetch", vi.fn(async () => respond({ challenge })));
+    const result = await fetchAssistantChallenge();
+    expect(result).toEqual({ ok: true, challenge });
+  });
+
+  it("un défi à moitié lu est une indisponibilité, pas un défi tronqué", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => respond({ challenge: { salt: "s" } })));
+    const result = await fetchAssistantChallenge();
+    expect(result).toEqual({ ok: false, reason: "assistant_unavailable" });
+  });
+
+  it("lit le code d'échec du serveur", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ error: { code: "assistant_closed" } }), { status: 404 }),
+      ),
+    );
+    const result = await fetchAssistantChallenge();
+    expect(result).toEqual({ ok: false, reason: "assistant_closed" });
+  });
+
+  it("une panne réseau ne lève pas — elle rend `network`", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
+    const result = await fetchAssistantChallenge();
+    expect(result).toEqual({ ok: false, reason: "network" });
+  });
+
+  it("sans `VITE_PORTAL_API_URL`, aucun appel n'est tenté", async () => {
+    vi.stubEnv("VITE_PORTAL_API_URL", "");
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const result = await fetchAssistantChallenge();
+    expect(result).toEqual({ ok: false, reason: "not_configured" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("sendAssistantTurn", () => {
+  const REQUEST = {
+    challenge: { salt: "s", bits: 15, expires: 123, signature: "sig", nonce: "0" },
+    messages: [{ role: "user" as const, content: "Bonjour" }],
+    lang: "fr",
+  };
+
+  it("rend la réponse telle que le serveur la signe", async () => {
+    const reply = {
+      ticket: "t2",
+      message: { role: "assistant", content: "Bonjour, que puis-je faire ?", signature: "sig2" },
+      suggestions: [{ id: "d1", name: "Recensement", description: null }],
+      emergency: false,
+      turnsLeft: 19,
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => respond(reply)));
+    const result = await sendAssistantTurn(REQUEST);
+    expect(result).toEqual({ ok: true, reply });
+  });
+
+  it("écarte une suggestion sans identifiant ou sans nom, sans faire échouer le tour", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        respond({
+          ticket: "t2",
+          message: { role: "assistant", content: "Voici", signature: "sig2" },
+          suggestions: [{ id: "d1", name: "", description: null }, { id: "d2", name: "Voirie", description: "x" }],
+          emergency: false,
+          turnsLeft: 19,
+        }),
+      ),
+    );
+    const result = await sendAssistantTurn(REQUEST);
+    expect(result.ok && result.reply.suggestions).toEqual([{ id: "d2", name: "Voirie", description: "x" }]);
+  });
+
+  it("une réponse sans signature est une indisponibilité — jamais affichée telle quelle", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        respond({
+          ticket: "t2",
+          message: { role: "assistant", content: "Bonjour" },
+          suggestions: [],
+          emergency: false,
+          turnsLeft: 19,
+        }),
+      ),
+    );
+    const result = await sendAssistantTurn(REQUEST);
+    expect(result).toEqual({ ok: false, reason: "assistant_unavailable" });
+  });
+
+  it("remonte le délai d'un échec cadencé", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({ error: { code: "assistant_rate_limited", retryAfterSeconds: 17 } }),
+          { status: 429 },
+        ),
+      ),
+    );
+    const result = await sendAssistantTurn(REQUEST);
+    expect(result).toEqual({ ok: false, reason: "assistant_rate_limited", retryAfterSeconds: 17 });
+  });
+
+  it("un ticket périmé rend `challenge_required`, sans délai", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ error: { code: "challenge_required" } }), { status: 401 }),
+      ),
+    );
+    const result = await sendAssistantTurn(REQUEST);
+    expect(result).toEqual({ ok: false, reason: "challenge_required" });
   });
 });

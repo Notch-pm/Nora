@@ -23,6 +23,7 @@ import type { Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import type { FooterSection as FooterSectionData, HomePage } from "@fn/_shared/domain/page.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
+import { AssistantEntryLink } from "@/features/assistant/AssistantEntryLink.tsx";
 import { headerLogoUrl, themeStyle } from "./themeStyle.ts";
 import { AccessibilityNotice, hasAccessibilityDeclaration } from "./AccessibilityNotice.tsx";
 import {
@@ -127,6 +128,16 @@ export function HomeComposition({
         // seule la balise change.
         nameAsHeading
       />
+      {/* ⚠️ HORS COMPOSITION, délibérément : ni une section (le schéma de page
+          n'en gagne pas une nouvelle sorte), ni dans l'en-tête partagé (qui
+          couvrirait aussi le formulaire et la déclaration d'accessibilité,
+          où ce lien n'a pas sa place — voir la fiche de mission). Rendu à
+          `null` par le composant lui-même tant que l'assistant est fermé. */}
+      {tenant.assistant.enabled && (
+        <div className="mx-auto w-full max-w-5xl px-6 pt-[var(--pt-pad)]">
+          <AssistantEntryLink enabled />
+        </div>
+      )}
       <main
         id="contenu"
         tabIndex={-1}

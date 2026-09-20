@@ -58,6 +58,11 @@ export function accessibiliteTitle(lang: string, tenantName: string): string {
   return t(lang, "accessibilite.title") + SEPARATOR + tenantName;
 }
 
+/** La page de l'assistant : son intitulé, puis la collectivité. */
+export function assistantTitle(lang: string, tenantName: string): string {
+  return t(lang, "assistant.title") + SEPARATOR + tenantName;
+}
+
 /** Un écran d'erreur : son message, puis le nom générique du site. */
 export function errorPageTitle(lang: string, errorTitle: string): string {
   return errorTitle + SEPARATOR + t(lang, "page.title");

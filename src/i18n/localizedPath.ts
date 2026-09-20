@@ -78,8 +78,12 @@ export function localizedPath(lang: string, path: string): string {
  * la page d'un organisme de ce nom. Le Socle l'interdit d'ailleurs comme slug
  * depuis le 2026-09-12 (`organizations_slug_url_form`) — les deux listes se
  * lisent ensemble.
+ *
+ * ⚠️ `assistant` (2026-09-20) : même raison, pour `/assistant`. Le Socle ne
+ * l'interdit pas encore comme slug d'organisme au moment d'écrire ceci — à
+ * signaler côté référentiel, sur le modèle d'`accessibilite`.
  */
-export const ROUTE_SEGMENTS: readonly string[] = ["demarches", "accessibilite"];
+export const ROUTE_SEGMENTS: readonly string[] = ["demarches", "accessibilite", "assistant"];
 
 /**
  * Sépare un éventuel préfixe d'ORGANISME du chemin réel. `path` est le chemin

@@ -945,6 +945,70 @@ trois écrans ; `supabase/functions/_shared/domain/audience.ts` (pur, testé) et
 `_shared/socle/audienceClient.ts` ; route `POST /v1/audience` de `portal-api`,
 et signalement du dépôt à la fin de `POST /v1/demandes`.
 
+## L'assistant conversationnel
+
+Depuis le 2026-09-20, une collectivité peut proposer un **assistant** sur son
+site : l'usager décrit son besoin (« comment signaler un dépôt sauvage ? »),
+l'assistant le renseigne et lui propose la bonne démarche, en carte. **Il ne
+dépose rien** : l'usager remplit la démarche proposée, par son formulaire. Le
+recueil du formulaire dans la conversation est le lot suivant.
+
+- **C'est le Socle qui l'ouvre, pas le portail.** Le super administrateur du
+  Socle l'active collectivité par collectivité (fiche du client › « Assistant du
+  portail usagers ») ; le portail le lit sur le tenant (`tenant.assistant`,
+  contrat 1.28.0). ⚠️ **Au doute, fermé** (`domain/assistant.ts`) : un Socle plus
+  ancien, une réponse abîmée ne l'ouvrent pas — l'assistant dépense le crédit IA
+  de la collectivité, que ses agents partagent.
+- ⚠️ **Il ne sait que ce que le site affiche déjà.** Le prompt (`_shared/ai/prompt.ts`)
+  ne prend en entrée que les modèles du portail, lus sur `/v1/portal/*` : catalogue,
+  descriptif usager, délai, pièces annoncées, FAQ usager, libellés du formulaire. La
+  base de connaissances des agents n'existe pas dans ces types — elle ne peut pas
+  fuir par là, et un test l'épingle. **Corpus strict** : sans texte de la
+  collectivité, l'assistant dit qu'il ne sait pas. Conséquence voulue : le prompt
+  peut être exfiltré en entier sans rien révéler.
+- **Le portail ne parle jamais au fournisseur de modèle** : il compose son prompt
+  et le confie au guichet IA du Socle (`ai-api`), avec une **clé à part** au scope
+  `ai` seul, sous l'alias d'agent `assistant-usager`. Le Socle compte les jetons,
+  refuse au-delà du plafond, et ne garde rien du contenu. ⚠️ Chaîne de délais à ne
+  pas inverser : fournisseur 55 s < Socle 60 s < `portal-api` 75 s < navigateur 90 s.
+- ⚠️ **Le guichet refuse les outils : l'assistant n'agit sur rien.** `_shared/ai/turn.ts`
+  est une boucle déterministe autour d'une sortie JSON, et n'en croit rien : une
+  démarche proposée n'est retenue que si elle est au catalogue **publié de cette
+  collectivité**, et **tout lien est retiré** de la réponse (`stripLinks`) — un
+  assistant qui parle sous la marque d'une collectivité et peut afficher un lien
+  est un outil d'hameçonnage. Les seules destinations sont des cartes de démarches,
+  bâties par l'écran à partir d'identifiants revalidés.
+- ⚠️ **Le serveur n'a pas de mémoire** (Nora n'a pas de base) : le navigateur tient
+  le fil et le renvoie à chaque tour. Trois signatures rendent cela sûr
+  (`_shared/ai/signing.ts`, `challenge.ts`, secret `ASSISTANT_SIGNING_SECRET`) :
+  le **ticket** borne la conversation (sa collectivité, 30 minutes, 20 tours — le
+  compteur est dans le ticket, que seul le serveur sait réécrire) ; **chaque
+  réponse de l'assistant est signée**, et un tour « assistant » non signé fait
+  tomber la requête (c'est le jailbreak d'un assistant sans mémoire : lui faire
+  croire qu'il a déjà accepté de sortir de son rôle) ; une **preuve de travail**
+  ouvre la conversation — ni tiers, ni cookie, ni case à cocher : le portail reste
+  sans bandeau. Elle freine le script opportuniste ; les bornes opposables sont au
+  Socle (cadence **par conversation** — l'`actor_id` est l'identifiant de
+  conversation, jamais une adresse IP, même hachée — et plafond de la collectivité).
+- **Rien n'est conservé ni journalisé du contenu**, ni ici ni au Socle. ⚠️ Ne pas
+  ajouter de `console.*` qui cite un message. Le fil n'existe que dans l'onglet de
+  l'usager : il est gardé en `sessionStorage` (jamais `localStorage`) pour survivre
+  à un rechargement, et s'efface avec l'onglet ou par « Nouvelle conversation ». ⚠️
+  C'est le SEUL stockage que le portail écrit sur le poste du visiteur ; il est
+  strictement fonctionnel, ne sert à aucune mesure et ne part nulle part — la
+  mesure d'audience, elle, reste sans aucun stockage, et `/assistant` n'est pas
+  une page comptée. L'urgence (112, 15, 17, 18) est décidée sur **ses mots**, par une règle
+  pure (`detectEmergency`), pas par le modèle.
+- **L'assistant n'est jamais un passage obligé** : plafond atteint, cadence, panne,
+  assistant fermé — chaque échec a son code (`AssistantFailure`) et renvoie vers
+  les démarches, qui restent le chemin garanti.
+
+Code : `supabase/functions/_shared/ai/` (`turn`, `prompt`, `conversation`,
+`socleAi`, `signing`, `challenge` — tous purs, testés sans Deno),
+`_shared/domain/{assistant,assistantTurn}.ts` (le contrat, partagé avec l'écran),
+routes `POST /v1/assistant/defi` et `POST /v1/assistant` de `portal-api`,
+`src/features/assistant/`. Secrets : voir `.env.example`.
+
 ## Ce qui n'est pas encore fait
 
 Dans l'ordre prévu — le détail, les prérequis côté Socle et les questions
