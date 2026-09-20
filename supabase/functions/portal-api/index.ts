@@ -52,6 +52,7 @@ import {
   httpStatusForAssistantFailure,
 } from "../_shared/domain/assistantTurn.ts";
 import { clampBits, issueChallenge } from "../_shared/ai/challenge.ts";
+import { checkDepositChallenge } from "../_shared/ai/depositGate.ts";
 import { createSocleAiClient } from "../_shared/ai/socleAi.ts";
 import { runAssistantTurn } from "../_shared/ai/turn.ts";
 
@@ -642,6 +643,28 @@ Deno.serve(async (request: Request): Promise<Response> => {
     if (submissionId === "" || submissionId.length > MAX_SUBMISSION_ID) {
       return badRequest("submissionId : identifiant de dépôt attendu.");
     }
+
+    // La porte anti-robot du dépôt : une preuve de travail LIÉE à cette demande
+    // (`depositGate.ts`). Avant toute lecture du Socle et tout appel à Iris.
+    // ⚠️ Tolérante tant que `DEPOSIT_CHALLENGE_REQUIRED` n'est pas posé : l'écran
+    // et cette fonction ne se déploient pas au même instant.
+    const gate = await checkDepositChallenge({
+      secret: Deno.env.get("ASSISTANT_SIGNING_SECRET") ?? null,
+      required: Deno.env.get("DEPOSIT_CHALLENGE_REQUIRED") === "true",
+      challenge: body.challenge,
+      submissionId,
+      nowSeconds: Math.floor(Date.now() / 1000),
+    });
+    if (gate !== "open") {
+      // 428 « Precondition Required » : la demande est bien formée, il lui
+      // manque un préalable que l'écran sait fournir (`POST /v1/defi`).
+      return json(
+        428,
+        { error: { code: "challenge_required", message: "Votre demande n'a pas pu être envoyée. Merci de réessayer." } },
+        { "Cache-Control": "no-store" },
+      );
+    }
+
     if (body.formData !== undefined && !isRecord(body.formData)) {
       return badRequest("formData : objet attendu.");
     }
@@ -762,6 +785,34 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
     // Jamais de cache sur un accusé : il est propre à un dépôt.
     return json(201, { receipt: submission.receipt }, { "Cache-Control": "no-store" });
+  }
+
+  // ── POST /v1/defi — le défi anti-robot d'un DÉPÔT.
+  //
+  // À part de `/v1/assistant/defi`, qui n'existe que si la collectivité a ouvert
+  // l'assistant : déposer une demande par le formulaire classique demande la
+  // même preuve, assistant ou pas. L'écran la résout en la LIANT à l'identifiant
+  // de sa demande. Sans secret de signature, pas de défi : 404, et l'écran
+  // dépose comme avant (la porte du dépôt n'existe pas non plus, voir
+  // `depositGate.ts`).
+  if (request.method === "POST" && path === "/v1/defi") {
+    const secret = Deno.env.get("ASSISTANT_SIGNING_SECRET");
+    if (!secret) {
+      return json(404, { error: { code: "not_found", message: "Route inconnue." } }, { "Cache-Control": "no-store" });
+    }
+    if (!assistantLimiter.allow(await hashKey(clientAddress(request.headers)))) {
+      return json(429, { error: { code: "too_many_requests", message: "Merci de patienter quelques secondes." } }, { "Cache-Control": "no-store" });
+    }
+    // Un défi n'est servi qu'à un domaine qui existe : pas de calcul offert à
+    // qui n'est sur aucun portail.
+    const resolved = await tenantOf(request, socle);
+    if (!resolved.ok) return resolved.response;
+    const challenge = await issueChallenge(
+      secret,
+      Math.floor(Date.now() / 1000),
+      clampBits(Deno.env.get("ASSISTANT_CHALLENGE_BITS")),
+    );
+    return json(200, { challenge }, { "Cache-Control": "no-store" });
   }
 
   // ── POST /v1/assistant/defi et POST /v1/assistant — l'assistant conversationnel.

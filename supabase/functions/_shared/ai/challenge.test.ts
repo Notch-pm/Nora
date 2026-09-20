@@ -48,6 +48,20 @@ describe("la preuve de travail", () => {
     }
   });
 
+  it("⚠️ liée à une demande, une preuve ne vaut QUE pour elle — le rejeu ne redépose rien de neuf", async () => {
+    // Le serveur n'a pas de mémoire : il ne voit pas qu'un défi résolu revient.
+    // Lié au `submissionId`, il ne peut resservir qu'à la MÊME demande, qu'Iris
+    // dédoublonne. Chaque demande nouvelle coûte son propre calcul.
+    const challenge = await issueChallenge(SECRET, NOW, EASY);
+    const solved = await solveChallenge(challenge, 2000, "demande-A");
+    expect(await verifySolution(SECRET, solved, NOW, "demande-A")).toBe(true);
+    expect(await verifySolution(SECRET, solved, NOW, "demande-B")).toBe(false);
+    // Et une preuve « de conversation » (sans liaison) n'ouvre pas un dépôt.
+    expect(await verifySolution(SECRET, solved, NOW)).toBe(false);
+    const unbound = await solveChallenge(challenge);
+    expect(await verifySolution(SECRET, unbound, NOW, "demande-A")).toBe(false);
+  });
+
   it("borne la difficulté réglée par l'exploitant", () => {
     expect(clampBits(undefined)).toBe(DEFAULT_CHALLENGE_BITS);
     expect(clampBits("abc")).toBe(DEFAULT_CHALLENGE_BITS);

@@ -62,14 +62,28 @@ function leadingZeroBits(bytes: Uint8Array): number {
   return count;
 }
 
-async function digestOf(salt: string, nonce: string): Promise<Uint8Array> {
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(salt + "." + nonce)));
+/**
+ * L'empreinte d'une tentative. `binding` LIE le travail à une chose précise.
+ *
+ * ⚠️ C'est ce qui compense l'absence de mémoire du serveur, pour le DÉPÔT : il
+ * ne peut pas voir qu'un défi résolu lui est présenté deux fois. Lié à
+ * l'identifiant de la demande (`submissionId`), un défi rejoué ne peut
+ * redéposer que LA MÊME demande — qu'Iris dédoublonne déjà par cette clé. Chaque
+ * demande nouvelle coûte donc son propre calcul, sans que le serveur retienne rien.
+ *
+ * Vide pour une conversation : son ouverture n'a rien à quoi se lier, et la
+ * borne est ailleurs (ticket signé, cadence et plafond au Socle).
+ */
+async function digestOf(salt: string, nonce: string, binding: string): Promise<Uint8Array> {
+  const input = binding === "" ? salt + "." + nonce : salt + "." + binding + "." + nonce;
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(input)));
 }
 
 export async function verifySolution(
   secret: string,
   solved: unknown,
   nowSeconds: number,
+  binding = "",
 ): Promise<boolean> {
   if (typeof solved !== "object" || solved === null) return false;
   const { salt, bits, expires, signature, nonce } = solved as Partial<SolvedChallenge>;
@@ -79,7 +93,7 @@ export async function verifySolution(
   // nôtres — un visiteur ne choisit ni sa difficulté, ni son échéance.
   if (!(await verify(secret, "defi", signedPart(salt, bits, expires), signature))) return false;
   if (nowSeconds > expires) return false;
-  return leadingZeroBits(await digestOf(salt, nonce)) >= bits;
+  return leadingZeroBits(await digestOf(salt, nonce, binding)) >= bits;
 }
 
 /**
@@ -90,10 +104,11 @@ export async function verifySolution(
 export async function solveChallenge(
   challenge: AssistantChallenge,
   yieldEvery = 2000,
+  binding = "",
 ): Promise<SolvedChallenge> {
   for (let attempt = 0; ; attempt++) {
     const nonce = attempt.toString(36);
-    if (leadingZeroBits(await digestOf(challenge.salt, nonce)) >= challenge.bits) {
+    if (leadingZeroBits(await digestOf(challenge.salt, nonce, binding)) >= challenge.bits) {
       return { ...challenge, nonce };
     }
     if (attempt % yieldEvery === yieldEvery - 1) {
