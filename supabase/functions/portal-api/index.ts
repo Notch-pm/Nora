@@ -47,6 +47,13 @@ import type { Tenant } from "../_shared/domain/tenant.ts";
 import { resolveLang } from "../_shared/domain/languages.ts";
 import { deviceClass, isBot, parseAudienceBeacon } from "../_shared/domain/audience.ts";
 import { httpStatusForFailure, type PortalFailure } from "../_shared/domain/failure.ts";
+import {
+  type AssistantFailure,
+  httpStatusForAssistantFailure,
+} from "../_shared/domain/assistantTurn.ts";
+import { clampBits, issueChallenge } from "../_shared/ai/challenge.ts";
+import { createSocleAiClient } from "../_shared/ai/socleAi.ts";
+import { runAssistantTurn } from "../_shared/ai/turn.ts";
 
 /**
  * CORS ouvert, et c'est délibéré : cette API sert des données **publiques**,
@@ -108,6 +115,43 @@ const pieceLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
  * défaire la seule promesse qui dispense d'un bandeau de consentement.
  */
 const audienceLimiter = createRateLimiter({ windowMs: 60_000, max: 120 });
+
+/**
+ * Frein de l'assistant — même nature que les deux autres (mémoire d'isolat),
+ * large pour la même raison que celui de l'audience : une médiathèque entière
+ * sort par une seule adresse. Il coupe une boucle, rien de plus. Les bornes qui
+ * COMPTENT sont ailleurs, et opposables : la preuve de travail pour ouvrir, le
+ * ticket signé (tours, durée), puis au Socle la cadence par conversation et le
+ * plafond de la collectivité.
+ */
+const assistantLimiter = createRateLimiter({ windowMs: 60_000, max: 60 });
+
+/**
+ * Messages de l'assistant adressés au visiteur — l'écran les traduit par CODE,
+ * ceci n'est que le repli en français. Aucun ne ferme une porte : le formulaire
+ * de chaque démarche reste le chemin garanti.
+ */
+const ASSISTANT_MESSAGES: Record<AssistantFailure, string> = {
+  assistant_closed: "L'assistant n'est pas proposé sur ce site.",
+  assistant_not_configured: "L'assistant est momentanément indisponible.",
+  assistant_unavailable: "L'assistant est momentanément indisponible. Merci de réessayer dans quelques instants.",
+  assistant_quota_exceeded: "L'assistant n'est plus disponible pour le moment. Les démarches restent accessibles.",
+  assistant_rate_limited: "L'assistant reçoit beaucoup de questions. Merci de patienter quelques secondes.",
+  challenge_required: "La conversation doit être rouverte.",
+  conversation_ended: "Cette conversation est arrivée à son terme. Vous pouvez en ouvrir une nouvelle.",
+  bad_request: "Ce message n'a pas pu être lu.",
+};
+
+function assistantFailure(reason: AssistantFailure, retryAfterSeconds?: number): Response {
+  // Le délai d'attente voyage DANS LE CORPS : un navigateur ne lit pas l'en-tête
+  // `Retry-After` d'une réponse venue d'une autre origine.
+  const error = {
+    code: reason,
+    message: ASSISTANT_MESSAGES[reason],
+    ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
+  };
+  return json(httpStatusForAssistantFailure(reason), { error }, { "Cache-Control": "no-store" });
+}
 
 /**
  * Le client d'écriture vers le Socle, construit par requête (motif
@@ -718,6 +762,80 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
     // Jamais de cache sur un accusé : il est propre à un dépôt.
     return json(201, { receipt: submission.receipt }, { "Cache-Control": "no-store" });
+  }
+
+  // ── POST /v1/assistant/defi et POST /v1/assistant — l'assistant conversationnel.
+  //
+  // Il renseigne l'usager et l'oriente vers une démarche, à partir de ce que le
+  // portail AFFICHE DÉJÀ et de rien d'autre. Il ne dépose rien : le guichet IA
+  // du Socle refuse les outils, et c'est très bien ainsi.
+  //
+  // ⚠️ TROIS PORTES AVANT LE MOINDRE JETON : la collectivité a ouvert
+  // l'assistant (interrupteur du Socle, réglé par son super administrateur) ;
+  // le visiteur a résolu un défi ou présente un ticket du serveur ; chaque
+  // réponse « assistant » du fil est signée. Tout cela vit dans `_shared/ai/`.
+  //
+  // ⚠️ RIEN N'EST JOURNALISÉ DU CONTENU — ni ici, ni au Socle (passe-plat). Ne
+  // pas ajouter de `console.*` qui cite un message : le fil d'un usager n'existe
+  // que dans son onglet.
+  if (request.method === "POST" && (path === "/v1/assistant/defi" || path === "/v1/assistant")) {
+    const secret = Deno.env.get("ASSISTANT_SIGNING_SECRET");
+    const aiUrl = Deno.env.get("SOCLE_AI_API_URL");
+    const aiKey = Deno.env.get("SOCLE_AI_API_KEY");
+    if (!secret || !aiUrl || !aiKey) {
+      console.error("portal-api : secrets de l'assistant manquants.");
+      return assistantFailure("assistant_not_configured");
+    }
+    if (!assistantLimiter.allow(await hashKey(clientAddress(request.headers)))) {
+      return assistantFailure("assistant_rate_limited", 60);
+    }
+
+    const resolved = await tenantOf(request, socle);
+    if (!resolved.ok) return resolved.response;
+    const tenant = resolved.tenant;
+    if (!tenant.assistant.enabled) return assistantFailure("assistant_closed");
+    const nowSeconds = () => Math.floor(Date.now() / 1000);
+
+    if (path === "/v1/assistant/defi") {
+      const challenge = await issueChallenge(
+        secret,
+        nowSeconds(),
+        clampBits(Deno.env.get("ASSISTANT_CHALLENGE_BITS")),
+      );
+      return json(200, { challenge }, { "Cache-Control": "no-store" });
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return assistantFailure("bad_request");
+    }
+    const lang = resolveLang(isRecord(body) && typeof body.lang === "string" ? body.lang : askedLang, tenant.languages);
+
+    const outcome = await runAssistantTurn(tenant, lang, body, {
+      secret,
+      ai: createSocleAiClient({ baseUrl: aiUrl, apiKey: aiKey }),
+      loadCatalogue: async () => {
+        const result = await getPublicDemarches(tenant.id, socle, lang);
+        return result.ok ? result.demarches : null;
+      },
+      loadDemarche: async (id) => {
+        const result = await getPublicDemarche(tenant.id, id, socle, lang);
+        return result.ok ? result.demarche : null;
+      },
+      nowSeconds,
+      newConversationId: () => crypto.randomUUID(),
+    });
+    if (!outcome.ok) {
+      if (outcome.reason === "assistant_not_configured") {
+        // Clé refusée, scope `ai` absent, collectivité non abonnée, agent ou
+        // fournisseur non configuré au Socle : un geste d'exploitation.
+        console.error("portal-api : le guichet IA du Socle refuse l'appel de l'assistant.");
+      }
+      return assistantFailure(outcome.reason, outcome.retryAfterSeconds);
+    }
+    return json(200, outcome.reply, { "Cache-Control": "no-store" });
   }
 
   // ── POST /v1/audience — une page vue, comptée sans cookie.

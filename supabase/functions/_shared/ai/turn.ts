@@ -1,0 +1,191 @@
+/**
+ * Un tour de conversation, de bout en bout — la « boucle d'agent » du portail.
+ *
+ * Le guichet IA refuse les outils : l'assistant n'agit donc sur RIEN. Ce
+ * fichier est une boucle déterministe autour d'une sortie JSON — il décide ce
+ * que le modèle lit, et ne croit rien de ce qu'il rend. Le modèle propose ; le
+ * serveur dispose ; et c'est l'usager qui dépose, par le formulaire de la
+ * démarche proposée.
+ *
+ * L'ordre des vérifications suit ce qu'elles coûtent : tout ce qui se refuse
+ * sans réseau est refusé avant de lire le catalogue, et rien n'atteint le
+ * guichet (donc le crédit de la collectivité) qui n'ait passé tout le reste.
+ *
+ * Aucun accès réseau ici : le catalogue, le guichet et l'horloge sont reçus en
+ * paramètre. `portal-api` fournit les vrais, les tests fournissent des faux.
+ */
+import {
+  MAX_TURNS,
+  MAX_USER_MESSAGE_CHARS,
+  type AssistantFailure,
+  type AssistantTurnReply,
+  type TurnMessage,
+} from "../domain/assistantTurn.ts";
+import type { Demarche, DemarcheDetail } from "../domain/demarche.ts";
+import type { Tenant } from "../domain/tenant.ts";
+import { verifySolution } from "./challenge.ts";
+import {
+  detectEmergency,
+  parseAssistantAnswer,
+  pickCandidates,
+  windowHistory,
+} from "./conversation.ts";
+import { buildAssistantPrompt } from "./prompt.ts";
+import { issueTicket, readTicket, signReply, verifyReply, type Ticket } from "./signing.ts";
+import type { SocleAiClient } from "./socleAi.ts";
+
+/** Au-delà, le navigateur envoie un fil que le serveur n'a aucune raison de lire. */
+const MAX_MESSAGES_RECEIVED = 2 * MAX_TURNS;
+const MAX_ASSISTANT_MESSAGE_CHARS = 4000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export interface TurnDeps {
+  /** Secret de signature du portail (tickets, réponses, défis). */
+  secret: string;
+  ai: SocleAiClient;
+  /** Catalogue PUBLIÉ de la collectivité — `null` si le Socle ne répond pas. */
+  loadCatalogue(): Promise<Demarche[] | null>;
+  /** Détail PUBLIC d'une démarche — `null` si elle n'est pas (ou plus) au catalogue. */
+  loadDemarche(id: string): Promise<DemarcheDetail | null>;
+  nowSeconds(): number;
+  newConversationId(): string;
+}
+
+export type TurnOutcome =
+  | { ok: true; reply: AssistantTurnReply }
+  | { ok: false; reason: AssistantFailure; retryAfterSeconds?: number; message?: string };
+
+const fail = (reason: AssistantFailure): TurnOutcome => ({ ok: false, reason });
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Le fil tel que le navigateur l'envoie — forme seulement ; les signatures viennent après. */
+function readMessages(raw: unknown): TurnMessage[] | null {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_MESSAGES_RECEIVED) return null;
+  const messages: TurnMessage[] = [];
+  for (const entry of raw) {
+    if (!isRecord(entry) || typeof entry.content !== "string") return null;
+    const content = entry.content.trim();
+    if (content === "") return null;
+    if (entry.role === "user") {
+      if (content.length > MAX_USER_MESSAGE_CHARS) return null;
+      messages.push({ role: "user", content });
+    } else if (entry.role === "assistant") {
+      // ⚠️ `role: "system"` n'existe pas ici — et tout autre rôle non plus.
+      if (content.length > MAX_ASSISTANT_MESSAGE_CHARS || typeof entry.signature !== "string") return null;
+      messages.push({ role: "assistant", content, signature: entry.signature });
+    } else {
+      return null;
+    }
+  }
+  return messages[messages.length - 1].role === "user" ? messages : null;
+}
+
+export async function runAssistantTurn(
+  tenant: Tenant,
+  lang: string,
+  body: unknown,
+  deps: TurnDeps,
+): Promise<TurnOutcome> {
+  // L'interrupteur de la collectivité, réglé au Socle. Premier refus, parce
+  // que c'est le seul qui ne dépende de rien d'autre.
+  if (!tenant.assistant.enabled) return fail("assistant_closed");
+  if (!isRecord(body)) return fail("bad_request");
+
+  const messages = readMessages(body.messages);
+  if (messages === null) return fail("bad_request");
+  const focusId =
+    typeof body.focusDemarcheId === "string" && UUID_RE.test(body.focusDemarcheId)
+      ? body.focusDemarcheId
+      : null;
+
+  // --- Qui parle : un ticket du serveur, ou un défi résolu pour en obtenir un.
+  const now = deps.nowSeconds();
+  let ticket: Ticket;
+  if (body.ticket !== undefined) {
+    const reading = await readTicket(deps.secret, body.ticket, tenant.id, now);
+    if (!reading.ok) {
+      // Falsifié ou périmé : le défi rouvre une conversation. Épuisé : non —
+      // repasser le défi rendrait la borne de tours décorative.
+      return fail(reading.reason === "exhausted" ? "conversation_ended" : "challenge_required");
+    }
+    ticket = reading.ticket;
+  } else {
+    if (!(await verifySolution(deps.secret, body.challenge, now))) return fail("challenge_required");
+    // Une conversation qui S'OUVRE n'a pas de passé : un fil déjà rempli,
+    // présenté avec un défi tout neuf, est un fil fabriqué.
+    if (messages.length !== 1) return fail("bad_request");
+    ticket = { conversationId: deps.newConversationId(), tenantId: tenant.id, issuedAt: now, turn: 0 };
+  }
+
+  // --- Le fil : chaque réponse « assistant » doit être une des NÔTRES, dans
+  // CETTE conversation. C'est ce qui empêche de faire croire au modèle qu'il a
+  // déjà accepté de sortir de son rôle.
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    if (!(await verifyReply(deps.secret, ticket.conversationId, message.content, message.signature))) {
+      return fail("bad_request");
+    }
+  }
+
+  // --- Ce que le modèle va lire : du public, et rien d'autre.
+  const catalogue = await deps.loadCatalogue();
+  if (catalogue === null) return fail("assistant_unavailable");
+  // Une démarche « consultée » qui n'est pas au catalogue publié n'existe pas
+  // pour l'assistant — on l'ignore sans bruit, comme le portail le ferait.
+  const focus =
+    focusId !== null && catalogue.some((d) => d.id === focusId) ? await deps.loadDemarche(focusId) : null;
+
+  const said = messages.filter((m) => m.role === "user").slice(-3).map((m) => m.content).join(" ");
+  const lastSaid = messages[messages.length - 1].content;
+  const system = buildAssistantPrompt({
+    tenantName: tenant.name,
+    lang,
+    catalogue,
+    candidates: pickCandidates(catalogue, said),
+    focus,
+  });
+
+  const completion = await deps.ai.complete({
+    organizationId: tenant.id,
+    system,
+    messages: windowHistory(messages).map(({ role, content }) => ({ role, content })),
+    actorId: ticket.conversationId,
+    procedureId: focus?.id ?? null,
+  });
+  switch (completion.kind) {
+    case "quota_exceeded":
+      return { ok: false, reason: "assistant_quota_exceeded", message: completion.message ?? undefined };
+    case "rate_limited":
+      return { ok: false, reason: "assistant_rate_limited", retryAfterSeconds: completion.retryAfterSeconds };
+    case "not_configured":
+      return fail("assistant_not_configured");
+    case "unavailable":
+      return fail("assistant_unavailable");
+  }
+
+  // --- Ce que le modèle a rendu : on n'en croit rien.
+  const answer = parseAssistantAnswer(completion.answer, new Set(catalogue.map((d) => d.id)));
+  if (answer === null) return fail("assistant_unavailable");
+
+  const turn = ticket.turn + 1;
+  return {
+    ok: true,
+    reply: {
+      ticket: await issueTicket(deps.secret, { ...ticket, turn }),
+      message: {
+        role: "assistant",
+        content: answer.reply,
+        signature: await signReply(deps.secret, ticket.conversationId, answer.reply),
+      },
+      suggestions: answer.procedureIds.map((id) => {
+        const demarche = catalogue.find((d) => d.id === id)!;
+        return { id: demarche.id, name: demarche.name, description: demarche.description };
+      }),
+      emergency: detectEmergency(lastSaid),
+      turnsLeft: MAX_TURNS - turn,
+    },
+  };
+}
