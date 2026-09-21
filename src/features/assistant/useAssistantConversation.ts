@@ -106,6 +106,12 @@ export function useAssistantConversation(
   // état d'où la restauration n'a pas encore été appliquée, et enverrait la
   // phrase du champ de recherche par-dessus un fil que l'usager reprenait.
   const initialMessageRef = useRef(initialMessage);
+  // ⚠️ `StrictMode` rejoue les effets de montage en développement. La
+  // restauration s'en moque — elle est idempotente. L'AMORÇAGE, lui, enverrait
+  // deux fois la phrase du champ de recherche : deux messages dans le fil, deux
+  // tours facturés au crédit de la collectivité. D'où ce verrou, qui survit au
+  // démontage simulé puisqu'il vit dans une `ref`.
+  const seededRef = useRef(false);
   useEffect(() => {
     const storage = tabStorage();
     const stored = storage === null ? null : loadConversation(storage);
@@ -113,6 +119,8 @@ export function useAssistantConversation(
       dispatch({ type: "restored", stored });
       return;
     }
+    if (seededRef.current) return;
+    seededRef.current = true;
     const first = initialMessageRef.current;
     if (first !== null && first.trim() !== "") sendMessage(first);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- au montage seulement
