@@ -106,25 +106,37 @@ export function useAssistantConversation(
   // état d'où la restauration n'a pas encore été appliquée, et enverrait la
   // phrase du champ de recherche par-dessus un fil que l'usager reprenait.
   const initialMessageRef = useRef(initialMessage);
-  // ⚠️ `StrictMode` rejoue les effets de montage en développement. La
-  // restauration s'en moque — elle est idempotente. L'AMORÇAGE, lui, enverrait
-  // deux fois la phrase du champ de recherche : deux messages dans le fil, deux
-  // tours facturés au crédit de la collectivité. D'où ce verrou, qui survit au
-  // démontage simulé puisqu'il vit dans une `ref`.
-  const seededRef = useRef(false);
+  const [restoreDone, setRestoreDone] = useState(false);
   useEffect(() => {
     const storage = tabStorage();
     const stored = storage === null ? null : loadConversation(storage);
-    if (stored !== null) {
-      dispatch({ type: "restored", stored });
-      return;
-    }
-    if (seededRef.current) return;
+    if (stored !== null) dispatch({ type: "restored", stored });
+    setRestoreDone(true);
+  }, []);
+
+  /**
+   * La phrase du champ de recherche part comme premier message — mais SEULEMENT
+   * une fois la restauration tranchée.
+   *
+   * ⚠️ **Elle s'AJOUTE à un fil restauré, elle ne l'écrase pas.** L'usager qui
+   * revient à l'accueil avec une conversation en cours et pose une nouvelle
+   * question doit la voir posée : l'envoyer au montage la perdrait (le fil
+   * restauré n'est pas encore dans l'état), et effacer le fil détruirait une
+   * conversation qu'il n'a pas demandé à quitter. Cet effet attend donc le rendu
+   * qui suit la restauration, où `sendMessage` voit l'historique complet.
+   *
+   * ⚠️ `seededRef` — et pas l'état — parce que `StrictMode` rejoue les effets de
+   * montage en développement : sans lui, deux messages dans le fil et deux tours
+   * facturés au crédit IA de la collectivité.
+   */
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (!restoreDone || seededRef.current) return;
     seededRef.current = true;
     const first = initialMessageRef.current;
     if (first !== null && first.trim() !== "") sendMessage(first);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- au montage seulement
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- une seule fois, après la restauration
+  }, [restoreDone]);
 
   // Range la conversation à chaque changement — tolérant, voir `conversation.ts`.
   useEffect(() => {
