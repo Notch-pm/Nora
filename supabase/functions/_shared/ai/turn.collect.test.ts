@@ -10,7 +10,9 @@ import { parseRequesterConfig } from "../domain/requesterConfig.ts";
 import type { Tenant } from "../domain/tenant.ts";
 import { defaultTheme } from "../domain/theme.ts";
 import { emptyUserCommunication } from "../domain/userCommunication.ts";
+import { MAX_TURNS, MAX_TURNS_COLLECT } from "../domain/assistantTurn.ts";
 import { issueChallenge, solveChallenge } from "./challenge.ts";
+import { readTicket } from "./signing.ts";
 import type { CompletionInput, CompletionResult } from "./socleAi.ts";
 import { runAssistantTurn, type TurnDeps } from "./turn.ts";
 
@@ -226,5 +228,28 @@ describe("le recueil dans la conversation", () => {
     const system = complete.mock.calls[0][0].system;
     expect(system).not.toContain("MODE RECUEIL");
     expect(system).not.toContain("field_updates");
+  });
+
+  it("⚠️ un recueil ouvert relève la borne de tours, et le ticket s'en souvient", async () => {
+    // Remplir en parlant coûte des tours : vingt ne suffisent pas, et la
+    // conversation ne doit pas se fermer au milieu du remplissage.
+    const { deps } = setup({});
+    const outcome = await runAssistantTurn(tenant(true), "fr", await body("Bonjour", opening), deps);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.reply.turnsLeft).toBe(MAX_TURNS_COLLECT - 1);
+
+    // Le drapeau vit dans le ticket SIGNÉ : c'est lui qui portera la borne
+    // haute au tour suivant, sans que le navigateur ait à la réclamer.
+    const read = await readTicket(SECRET, outcome.reply.ticket, NANTES, NOW);
+    expect(read.ok && read.ticket.collecting).toBe(true);
+  });
+
+  it("hors recueil, la borne reste celle de l'orientation", async () => {
+    const { deps } = setup({});
+    const outcome = await runAssistantTurn(tenant(true), "fr", await body("Bonjour", undefined), deps);
+    expect(outcome.ok && outcome.reply.turnsLeft).toBe(MAX_TURNS - 1);
+    const read = outcome.ok ? await readTicket(SECRET, outcome.reply.ticket, NANTES, NOW) : null;
+    expect(read?.ok && read.ticket.collecting).toBe(false);
   });
 });

@@ -151,4 +151,27 @@ export function httpStatusForAssistantFailure(failure: AssistantFailure): number
 
 /** Bornes d'un tour — partagées pour que l'écran refuse avant d'envoyer. */
 export const MAX_USER_MESSAGE_CHARS = 1000;
+
+/**
+ * Tours d'une conversation d'ORIENTATION : l'usager demande, l'assistant
+ * renseigne. Vingt échanges suffisent largement, et bornent la dépense.
+ */
 export const MAX_TURNS = 20;
+
+/**
+ * Tours d'une conversation où un RECUEIL a été ouvert.
+ *
+ * ⚠️ Remplir un formulaire en parlant coûte des tours : c'est le modèle qui
+ * pose les questions, et chacune en consomme un. Vingt ne suffisent pas — la
+ * conversation se terminerait au milieu du remplissage, ce qui est le pire
+ * moment. La borne ne monte QUE lorsque le serveur a lui-même constaté un
+ * recueil valide (voir le drapeau `collecting` du ticket) : l'orientation
+ * seule reste bornée à `MAX_TURNS`, et le navigateur ne peut pas réclamer la
+ * borne haute — elle vit dans le corps signé du ticket.
+ */
+export const MAX_TURNS_COLLECT = 40;
+
+/** La borne qui s'applique, selon qu'un recueil est ouvert ou non. */
+export function maxTurnsFor(collecting: boolean): number {
+  return collecting ? MAX_TURNS_COLLECT : MAX_TURNS;
+}

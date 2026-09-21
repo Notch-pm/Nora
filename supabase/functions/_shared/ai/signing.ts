@@ -12,10 +12,20 @@
  * le compteur est dans le ticket, que seul le serveur sait réécrire. Le frein
  * opposable, lui, est au Socle (cadence par conversation, plafond).
  */
-import { MAX_TURNS } from "../domain/assistantTurn.ts";
+import { maxTurnsFor } from "../domain/assistantTurn.ts";
 
-/** Durée de vie d'une conversation, en secondes. */
+/** Durée de vie d'une conversation d'orientation, en secondes. */
 export const TICKET_TTL_SECONDS = 30 * 60;
+
+/**
+ * Durée de vie d'une conversation où un recueil est ouvert.
+ *
+ * Remplir un formulaire en parlant prend plus de trente minutes dès qu'on
+ * s'interrompt — chercher une référence, retrouver une date. Une heure. Au
+ * delà, le ticket expire mais rien n'est perdu : l'état du recueil vit dans le
+ * navigateur, et un défi rouvre la conversation.
+ */
+export const TICKET_TTL_COLLECT_SECONDS = 60 * 60;
 
 const encoder = new TextEncoder();
 
@@ -81,6 +91,19 @@ export interface Ticket {
   issuedAt: number;
   /** Tours déjà consommés. */
   turn: number;
+  /**
+   * Un recueil a été ouvert au cours de cette conversation.
+   *
+   * ⚠️ **Posé par le SERVEUR seul**, et seulement après avoir constaté un
+   * recueil valide (démarche publiée, formulaire présent, dépôt ouvert par la
+   * collectivité). Il vit dans le corps SIGNÉ : un navigateur qui l'ajouterait
+   * casserait le HMAC, et son ticket serait refusé. C'est ce qui permet de
+   * relever la borne de tours sans que personne ne puisse la réclamer.
+   *
+   * ⚠️ Il ne redescend jamais. Un usager qui abandonne son recueil au tour 25
+   * ne doit pas voir sa conversation se fermer dans la seconde.
+   */
+  collecting: boolean;
 }
 
 export type TicketReading =
@@ -92,7 +115,14 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export async function issueTicket(secret: string, ticket: Ticket): Promise<string> {
   const body = toBase64Url(
     encoder.encode(
-      JSON.stringify({ c: ticket.conversationId, t: ticket.tenantId, i: ticket.issuedAt, n: ticket.turn }),
+      JSON.stringify({
+        c: ticket.conversationId,
+        t: ticket.tenantId,
+        i: ticket.issuedAt,
+        n: ticket.turn,
+        // Absent quand il est faux : un ticket d'orientation garde sa taille.
+        ...(ticket.collecting ? { r: 1 } : {}),
+      }),
     ),
   );
   return body + "." + (await sign(secret, "ticket", body));
@@ -122,18 +152,25 @@ export async function readTicket(
   } catch {
     return { ok: false, reason: "invalid" };
   }
-  const { c, t, i, n } = raw;
+  const { c, t, i, n, r } = raw;
   if (typeof c !== "string" || !UUID_RE.test(c)) return { ok: false, reason: "invalid" };
   if (typeof t !== "string" || t !== tenantId) return { ok: false, reason: "invalid" };
   if (typeof i !== "number" || typeof n !== "number" || !Number.isInteger(n) || n < 0) {
     return { ok: false, reason: "invalid" };
   }
+  // ⚠️ Le drapeau n'a que deux formes admises : absent, ou `1`. Tout autre
+  // contenu est un ticket qu'on ne sait pas lire — et la signature le rend de
+  // toute façon inatteignable depuis le navigateur.
+  if (r !== undefined && r !== 1) return { ok: false, reason: "invalid" };
+  const collecting = r === 1;
+
   // Une horloge en avance de quelques secondes ne ferme pas une conversation ;
   // un ticket daté de l'avenir, si.
   if (i > nowSeconds + 60) return { ok: false, reason: "invalid" };
-  if (nowSeconds - i > TICKET_TTL_SECONDS) return { ok: false, reason: "expired" };
-  if (n >= MAX_TURNS) return { ok: false, reason: "exhausted" };
-  return { ok: true, ticket: { conversationId: c, tenantId: t, issuedAt: i, turn: n } };
+  const ttl = collecting ? TICKET_TTL_COLLECT_SECONDS : TICKET_TTL_SECONDS;
+  if (nowSeconds - i > ttl) return { ok: false, reason: "expired" };
+  if (n >= maxTurnsFor(collecting)) return { ok: false, reason: "exhausted" };
+  return { ok: true, ticket: { conversationId: c, tenantId: t, issuedAt: i, turn: n, collecting } };
 }
 
 // --- Les réponses de l'assistant --------------------------------------------

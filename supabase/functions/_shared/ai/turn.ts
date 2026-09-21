@@ -15,8 +15,9 @@
  * paramètre. `portal-api` fournit les vrais, les tests fournissent des faux.
  */
 import {
-  MAX_TURNS,
+  MAX_TURNS_COLLECT,
   MAX_USER_MESSAGE_CHARS,
+  maxTurnsFor,
   type AssistantFailure,
   type AssistantTurnReply,
   type TurnMessage,
@@ -44,8 +45,11 @@ import { buildAssistantPrompt, type CollectableField } from "./prompt.ts";
 import { issueTicket, readTicket, signReply, verifyReply, type Ticket } from "./signing.ts";
 import type { SocleAiClient } from "./socleAi.ts";
 
-/** Au-delà, le navigateur envoie un fil que le serveur n'a aucune raison de lire. */
-const MAX_MESSAGES_RECEIVED = 2 * MAX_TURNS;
+/**
+ * Au-delà, le navigateur envoie un fil que le serveur n'a aucune raison de lire.
+ * Borné sur la plus haute des deux bornes : un recueil long a plus de messages.
+ */
+const MAX_MESSAGES_RECEIVED = 2 * MAX_TURNS_COLLECT;
 const MAX_ASSISTANT_MESSAGE_CHARS = 4000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -94,14 +98,6 @@ function readMessages(raw: unknown): TurnMessage[] | null {
 }
 
 /**
- * La démarche que l'usager remplit dans la conversation — ou `null`.
- *
- * ⚠️ PREMIÈRE GARDE DU RECUEIL : l'interrupteur de la collectivité
- * (`depositEnabled`, réglé au Socle par son super administrateur). Fermé, un
- * `collection` envoyé par le navigateur est ignoré sans bruit : l'assistant
- * renseigne et oriente, il ne recueille rien.
- */
-/**
  * La réponse déjà donnée, telle que le modèle peut la relire.
  *
  * ⚠️ Une PIÈCE JOINTE ne rend rien : ni son nom, ni son identifiant de dépôt.
@@ -137,6 +133,14 @@ function collectableFields(schema: FormSchema, state: CollectionState): Collecta
   }));
 }
 
+/**
+ * La démarche que l'usager remplit dans la conversation — ou `null`.
+ *
+ * ⚠️ PREMIÈRE GARDE DU RECUEIL : l'interrupteur de la collectivité
+ * (`depositEnabled`, réglé au Socle par son super administrateur). Fermé, un
+ * `collection` envoyé par le navigateur est ignoré sans bruit : l'assistant
+ * renseigne et oriente, il ne recueille rien.
+ */
 function collectionDemarcheId(tenant: Tenant, raw: unknown): string | null {
   if (!tenant.assistant.depositEnabled || !isRecord(raw)) return null;
   return typeof raw.demarcheId === "string" && UUID_RE.test(raw.demarcheId) ? raw.demarcheId : null;
@@ -176,7 +180,13 @@ export async function runAssistantTurn(
     // Une conversation qui S'OUVRE n'a pas de passé : un fil déjà rempli,
     // présenté avec un défi tout neuf, est un fil fabriqué.
     if (messages.length !== 1) return fail("bad_request");
-    ticket = { conversationId: deps.newConversationId(), tenantId: tenant.id, issuedAt: now, turn: 0 };
+    ticket = {
+      conversationId: deps.newConversationId(),
+      tenantId: tenant.id,
+      issuedAt: now,
+      turn: 0,
+      collecting: false,
+    };
   }
 
   // --- Le fil : chaque réponse « assistant » doit être une des NÔTRES, dans
@@ -256,10 +266,15 @@ export async function runAssistantTurn(
   }
 
   const turn = ticket.turn + 1;
+  // ⚠️ Le drapeau s'inscrit sur ce que le SERVEUR a constaté : `collection`
+  // n'est non nul qu'après la démarche publiée, le formulaire présent et le
+  // dépôt ouvert par la collectivité. Et il ne redescend jamais — un recueil
+  // abandonné au tour 25 ne doit pas fermer la conversation dans la seconde.
+  const collecting = ticket.collecting || collection !== null;
   return {
     ok: true,
     reply: {
-      ticket: await issueTicket(deps.secret, { ...ticket, turn }),
+      ticket: await issueTicket(deps.secret, { ...ticket, turn, collecting }),
       message: {
         role: "assistant",
         content: answer.reply,
@@ -270,7 +285,7 @@ export async function runAssistantTurn(
         return { id: demarche.id, name: demarche.name, description: demarche.description };
       }),
       emergency: detectEmergency(lastSaid),
-      turnsLeft: MAX_TURNS - turn,
+      turnsLeft: maxTurnsFor(collecting) - turn,
       collection,
     },
   };
