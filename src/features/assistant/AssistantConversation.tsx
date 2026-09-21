@@ -16,7 +16,6 @@
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
-import { viewOf } from "@fn/_shared/ai/collection.ts";
 import { MAX_USER_MESSAGE_CHARS } from "@fn/_shared/domain/assistantTurn.ts";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import { errorMessageFor } from "@/features/portal/errorMessages.ts";
@@ -25,15 +24,8 @@ import { useT, useTn } from "@/i18n/LanguageLayout.tsx";
 import { localizedPath } from "@/i18n/localizedPath.ts";
 import { AssistantNoticeLine } from "./AssistantNotice.tsx";
 import { BUTTON_CLASS, CARD_CLASS, LINK_CLASS } from "./cardStyles.ts";
-import {
-  ClassicFormLink,
-  IdentityCard,
-  OrganizationCard,
-  PendingFieldCard,
-  ReceiptNoteView,
-  RecapCard,
-  StartedNoteView,
-} from "./CollectCards.tsx";
+import { ClassicFormLink, ReceiptNoteView, RecapCard, StartedNoteView } from "./CollectCards.tsx";
+import { CoPilotPanel } from "./CoPilotPanel.tsx";
 import { mergeTimeline } from "./collect.ts";
 import { assistantErrorMessage } from "./errorMessages.ts";
 import type { AssistantMessageView } from "./conversation.ts";
@@ -177,18 +169,18 @@ export function AssistantConversation({
   const hintId = useId();
   const counterId = useId();
   const problemId = useId();
-  // Le premier contrôle de la carte active reçoit le focus À SON APPARITION
-  // (RGAA 10.7) — jamais la zone de saisie. La « signature » ne change QUE
-  // quand la carte affichée change réellement (nouveau champ, nouvelle étape) :
-  // répondre deux fois de suite au MÊME champ « conversation » (le modèle n'a
-  // rien retenu) ne doit pas arracher le focus du clavier.
+  // Le premier contrôle du panneau reçoit le focus À SON APPARITION (RGAA 10.7)
+  // — jamais la zone de saisie.
+  //
+  // ⚠️ LA SIGNATURE NE PORTE PLUS LE CHAMP EN ATTENTE, et c'est essentiel depuis
+  // que le formulaire est permanent : il « répond » dès la première lettre tapée
+  // dedans, donc le champ en attente change à chaque frappe. Le garder ici
+  // ramènerait le focus en haut du panneau au milieu d'une saisie. Seul un
+  // changement d'ÉTAPE — le recueil s'ouvre, la relecture arrive — justifie de
+  // déplacer le focus.
   const cardRef = useRef<HTMLDivElement>(null);
-  const activePendingFieldId =
-    collect.session !== null && collect.step === "fields"
-      ? (viewOf(collect.session.demarche.form, collect.session.collection).pending?.id ?? null)
-      : null;
   const cardSignature =
-    collect.session === null ? "" : collect.session.demarche.id + ":" + collect.step + ":" + (activePendingFieldId ?? "");
+    collect.session === null ? "" : collect.session.demarche.id + ":" + collect.step;
   useEffect(() => {
     if (cardSignature === "") return;
     const focusable = cardRef.current?.querySelector<HTMLElement>(
@@ -234,8 +226,8 @@ export function AssistantConversation({
   const timeline = mergeTimeline(state.messages, collect.notes);
   const collectBusy = collect.loading || collect.session !== null;
 
-  return (
-    <div className="flex flex-col gap-4">
+  const conversationColumn = (
+    <div className="flex min-w-0 flex-col gap-4">
       {state.emergency && <EmergencyCard />}
 
       {state.reopened && (
@@ -304,46 +296,16 @@ export function AssistantConversation({
         </p>
       )}
 
+      {/* ⚠️ LE RAPPEL QUI REND LES DEUX COLONNES LISIBLES. Sans lui, un usager
+          qui voit un formulaire à droite et une question à gauche ne sait pas
+          où il est censé répondre — et la réponse est « où vous voulez ». */}
       {collect.session !== null && (
-        <div ref={cardRef} className="flex flex-col gap-3">
-          {collect.step === "fields" && (
-            <PendingFieldCard session={collect.session} onAnswer={collect.answerField} onSkip={collect.skipField} />
-          )}
-          {collect.step === "organization" && (
-            <OrganizationCard
-              session={collect.session}
-              onChoose={collect.chooseOrganization}
-              onConfirm={() => {
-                if (collect.session === null || collect.session.organizationId === null) return false;
-                collect.confirmOrganization();
-                return true;
-              }}
-            />
-          )}
-          {collect.step === "identity" && (
-            <IdentityCard
-              session={collect.session}
-              requesterErrors={collect.requesterErrors}
-              onAudienceChange={collect.setAudience}
-              onFieldChange={collect.setRequesterValue}
-              onConfirm={collect.confirmIdentity}
-            />
-          )}
-          {collect.step === "recap" && (
-            <RecapCard
-              session={collect.session}
-              submitting={collect.submitting}
-              submitFailureMessage={
-                collect.submitFailure !== null ? errorMessageFor(collect.submitFailure, lang) : null
-              }
-              onModifyField={collect.reopenField}
-              onModifyOrganization={collect.reopenOrganization}
-              onModifyIdentity={collect.reopenIdentity}
-              onSubmit={() => void collect.submit(state.messages.length)}
-            />
-          )}
-          <ClassicFormLink session={collect.session} />
-        </div>
+        <p
+          className="rounded-[var(--pt-radius-sm)] p-3 text-[length:var(--pt-small)] text-[color:var(--pt-muted)]"
+          style={{ background: "var(--pt-surface)" }}
+        >
+          {t("assistant.copilot.doubleEntry")}
+        </p>
       )}
 
       {/* ⚠️ Pas quand `status === "ended"` : la carte juste en dessous porte
@@ -482,6 +444,46 @@ export function AssistantConversation({
           )}
         </div>
       )}
+    </div>
+  );
+
+  // Hors recueil, l'assistant oriente : une seule colonne, en flux de page.
+  if (collect.session === null) return conversationColumn;
+
+  /**
+   * LE CO-PILOTE — la conversation mène, le formulaire suit.
+   *
+   * ⚠️ Deux colonnes seulement à partir de `lg`. En dessous, elles s'empilent :
+   * la conversation d'abord, le formulaire ensuite. Le tiroir ancré au-dessus du
+   * clavier que décrit la maquette mobile n'est PAS là — c'est un lot à part, et
+   * un empilement honnête vaut mieux qu'un demi-tiroir.
+   *
+   * ⚠️ La largeur est celle des pages du portail, pas les 1440 px de la maquette :
+   * la conversation prend 420 px et le formulaire le reste.
+   */
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] lg:items-start">
+      {conversationColumn}
+      <div ref={cardRef} className="flex min-w-0 flex-col gap-3">
+        {collect.step === "recap" ? (
+          // ⚠️ L'ÉCRAN DE RELECTURE N'AFFICHE AUCUN BADGE (second garde-fou) : à
+          // ce stade tout est de la responsabilité de l'usager, et la
+          // distinction repris/déduit n'a plus de sens.
+          <RecapCard
+            session={collect.session}
+            submitting={collect.submitting}
+            submitFailureMessage={
+              collect.submitFailure !== null ? errorMessageFor(collect.submitFailure, lang) : null
+            }
+            onModifyField={collect.reopenField}
+            onModifyOrganization={collect.reopenOrganization}
+            onModifyIdentity={collect.reopenIdentity}
+            onSubmit={() => void collect.submit(state.messages.length)}
+          />
+        ) : (
+          <CoPilotPanel session={collect.session} collect={collect} />
+        )}
+      </div>
     </div>
   );
 }

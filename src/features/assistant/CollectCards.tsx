@@ -33,7 +33,25 @@ function tabStorage(): PrefillStorage | null {
 }
 
 /** Le repli permanent : à afficher pendant TOUT le recueil (fiche de mission). */
-export function ClassicFormLink({ session }: { session: CollectSession }) {
+export function ClassicFormLink({
+  session,
+  label = null,
+  className = "text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline",
+}: {
+  session: CollectSession;
+  /**
+   * Un autre libellé quand le contexte le demande — « Continuer sans
+   * l'assistant » dans le pied du co-pilote, où c'est un geste offert et non un
+   * repli après incident.
+   *
+   * ⚠️ Le COMPORTEMENT ne change pas, et c'est lui qui compte : le formulaire
+   * classique s'ouvre en pleine largeur, DÉJÀ REMPLI (`writePrefill`), sans que
+   * l'usager perde une seule réponse. C'est ce qui fait que l'assistant n'est
+   * jamais un passage forcé.
+   */
+  label?: string | null;
+  className?: string;
+}) {
   const { lang } = useLanguage();
   const t = useT();
   return (
@@ -43,9 +61,9 @@ export function ClassicFormLink({ session }: { session: CollectSession }) {
         const storage = tabStorage();
         if (storage !== null) writePrefill(storage, session.demarche.id, buildPrefill(session));
       }}
-      className="text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline"
+      className={className}
     >
-      {t("assistant.collect.classicFormLink")}
+      {label ?? t("assistant.collect.classicFormLink")}
     </Link>
   );
 }

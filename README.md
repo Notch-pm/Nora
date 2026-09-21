@@ -951,10 +951,73 @@ Depuis le 2026-09-20, une collectivité peut proposer un **assistant** sur son
 site : l'usager décrit son besoin (« comment signaler un dépôt sauvage ? »),
 l'assistant le renseigne et lui propose la bonne démarche, en carte. Si la
 collectivité l'a ouvert (`tenant.assistant.depositEnabled`), l'usager peut
-**remplir la démarche dans la conversation**, relire un récapitulatif, et
-envoyer **lui-même** : sa référence s'affiche dans le fil. **L'assistant ne
-dépose jamais** — le dépôt est un geste de l'usager, par le chemin de toujours
+**remplir la démarche avec lui**, relire un récapitulatif, et envoyer
+**lui-même** : sa référence s'affiche dans le fil. **L'assistant ne dépose
+jamais** — le dépôt est un geste de l'usager, par le chemin de toujours
 (`POST /v1/demandes`).
+
+### Où il naît, et où il se déroule
+
+Refondu le 2026-09-21. L'assistant avait un bouton à lui en haut de l'accueil et
+une page à lui : deux ruptures pour une fonctionnalité dont l'intérêt est d'être
+le **repli naturel** quand la recherche par mots-clés ne suffit pas.
+
+- **Il naît du champ de recherche**, au moment de l'hésitation, et sa place y est
+  **calculée** (`promotion.ts`, pure et testée) : une ligne discrète pour qui tape
+  un mot-clé que l'index trouve, un bloc en tête et l'action par défaut d'Entrée
+  pour qui raconte sa situation. Zéro correspondance promeut toujours — il n'y a
+  alors rien d'autre à montrer. ⚠️ **Aucun appel réseau avant activation
+  explicite** : la règle ne lit que l'index déjà en mémoire.
+  - ⚠️ Piège du français, épinglé par un test : sans accents, « à » et le verbe
+    « a » sont le même mot. `demande à la mairie` deviendrait une phrase, et
+    l'assistant se promouvrait devant quelqu'un qui savait ce qu'il cherchait.
+  - ⚠️ `AssistantEntryLink` ne survit que sur un accueil **sans section
+    « recherche »** : il n'y a alors aucun champ d'où naître, et un assistant
+    injoignable ne sert personne.
+- **La bascule ne change pas d'adresse.** La conversation prend la place du
+  catalogue, sur la même surface : rien n'entre dans l'historique du navigateur
+  avant l'ouverture d'une démarche, donc « page précédente » ne casse aucune
+  conversation en cours. Les filtres survivent — revenir retrouve l'accueil
+  intact. `/assistant` reste pour un lien partagé, un favori, et `?demarche=`.
+- **La mention IA est UNE LIGNE sous le champ de saisie**, là où l'usager
+  s'apprête réellement à écrire, et non un pavé de cinq puces en tête de page
+  qu'on lit une fois et jamais plus. Le détail est dans un dépliant natif.
+
+### Le co-pilote — la conversation mène, le formulaire suit
+
+Dès qu'un recueil s'ouvre, l'écran passe en **deux colonnes** : la conversation à
+gauche, **le formulaire officiel entier à droite**, qui se remplit en direct.
+
+⚠️ **C'EST LE FORMULAIRE, SANS RÉDUCTION** — mêmes champs, mêmes règles de
+visibilité et de validation, même dépôt. L'assistant n'ajoute que trois choses :
+les badges d'origine, le halo sur la question du moment, et le lien de sortie.
+
+Le recueil se faisait en **cartes insérées dans le fil**, une question à la fois.
+La carte disparaissait au message suivant : l'usager ne voyait jamais ce qu'il
+était en train de construire. Le formulaire, lui, est un objet permanent — on
+peut abandonner la conversation et finir à la main **sans rien perdre**
+(`ClassicFormLink` + `writePrefill`, le « Continuer sans l'assistant » du pied).
+
+- ⚠️ **DEUX CHEMINS POUR CHAQUE CHAMP**, et c'est le point : répondre dans la
+  conversation (le texte part au modèle) ou saisir **directement dans le
+  formulaire** (`answerField`, aucun appel au guichet IA). Le second est toujours
+  offert — ce panneau **réduit** donc la part de ce qui transite, il ne l'augmente
+  pas.
+- ⚠️ **L'écran de relecture n'affiche aucun badge** (second garde-fou) : à ce
+  stade tout est de la responsabilité de l'usager, et la distinction
+  repris/déduit n'a plus de sens.
+- ⚠️ **Chaque écriture de l'assistant est ANNONCÉE** (`assistantWrites`, région
+  `aria-live` masquée visuellement). Un formulaire qui se remplit tout seul est
+  une modification que personne n'a demandée à l'endroit où l'on regarde : sans
+  annonce, l'usager non-voyant la subit sans la connaître. C'est la seule part du
+  co-pilote qui n'a pas d'équivalent visuel — le badge, lui, se voit.
+- ⚠️ **Le focus ne suit PAS le champ en attente.** Le formulaire « répond » dès la
+  première lettre tapée dedans, donc le champ en attente change à chaque frappe :
+  caler le focus dessus le ramènerait en haut du panneau au milieu d'une saisie.
+  Seul un changement d'**étape** déplace le focus.
+- ⚠️ **Deux colonnes à partir de `lg` seulement** ; en dessous elles s'empilent.
+  Le tiroir mobile ancré au-dessus du clavier n'est pas fait — un empilement
+  honnête vaut mieux qu'un demi-tiroir.
 
 **Le recueil** (`_shared/ai/collection.ts`, pur, même code côté serveur et côté
 écran) partage les rôles :
@@ -1068,10 +1131,19 @@ la porte n'existe pas et le portail dépose comme avant.
   les démarches, qui restent le chemin garanti.
 
 Code : `supabase/functions/_shared/ai/` (`turn`, `prompt`, `conversation`,
-`socleAi`, `signing`, `challenge` — tous purs, testés sans Deno),
+`collection`, `socleAi`, `signing`, `challenge` — tous purs, testés sans Deno),
 `_shared/domain/{assistant,assistantTurn}.ts` (le contrat, partagé avec l'écran),
 routes `POST /v1/assistant/defi` et `POST /v1/assistant` de `portal-api`,
-`src/features/assistant/`. Secrets : voir `.env.example`.
+`src/features/assistant/` — dont `promotion.ts` (la règle d'apparition, pure),
+`AssistantConversation.tsx` (le fil, monté par l'accueil ET par `/assistant`),
+`CoPilotPanel.tsx` (la colonne droite) et `FieldOrigin.tsx` (les badges).
+Secrets : voir `.env.example`.
+
+⚠️ **Les cartes de champ, d'organisme et d'identité de `CollectCards.tsx`
+(`PendingFieldCard`, `OrganizationCard`, `IdentityCard`) ne sont plus montées
+nulle part** depuis que le formulaire est permanent. Elles sont gardées pour le
+tiroir mobile, où une question à la fois retrouvera du sens ; si ce lot est
+abandonné, elles sont à supprimer.
 
 ## Ce qui n'est pas encore fait
 

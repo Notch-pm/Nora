@@ -8,7 +8,7 @@
  * Rien de ce qui se décide n'est ici : ce qui est visible, obligatoire, valide
  * ou déposé vient de `formulaire.ts`. Ce fichier ne fait qu'afficher.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { AttachmentField, Field, FieldOption } from "@fn/_shared/domain/formSchema.ts";
 import { useT, useTn } from "@/i18n/LanguageLayout.tsx";
 import type { StringKey } from "@/i18n/strings.ts";
@@ -193,6 +193,8 @@ export function FormFieldControl({
   required,
   error,
   demarcheId = null,
+  badge = null,
+  note = null,
 }: {
   field: Field;
   value: unknown;
@@ -201,10 +203,27 @@ export function FormFieldControl({
   error: string | null;
   /** La démarche remplie — nécessaire au dépôt d'une pièce (revérifiée serveur). */
   demarcheId?: string | null;
+  /**
+   * D'où vient la valeur — « d'après votre message », « déduit, à confirmer ».
+   * Posé DANS le libellé, donc lu avec lui : un badge qui ne reposerait que sur
+   * sa couleur ne dirait rien à qui ne la voit pas (RGAA 3.1).
+   * ⚠️ Rendu par l'assistant SEUL : le formulaire classique n'en pose jamais.
+   */
+  badge?: ReactNode;
+  /**
+   * La citation source ou la justification de la déduction, sous le contrôle.
+   * Rattachée au champ par `aria-describedby` : sans cela, l'usager non-voyant
+   * entend une valeur sans savoir qu'elle a été déduite.
+   */
+  note?: ReactNode;
 }) {
   const t = useT();
   const inputId = "champ-" + field.id;
-  const describedBy = [field.help ? inputId + "-aide" : null, error ? inputId + "-erreur" : null]
+  const describedBy = [
+    field.help ? inputId + "-aide" : null,
+    note !== null ? inputId + "-origine" : null,
+    error ? inputId + "-erreur" : null,
+  ]
     .filter((id) => id !== null)
     .join(" ");
   // ⚠️ `undefined`, pas `""` : un `aria-describedby` vide reste un attribut
@@ -380,6 +399,7 @@ export function FormFieldControl({
           </span>
         )}
         {required && <span className="sr-only">{t("form.required")}</span>}
+        {badge}
       </Label>
       {field.help && (
         <p id={inputId + "-aide"} className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
@@ -387,6 +407,11 @@ export function FormFieldControl({
         </p>
       )}
       {control}
+      {note !== null && (
+        <div id={inputId + "-origine"} className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
+          {note}
+        </div>
+      )}
       {error !== null && (
         <p id={inputId + "-erreur"} className="text-[length:var(--pt-body)] text-red-600">
           {error}

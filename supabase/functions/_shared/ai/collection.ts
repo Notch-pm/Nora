@@ -140,7 +140,8 @@ function resolveOption(field: Field, text: string): string | null {
 const MAX_TEXT_CHARS = 5000;
 const MAX_UPDATES = 20;
 
-function isAnswered(field: Field, values: FormValues): boolean {
+/** Ce champ porte-t-il une réponse ? Exporté : la progression du co-pilote s'en sert. */
+export function isAnswered(field: Field, values: FormValues): boolean {
   if (field.type === "attachment") return piecesOf(values[field.id]).length > 0;
   return !isBlank(values[field.id]);
 }

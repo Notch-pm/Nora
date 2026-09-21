@@ -4,6 +4,7 @@ import { parseRequesterConfig } from "@fn/_shared/domain/requesterConfig.ts";
 import {
   answerField,
   applyServerCollection,
+  assistantWrites,
   chooseOrganization,
   type CollectDemarche,
   clearCollect,
@@ -17,6 +18,7 @@ import {
   needsIdentity,
   needsOrganizationChoice,
   parseStoredCollect,
+  progressOf,
   receiptNote,
   reopenField,
   reopenIdentity,
@@ -280,6 +282,89 @@ describe("collectionPayload — jamais l'identité ni l'organisme", () => {
       // qu'un seul tour.
       touched: ["f-lieu"],
     });
+  });
+});
+
+describe("progressOf — ce que dit la barre du co-pilote", () => {
+  it("compte les champs visibles, et ceux qui portent une réponse", () => {
+    let session = startSession(demarche());
+    expect(progressOf(session)).toEqual({ done: 0, total: 3, remainingRequired: 2 });
+
+    session = answerField(session, "f-lieu", "12 rue de la Paix");
+    expect(progressOf(session)).toEqual({ done: 1, total: 3, remainingRequired: 1 });
+
+    session = answerField(session, "f-nature", "gravats");
+    expect(progressOf(session)).toEqual({ done: 2, total: 3, remainingRequired: 0 });
+  });
+
+  it("⚠️ un champ PASSÉ n'est pas un champ rempli", () => {
+    // « Précisions — facultatif », que l'usager choisit de ne pas donner : il
+    // ne fait pas monter le compteur, il cesse seulement d'être demandé. Une
+    // barre qui avancerait en sautant des questions mentirait sur le travail
+    // accompli.
+    let session = startSession(demarche());
+    session = skipField(session, "f-precisions");
+    expect(progressOf(session)).toEqual({ done: 0, total: 3, remainingRequired: 2 });
+  });
+
+  it("⚠️ un champ MASQUÉ ne compte pas — il n'est pas du formulaire de cet usager", () => {
+    const conditionnel: FormSchema = {
+      version: 1,
+      content: [
+        ...PROPRETE_FORM.content,
+        {
+          id: "f-autre",
+          key: "autre",
+          type: "text",
+          label: "Laquelle ?",
+          required: true,
+          visibleIf: { combinator: "and", rules: [{ fieldId: "f-nature", operator: "equals", value: "autre" }] },
+        },
+      ],
+    };
+    let session = startSession(demarche({ form: conditionnel }));
+    expect(progressOf(session).total).toBe(3);
+
+    session = answerField(session, "f-nature", "autre");
+    expect(progressOf(session)).toEqual({ done: 1, total: 4, remainingRequired: 2 });
+  });
+});
+
+describe("assistantWrites — ce qu'on annonce à voix haute", () => {
+  /** Une session où l'assistant a écrit, comme le ferait un tour de conversation. */
+  function written(): ReturnType<typeof startSession> {
+    const session = startSession(demarche());
+    return {
+      ...session,
+      collection: {
+        ...session.collection,
+        values: { "f-lieu": "12 rue de la Paix", "f-nature": "gravats" },
+        origins: {
+          "f-lieu": { origin: "extracted", source: "au 12 rue de la Paix" },
+          "f-nature": { origin: "inferred", reason: "vous parlez de gravats" },
+        },
+      },
+    };
+  }
+
+  it("⚠️ annonce le LIBELLÉ d'une option, jamais son code machine", () => {
+    // « gravats » est une valeur du Socle ; « Gravats » est ce que l'usager lit.
+    expect(assistantWrites(written())).toEqual([
+      { id: "f-lieu", label: "Lieu du dépôt", value: "12 rue de la Paix" },
+      { id: "f-nature", label: "Nature", value: "Gravats" },
+    ]);
+  });
+
+  it("⚠️ n'annonce PAS ce que l'usager a saisi lui-même", () => {
+    // Il vient de le taper : le lui relire serait du bruit, et le mot
+    // « renseigné par l'assistant » serait faux.
+    const session = answerField(startSession(demarche()), "f-lieu", "12 rue de la Paix");
+    expect(assistantWrites(session)).toEqual([]);
+  });
+
+  it("se tait sur un champ corrigé à la main après coup", () => {
+    const corrected = answerField(written(), "f-lieu", "14 rue de la Paix");
+    expect(assistantWrites(corrected).map((entry) => entry.id)).toEqual(["f-nature"]);
   });
 });
 

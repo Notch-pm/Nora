@@ -39,6 +39,7 @@ import {
   confirmIdentity,
   confirmOrganization,
   loadCollect,
+  needsOrganizationChoice,
   newSubmissionId,
   receiptNote,
   reopenField as reopenFieldPure,
@@ -86,6 +87,12 @@ export interface UseAssistantCollect {
   requesterErrors: FieldErrors;
   /** Valide et avance si l'identité est correcte ; rend `false` sinon (`requesterErrors` porte le détail). */
   confirmIdentity: () => boolean;
+  /**
+   * Confirme l'organisme ET l'identité d'un seul geste — le « Relire et
+   * envoyer » du co-pilote, où les deux sont saisis dans le formulaire. Rend ce
+   * qui bloque, pour que l'écran sache où amener le regard.
+   */
+  confirmAll: () => "ok" | "organization" | "identity";
   reopenIdentity: () => void;
   reopenField: (fieldId: string) => void;
   /** Nombre de réponses retirées en cascade par le dernier « Modifier » — `null` sinon. */
@@ -238,6 +245,30 @@ export function useAssistantCollect(params: {
     return true;
   }
 
+  /**
+   * « Relire et envoyer » du co-pilote : l'organisme et l'identité sont saisis
+   * DANS le formulaire, à droite, pas dans deux cartes successives — un seul
+   * geste les confirme donc tous les deux.
+   *
+   * ⚠️ **Une seule écriture d'état, composée.** Appeler `confirmOrganization()`
+   * puis `confirmIdentity()` à la suite ne marcherait pas : les deux partent de
+   * la `session` du rendu courant, et la seconde écraserait le résultat de la
+   * première. Ici les deux fonctions pures s'enchaînent sur la même valeur.
+   */
+  function confirmAllAction(): "ok" | "organization" | "identity" {
+    if (session === null) return "identity";
+    if (needsOrganizationChoice(session.demarche) && session.organizationId === null) {
+      return "organization";
+    }
+    const fields =
+      session.audience === null ? [] : requesterFieldsFor(session.demarche.requester, session.audience);
+    const errors = validateRequester(fields, session.requesterValues);
+    setRequesterErrors(errors);
+    if (Object.keys(errors).length > 0) return "identity";
+    setSession(confirmIdentity(confirmOrganization(session)));
+    return "ok";
+  }
+
   function reopenIdentityAction(): void {
     if (session === null) return;
     setSession(reopenIdentity(session));
@@ -316,6 +347,7 @@ export function useAssistantCollect(params: {
     setRequesterValue: setRequesterValueAction,
     requesterErrors,
     confirmIdentity: confirmIdentityAction,
+    confirmAll: confirmAllAction,
     reopenIdentity: reopenIdentityAction,
     reopenField: reopenFieldAction,
     purgedCount,

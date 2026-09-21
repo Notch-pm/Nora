@@ -14,13 +14,26 @@
  * dans aucun message du fil. Seul `collectionPayload()` construit ce qui part
  * en tour de conversation, et il ne lit que `session.collection`.
  */
-import { answerField as answerCollectionField, sanitizeState, skipField as skipCollectionField, viewOf } from "@fn/_shared/ai/collection.ts";
+import {
+  answerField as answerCollectionField,
+  isAnswered,
+  pendingFields,
+  sanitizeState,
+  skipField as skipCollectionField,
+  viewOf,
+} from "@fn/_shared/ai/collection.ts";
 import type { CollectionState } from "@fn/_shared/ai/collection.ts";
 import type { CollectionPayload } from "@fn/_shared/domain/assistantTurn.ts";
 import type { AttachmentRef, DemandeReceipt, DemandeSubmission } from "@fn/_shared/domain/demande.ts";
 import type { DemarcheOrganization } from "@fn/_shared/domain/demarche.ts";
 import { parseFormSchema, type FormSchema } from "@fn/_shared/domain/formSchema.ts";
-import { toAttachments, toFormData, toRequester } from "@fn/_shared/domain/formulaire.ts";
+import {
+  isFieldRequired,
+  toAttachments,
+  toFormData,
+  toRequester,
+  visibleFields,
+} from "@fn/_shared/domain/formulaire.ts";
 import {
   AUDIENCES,
   CONTACT_TYPES,
@@ -188,6 +201,76 @@ export function reopenField(
     (id) => id !== fieldId && !(id in next.values),
   ).length;
   return { session: { ...session, collection: next }, purgedCount };
+}
+
+/**
+ * Où en est le remplissage — ce que le co-pilote affiche en barre de
+ * progression et en pied de formulaire.
+ *
+ * ⚠️ **Un champ PASSÉ n'est pas un champ rempli.** « Photo — facultatif », que
+ * l'usager choisit de ne pas fournir, ne doit pas faire monter le compteur : la
+ * barre dirait le travail accompli, pas le travail restant. Il ne compte donc ni
+ * dans `done`, ni dans `remainingRequired` — il n'est simplement plus demandé.
+ */
+export interface CollectProgress {
+  /** Champs visibles portant une réponse. */
+  done: number;
+  /** Champs visibles, tout compris. */
+  total: number;
+  /** Champs OBLIGATOIRES encore à renseigner — ce qui bloque l'envoi. */
+  remainingRequired: number;
+}
+
+export function progressOf(session: CollectSession): CollectProgress {
+  const { form } = session.demarche;
+  const { values } = session.collection;
+  const visible = visibleFields(form, values);
+  return {
+    done: visible.filter((field) => isAnswered(field, values)).length,
+    total: visible.length,
+    remainingRequired: pendingFields(form, session.collection).filter((field) =>
+      isFieldRequired(field, values),
+    ).length,
+  };
+}
+
+/** Un champ que l'assistant a renseigné, tel qu'on l'ANNONCE. */
+export interface WrittenField {
+  id: string;
+  label: string;
+  /** La valeur telle qu'elle se LIT — le libellé d'une option, pas son code machine. */
+  value: string;
+}
+
+/**
+ * Ce que l'assistant a écrit dans le formulaire, à voix haute.
+ *
+ * ⚠️ **EXIGENCE RGAA PROPRE À CETTE FONCTIONNALITÉ.** Un formulaire qui se
+ * remplit tout seul pendant qu'on parle est une modification de contenu que
+ * personne n'a demandée à l'endroit où on regarde : sans annonce, l'usager
+ * non-voyant la subit sans la connaître. C'est la seule partie du co-pilote qui
+ * n'a pas d'équivalent visuel — le badge, lui, se voit.
+ *
+ * ⚠️ On annonce le LIBELLÉ de l'option, jamais sa valeur : « gravats » est un
+ * code du Socle, « Gravats » est ce que l'usager lit à l'écran.
+ */
+export function assistantWrites(session: CollectSession): WrittenField[] {
+  const { form } = session.demarche;
+  const { values, origins, touched } = session.collection;
+  const written: WrittenField[] = [];
+  for (const field of visibleFields(form, values)) {
+    if (!(field.id in origins) || touched.includes(field.id)) continue;
+    const value = values[field.id];
+    const text =
+      "options" in field
+        ? (field.options.find((option) => option.value === value)?.label ?? null)
+        : typeof value === "string"
+          ? value
+          : null;
+    if (text === null || text === "") continue;
+    written.push({ id: field.id, label: field.label, value: text });
+  }
+  return written;
 }
 
 /** L'organisme retenu : le choix de l'usager, ou le seul possible. */
