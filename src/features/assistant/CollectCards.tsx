@@ -147,31 +147,64 @@ export function PendingFieldCard({
       <p role="status" aria-live="polite" className="mt-1 text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
         {tn("assistant.collect.remaining", view.remaining)}
       </p>
-      <div className="mt-3">
-        <FormFieldControl
-          field={field}
-          value={draft}
-          onChange={setDraft}
-          required={required}
-          error={errorText(lang, error)}
-          demarcheId={session.demarche.id}
-        />
-      </div>
-      {conversationMode && (
-        <p className="mt-2 text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
-          {t("assistant.collect.answerInChat")}
-        </p>
+      <p className="mt-2 text-[length:var(--pt-body)] font-semibold text-[color:var(--pt-ink)]">
+        {field.label}
+      </p>
+
+      {/* ⚠️ Depuis que TOUT se dit, le contrôle n'est plus la question : c'est
+          un REPLI, pour qui préfère choisir une date ou cocher une option
+          plutôt que de la décrire. Déplié d'office, il redeviendrait le geste
+          principal — et l'on retrouverait l'alternance conversation/carte que
+          cette refonte supprime. Une pièce jointe, elle, n'a pas d'autre
+          chemin : son contrôle reste ouvert. */}
+      {conversationMode ? (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)]">
+            {t("assistant.collect.answerInForm")}
+          </summary>
+          <div className="mt-3">
+            <FormFieldControl
+              field={field}
+              value={draft}
+              onChange={setDraft}
+              required={required}
+              error={errorText(lang, error)}
+              demarcheId={session.demarche.id}
+            />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <button type="button" onClick={validate} className={BUTTON_CLASS}>
+              {t("assistant.collect.validate")}
+            </button>
+          </div>
+        </details>
+      ) : (
+        <>
+          <div className="mt-3">
+            <FormFieldControl
+              field={field}
+              value={draft}
+              onChange={setDraft}
+              required={required}
+              error={errorText(lang, error)}
+              demarcheId={session.demarche.id}
+            />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <button type="button" onClick={validate} className={BUTTON_CLASS}>
+              {t("assistant.collect.validate")}
+            </button>
+          </div>
+        </>
       )}
-      <div className="mt-3 flex flex-wrap gap-3">
-        <button type="button" onClick={validate} className={BUTTON_CLASS}>
-          {t("assistant.collect.validate")}
-        </button>
-        {!required && (
+
+      {!required && (
+        <div className="mt-3">
           <button type="button" onClick={() => onSkip(field!.id)} className={SECONDARY_BUTTON_CLASS}>
             {t("assistant.collect.skip")}
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -246,12 +279,15 @@ export function IdentityCard({
   onAudienceChange,
   onFieldChange,
   onConfirm,
+  dense = false,
 }: {
   session: CollectSession;
   requesterErrors: FieldErrors;
   onAudienceChange: (audience: Audience) => void;
   onFieldChange: (key: string, value: string) => void;
   onConfirm: () => boolean;
+  /** Une seule colonne de champs — le panneau de la bulle est étroit. */
+  dense?: boolean;
 }) {
   const t = useT();
   const audiences = enabledAudiences(session.demarche.requester);
@@ -269,6 +305,7 @@ export function IdentityCard({
             audiences={audiences}
             audience={currentAudience}
             onAudienceChange={onAudienceChange}
+            dense={dense}
             fields={fields}
             values={session.requesterValues}
             onChange={onFieldChange}

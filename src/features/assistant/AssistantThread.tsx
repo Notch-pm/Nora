@@ -36,8 +36,17 @@ import { assistantErrorMessage } from "./errorMessages.ts";
 import { useAssistantCollect } from "./useAssistantCollect.ts";
 import { useAssistantConversation } from "./useAssistantConversation.ts";
 
-/** La mention permanente : obligation de transparence, jamais reléguée au premier message. */
-export function AssistantNotice() {
+/**
+ * La mention permanente : obligation de transparence, jamais reléguée au
+ * premier message.
+ *
+ * ⚠️ Dans le panneau, elle est REPLIÉE — sa ligne d'amorce reste visible, les
+ * cinq points s'ouvrent d'un geste. Dépliée, elle occupait tout le panneau et
+ * poussait la conversation hors de vue : une mention qu'il faut faire défiler
+ * pour atteindre ce qu'elle annonce n'informe personne. Sur la page, où la
+ * place ne manque pas, elle reste ouverte.
+ */
+export function AssistantNotice({ variant }: { variant: "panel" | "page" }) {
   const t = useT();
   const items: Array<"automated" | "sources" | "noPersonalData" | "notStored" | "provider"> = [
     "automated",
@@ -47,13 +56,14 @@ export function AssistantNotice() {
     "provider",
   ];
   return (
-    <div
+    <details
+      open={variant === "page"}
       className="rounded-[var(--pt-radius)] border border-[color:var(--pt-border)] p-4"
       style={{ background: "var(--pt-surface)" }}
     >
-      <p className="text-[length:var(--pt-body)] font-semibold text-[color:var(--pt-ink)]">
+      <summary className="cursor-pointer text-[length:var(--pt-body)] font-semibold text-[color:var(--pt-ink)]">
         {t("assistant.notice.lead")}
-      </p>
+      </summary>
       <ul className="mt-2 flex flex-col gap-1 text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
         {items.map((key) => (
           <li key={key} className="flex gap-2">
@@ -62,7 +72,7 @@ export function AssistantNotice() {
           </li>
         ))}
       </ul>
-    </div>
+    </details>
   );
 }
 
@@ -211,13 +221,20 @@ export function AssistantThread({
   // ne change QUE quand la carte affichée change réellement (nouveau champ,
   // nouvelle étape) : répondre deux fois de suite au MÊME champ « conversation »
   // (le modèle n'a rien retenu) ne doit pas arracher le focus du clavier.
+  //
+  // ⚠️ Sauf quand la question se répond EN ÉCRIVANT. Depuis que tout se dit,
+  // c'est le cas courant : arracher le focus vers un contrôle replié
+  // éloignerait l'usager de la zone où on attend justement sa réponse.
   const cardRef = useRef<HTMLDivElement>(null);
-  const activePendingFieldId =
+  const fieldView =
     collect.session !== null && collect.step === "fields"
-      ? (viewOf(collect.session.demarche.form, collect.session.collection).pending?.id ?? null)
+      ? viewOf(collect.session.demarche.form, collect.session.collection)
       : null;
+  const answeredInChat = fieldView !== null && fieldView.mode === "conversation";
   const cardSignature =
-    collect.session === null ? "" : collect.session.demarche.id + ":" + collect.step + ":" + (activePendingFieldId ?? "");
+    collect.session === null || answeredInChat
+      ? ""
+      : collect.session.demarche.id + ":" + collect.step + ":" + (fieldView?.pending?.id ?? "");
   useEffect(() => {
     if (cardSignature === "") return;
     const focusable = cardRef.current?.querySelector<HTMLElement>(
@@ -277,7 +294,7 @@ export function AssistantThread({
 
   return (
     <div className="flex flex-col gap-4">
-        <AssistantNotice />
+        <AssistantNotice variant={variant} />
 
         {state.emergency && <EmergencyCard />}
 
@@ -366,6 +383,7 @@ export function AssistantThread({
             {collect.step === "identity" && (
               <IdentityCard
                 session={collect.session}
+                dense={variant === "panel"}
                 requesterErrors={collect.requesterErrors}
                 onAudienceChange={collect.setAudience}
                 onFieldChange={collect.setRequesterValue}

@@ -2431,6 +2431,21 @@ export const STRINGS = {
     uk: "Дайте відповідь у повідомленні нижче або заповніть це поле прямо тут:",
     zh: "请在下方消息中回复，或直接在此填写：",
   },
+  // Le repli sous la question : depuis que tout se dit, le contrôle du
+  // formulaire n'est plus le geste principal, mais reste offert.
+  "assistant.collect.answerInForm": {
+    fr: "Répondre avec le formulaire",
+    en: "Answer using the form",
+    es: "Responder con el formulario",
+    de: "Mit dem Formular antworten",
+    it: "Rispondere con il modulo",
+    pt: "Responder com o formulário",
+    ar: "الإجابة عبر النموذج",
+    tr: "Formla yanıtlayın",
+    ru: "Ответить через форму",
+    uk: "Відповісти через форму",
+    zh: "使用表单填写",
+  },
   "assistant.collect.fieldCardHeading": {
     fr: "Question de la démarche",
     en: "Question from the service",

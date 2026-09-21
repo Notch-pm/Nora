@@ -129,6 +129,7 @@ export function RequesterSection({
   values,
   onChange,
   errors,
+  dense = false,
 }: {
   /** Les publics ouverts par la collectivité. Au moins un, sinon rien n'est rendu. */
   audiences: Audience[];
@@ -138,6 +139,8 @@ export function RequesterSection({
   values: Record<string, string>;
   onChange: (key: string, value: string) => void;
   errors: FieldErrors;
+  /** Une seule colonne de champs — pour un conteneur étroit (le panneau de la bulle). */
+  dense?: boolean;
 }) {
   const { lang } = useLanguage();
   const t = useT();
@@ -204,7 +207,10 @@ export function RequesterSection({
           // demande rien de plus. Le dire vaut mieux qu'un cadre vide.
           <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("requester.none")}</p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
+          // ⚠️ `sm:` se règle sur la largeur de la FENÊTRE, pas du conteneur :
+          // dans le panneau étroit de la bulle, sur un grand écran, deux
+          // colonnes se serreraient sans raison. `dense` les refuse.
+          <div className={dense ? "grid gap-4" : "grid gap-4 sm:grid-cols-2"}>
             {fields.map((field) => (
               <RequesterInput
                 key={field.key}
