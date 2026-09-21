@@ -22,7 +22,9 @@ import {
   type TurnMessage,
 } from "../domain/assistantTurn.ts";
 import type { Demarche, DemarcheDetail } from "../domain/demarche.ts";
-import { isFieldRequired } from "../domain/formulaire.ts";
+import type { FormValues } from "../domain/conditions.ts";
+import { type ChoiceField, type Field, type FormSchema, isChoiceType } from "../domain/formSchema.ts";
+import { isBlank, isFieldRequired, visibleFields } from "../domain/formulaire.ts";
 import type { Tenant } from "../domain/tenant.ts";
 import { verifySolution } from "./challenge.ts";
 import {
@@ -38,7 +40,7 @@ import {
   pickCandidates,
   windowHistory,
 } from "./conversation.ts";
-import { buildAssistantPrompt } from "./prompt.ts";
+import { buildAssistantPrompt, type CollectableField } from "./prompt.ts";
 import { issueTicket, readTicket, signReply, verifyReply, type Ticket } from "./signing.ts";
 import type { SocleAiClient } from "./socleAi.ts";
 
@@ -99,6 +101,42 @@ function readMessages(raw: unknown): TurnMessage[] | null {
  * `collection` envoyé par le navigateur est ignoré sans bruit : l'assistant
  * renseigne et oriente, il ne recueille rien.
  */
+/**
+ * La réponse déjà donnée, telle que le modèle peut la relire.
+ *
+ * ⚠️ Une PIÈCE JOINTE ne rend rien : ni son nom, ni son identifiant de dépôt.
+ * Un fichier ne se décrit pas à un modèle de langage — c'est la seule ligne
+ * qui l'empêche, maintenant que les autres réponses lui sont montrées.
+ */
+function writtenValue(field: Field, values: FormValues): string | null {
+  if (field.type === "attachment") return null;
+  const value = values[field.id];
+  if (isBlank(value)) return null;
+  if (typeof value === "boolean") return value ? "oui" : "non";
+  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string").join(", ");
+  return typeof value === "string" ? value : String(value);
+}
+
+/**
+ * Le formulaire tel que le modèle le lit : tout ce qui est visible, dans
+ * l'ordre, avec ce qui a déjà été répondu — de quoi accuser réception et ne
+ * pas redemander deux fois la même chose.
+ */
+function collectableFields(schema: FormSchema, state: CollectionState): CollectableField[] {
+  const pending = new Set(pendingFields(schema, state).map((field) => field.id));
+  return visibleFields(schema, state.values).map((field) => ({
+    id: field.id,
+    label: field.label,
+    help: field.help ?? null,
+    required: isFieldRequired(field, state.values),
+    written: isConversationField(field),
+    options: isChoiceType(field.type) ? (field as ChoiceField).options : null,
+    value: writtenValue(field, state.values),
+    pending: pending.has(field.id),
+    skipped: state.skipped.includes(field.id),
+  }));
+}
+
 function collectionDemarcheId(tenant: Tenant, raw: unknown): string | null {
   if (!tenant.assistant.depositEnabled || !isRecord(raw)) return null;
   return typeof raw.demarcheId === "string" && UUID_RE.test(raw.demarcheId) ? raw.demarcheId : null;
@@ -182,13 +220,7 @@ export async function runAssistantTurn(
     collecting:
       collection === null || focus?.form == null
         ? null
-        : pendingFields(focus.form, collection).map((field) => ({
-            id: field.id,
-            label: field.label,
-            help: field.help ?? null,
-            required: isFieldRequired(field, collection!.values),
-            written: isConversationField(field),
-          })),
+        : collectableFields(focus.form, collection),
   });
 
   const completion = await deps.ai.complete({

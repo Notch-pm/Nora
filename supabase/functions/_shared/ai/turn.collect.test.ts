@@ -51,6 +51,7 @@ const detail = (id: string): DemarcheDetail => ({
               options: [{ value: "gravats", label: "Gravats" }, { value: "autre", label: "Autre" }],
             },
             { id: "f-precisions", key: "precisions", type: "textarea", label: "Précisions" },
+            { id: "f-photo", key: "photo", type: "attachment", label: "Photo", maxFiles: 2, acceptedFormats: [] },
           ],
         },
   requester: parseRequesterConfig(null),
@@ -115,15 +116,48 @@ describe("le recueil dans la conversation", () => {
     expect(outcome.ok && outcome.reply.collection?.values).toEqual({});
   });
 
-  it("⚠️ les réponses déjà données ne sont PAS montrées au modèle — seulement ce qu'il reste à demander", async () => {
+  it("les réponses au formulaire sont MONTRÉES au modèle : il accuse réception sans reposer la question", async () => {
     const { deps, complete } = setup({});
-    const state = { demarcheId: PROPRETE, values: { "f-lieu": "SECRET-DE-L-USAGER, 12 rue de la Paix" }, skipped: [] };
+    const state = { demarcheId: PROPRETE, values: { "f-lieu": "12 rue de la Paix" }, skipped: [] };
     const outcome = await runAssistantTurn(tenant(true), "fr", await body("Et ensuite ?", state), deps);
     const system = complete.mock.calls[0][0].system;
-    expect(system).not.toContain("SECRET-DE-L-USAGER");
-    expect(system).not.toContain("id: f-lieu |");
+    expect(system).toContain(
+      "id: f-lieu | Lieu du dépôt (Adresse ou repère) | obligatoire | [écrit] | déjà renseigné : « 12 rue de la Paix »",
+    );
     // L'état, lui, revient intact.
     expect(outcome.ok && outcome.reply.collection?.values).toEqual(state.values);
+  });
+
+  it("⚠️ l'identité du demandeur n'a AUCUN chemin jusqu'au modèle, même glissée dans l'état", async () => {
+    const { deps, complete } = setup({});
+    const forged = {
+      demarcheId: PROPRETE,
+      values: { "f-lieu": "12 rue de la Paix" },
+      skipped: [],
+      requester: { nom: "SECRET-DE-L-USAGER", courriel: "secret@exemple.fr" },
+    };
+    const outcome = await runAssistantTurn(tenant(true), "fr", await body("Et ensuite ?", forged), deps);
+    expect(complete.mock.calls[0][0].system).not.toContain("SECRET-DE-L-USAGER");
+    // `sanitizeState` ne connaît que les champs du formulaire : le reste tombe.
+    expect(outcome.ok && outcome.reply.collection).toEqual({
+      demarcheId: PROPRETE,
+      values: { "f-lieu": "12 rue de la Paix" },
+      skipped: [],
+    });
+  });
+
+  it("⚠️ une pièce jointe ne transite JAMAIS par le modèle — ni son nom, ni son identifiant de dépôt", async () => {
+    const { deps, complete } = setup({});
+    const state = {
+      demarcheId: PROPRETE,
+      values: { "f-photo": [{ uploadId: "upload-SECRET", name: "photo-SECRET.jpg", size: 10 }] },
+      skipped: [],
+    };
+    await runAssistantTurn(tenant(true), "fr", await body("J'ai mis la photo.", state), deps);
+    const system = complete.mock.calls[0][0].system;
+    expect(system).not.toContain("SECRET");
+    // Elle est signalée déposée, et rien n'en est dit.
+    expect(system).toContain("id: f-photo | Photo | facultatif | [carte] | déjà renseigné");
   });
 
   it("⚠️ dépôt par la conversation FERMÉ par la collectivité : l'assistant renseigne, il ne recueille rien", async () => {
@@ -164,7 +198,11 @@ describe("le recueil dans la conversation", () => {
 
   it("quand il ne reste rien à recueillir, le modèle le sait", async () => {
     const { deps, complete } = setup({});
-    const done = { demarcheId: PROPRETE, values: { "f-lieu": "Ici", "f-nature": "gravats" }, skipped: ["f-precisions"] };
+    const done = {
+      demarcheId: PROPRETE,
+      values: { "f-lieu": "Ici", "f-nature": "gravats" },
+      skipped: ["f-precisions", "f-photo"],
+    };
     await runAssistantTurn(tenant(true), "fr", await body("C'est tout ?", done), deps);
     expect(complete.mock.calls[0][0].system).toContain("INFORMATIONS À RECUEILLIR : plus aucune");
   });

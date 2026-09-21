@@ -21,7 +21,7 @@
  * ici se recopie dans la console.
  */
 import type { Demarche, DemarcheDetail } from "../domain/demarche.ts";
-import { allFields } from "../domain/formSchema.ts";
+import { allFields, type FieldOption } from "../domain/formSchema.ts";
 import type { ResponseDelayUnit } from "../domain/userCommunication.ts";
 
 const FENCE = "<<<<DONNÉES>>>>";
@@ -81,14 +81,15 @@ const UNIT_LABELS: Record<ResponseDelayUnit, [string, string]> = {
  */
 const COLLECT_RULES = [
   "MODE RECUEIL — l'usager remplit la démarche consultée, dans cette conversation.",
-  "- La liste « INFORMATIONS À RECUEILLIR » donne, dans l'ordre, ce qu'il reste à renseigner. Pour chaque information marquée [écrit] que le DERNIER message de l'usager fournit, ajoute { \"id\", \"value\" } dans `field_updates`, avec ses mots à lui, sans rien inventer, compléter ni corriger. Un même message peut en fournir plusieurs : parcours la liste ENTIÈRE, y compris ce qui vient APRÈS une information [carte] — un usager qui décrit son problème en donnant l'adresse a répondu aux deux (une « description » demandée plus bas se remplit avec ce qu'il vient de raconter).",
-  "- Ne remplis JAMAIS une information marquée [carte] (choix, date, pièce jointe) : l'usager y répond avec la carte affichée sous ton message.",
-  "- Ne demande ni nom, ni adresse personnelle, ni téléphone, ni courriel du demandeur : une carte dédiée s'en charge à la fin. Les informations de la liste, elles, font partie du formulaire : tu peux les recevoir.",
+  "- La liste « LE FORMULAIRE, DANS L'ORDRE » donne tout le formulaire : ce qui reste à renseigner, ce qui est « déjà renseigné » et ce qui a été « passé par l'usager ». Pour chaque information marquée [écrit] que le DERNIER message de l'usager fournit, ajoute { \"id\", \"value\" } dans `field_updates`. Un même message peut en fournir plusieurs : parcours la liste ENTIÈRE — un usager qui décrit son problème en donnant l'adresse a répondu aux deux (une « description » demandée plus bas se remplit avec ce qu'il vient de raconter).",
+  "- La forme de `value` dépend de l'information : si des « valeurs : » sont listées, rends EXACTEMENT l'une d'elles, entre guillemets dans la liste, et aucune autre — plusieurs se rendent en tableau ; une date se rend en AAAA-MM-JJ, jamais autrement et jamais approximée (« jeudi », « demain » ne sont pas des dates : n'en rends aucune) ; un oui/non se rend `true` ou `false` ; tout le reste se rend avec les mots de l'usager, sans rien inventer, compléter ni corriger.",
+  "- Ne remplis JAMAIS une information marquée [carte] : c'est une pièce à joindre, l'usager la dépose avec la carte affichée sous ton message.",
+  "- Ne redemande pas une information « déjà renseigné » ou « passé », et ne la corrige pas de toi-même. Si l'usager veut revenir dessus, dis-lui qu'il pourra la modifier sur le récapitulatif, avant l'envoi.",
+  "- Ne demande ni nom, ni adresse personnelle, ni téléphone, ni courriel du demandeur : une carte dédiée s'en charge à la fin. Les informations de la liste, elles, font partie du formulaire : tu peux les recevoir, et les redire pour accuser réception.",
   "- Ne pose pas toi-même la question suivante : l'écran l'affiche. Réponds brièvement — accuse réception de ce que tu as compris, ou réponds à la question de l'usager à partir des données.",
-  "- Si l'usager veut corriger une réponse déjà donnée, dis-lui qu'il pourra la modifier sur le récapitulatif, avant l'envoi.",
 ].join("\n");
 
-/** Un champ à recueillir, tel que le modèle le voit : de quoi le reconnaître, rien de plus. */
+/** Un champ à recueillir, tel que le modèle le voit : de quoi le reconnaître et y répondre. */
 export interface CollectableField {
   id: string;
   label: string;
@@ -96,16 +97,43 @@ export interface CollectableField {
   required: boolean;
   /** `true` : on y répond en écrivant ; `false` : une carte s'en charge. */
   written: boolean;
+  /** Les valeurs que ce champ accepte — `null` s'il n'en impose aucune. */
+  options: FieldOption[] | null;
+  /**
+   * La réponse DÉJÀ donnée, rendue lisible — `null` si le champ attend encore.
+   * ⚠️ Jamais une pièce jointe : un fichier ne se décrit pas à un modèle, même
+   * par son nom. Une pièce déposée se signale donc SANS valeur.
+   */
+  value: string | null;
+  /** Reste-t-il à le renseigner ? Dit par le serveur, jamais déduit d'une valeur. */
+  pending: boolean;
+  /** L'usager a choisi de passer cette question facultative. */
+  skipped: boolean;
 }
 
 function collectBlock(fields: CollectableField[]): string {
   return fields
     .slice(0, 40)
-    .map(
-      (f) =>
-        `- id: ${f.id} | ${clip(f.label, 120)}${f.help ? ` (${clip(f.help, 160)})` : ""} | ` +
-        `${f.required ? "obligatoire" : "facultatif"} | ${f.written ? "[écrit]" : "[carte]"}`,
-    )
+    .map((f) => {
+      const parts = [
+        `- id: ${f.id} | ${clip(f.label, 120)}${f.help ? ` (${clip(f.help, 160)})` : ""}`,
+        f.required ? "obligatoire" : "facultatif",
+        f.written ? "[écrit]" : "[carte]",
+      ];
+      if (f.options !== null && f.options.length > 0) {
+        const listed = f.options
+          .slice(0, 30)
+          .map((option) => `« ${clip(option.value, 60)} » (${clip(option.label, 80)})`)
+          .join(", ");
+        parts.push(`valeurs : ${listed}`);
+      }
+      if (f.skipped) parts.push("passé par l'usager");
+      else if (!f.pending) {
+        // Une pièce déposée n'a pas de valeur à montrer : elle est là, c'est tout.
+        parts.push(f.value === null ? "déjà renseigné" : `déjà renseigné : « ${clip(f.value, 160)} »`);
+      }
+      return parts.join(" | ");
+    })
     .join("\n");
 }
 
@@ -114,13 +142,13 @@ function outputContract(lang: string, collecting: boolean): string {
   return [
     "FORMAT DE RÉPONSE — un objet json, et rien d'autre :",
     collecting
-      ? '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[], "field_updates": { "id": string, "value": string }[] }'
+      ? '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[], "field_updates": { "id": string, "value": string | string[] }[] }'
       : '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[] }',
     `- "reply" : ton message à l'usager, rédigé dans la langue de code « ${lang} » (les textes de la collectivité restent cités dans leur langue).`,
     '- "intent" : "suggest" si tu proposes une ou plusieurs démarches, "clarify" si tu poses une question pour choisir, "answer" si tu renseignes, "unknown" si l\'information n\'est pas dans les données, "off_topic" si la demande ne concerne pas les démarches de la collectivité.',
     '- "procedure_ids" : les identifiants (champ id) des démarches que tu proposes, pris dans le catalogue ci-dessous et nulle part ailleurs ; [] sinon.',
     ...(collecting
-      ? ['- "field_updates" : ce que le dernier message de l\'usager renseigne parmi les informations [écrit] à recueillir (champ id de la liste) ; [] sinon.']
+      ? ['- "field_updates" : ce que le dernier message de l\'usager renseigne parmi les informations [écrit] restant à recueillir (champ id de la liste), dans la forme que cette information impose ; [] sinon.']
       : []),
   ].join("\n");
 }
@@ -193,9 +221,12 @@ export interface AssistantPromptInput {
   /** La démarche dont on parle, en entier — `null` en phase d'orientation. */
   focus: DemarcheDetail | null;
   /**
-   * Ce qu'il reste à recueillir, quand l'usager remplit `focus` dans la
-   * conversation — absent hors recueil. ⚠️ Des LIBELLÉS de champs, jamais les
-   * réponses déjà données : le modèle n'a pas à relire ce que l'usager a saisi.
+   * Le formulaire que l'usager remplit dans la conversation — absent hors
+   * recueil. Il porte les réponses DÉJÀ données : c'est ce qui permet au modèle
+   * d'accuser réception et de ne pas redemander deux fois la même chose.
+   *
+   * ⚠️ Deux choses n'y entrent jamais : l'IDENTITÉ du demandeur (sa carte est
+   * ailleurs, et ne passe pas par ici) et le contenu d'une PIÈCE JOINTE.
    */
   collecting?: CollectableField[] | null;
 }
@@ -216,11 +247,10 @@ export function buildAssistantPrompt(input: AssistantPromptInput): string {
       input.candidates.map(candidateBlock).join("\n\n"),
     ),
     input.focus === null ? "" : fenced("DÉMARCHE CONSULTÉE PAR L'USAGER", focusBlock(input.focus)),
-    collecting === null
-      ? ""
-      : collecting.length === 0
-        ? "INFORMATIONS À RECUEILLIR : plus aucune. L'usager peut relire et envoyer sa demande avec le récapitulatif affiché."
-        : fenced("INFORMATIONS À RECUEILLIR (dans l'ordre)", collectBlock(collecting)),
+    collecting === null ? "" : fenced("LE FORMULAIRE, DANS L'ORDRE", collectBlock(collecting)),
+    collecting !== null && collecting.every((field) => !field.pending)
+      ? "INFORMATIONS À RECUEILLIR : plus aucune. L'usager peut relire et envoyer sa demande avec le récapitulatif affiché."
+      : "",
   ];
   if (input.catalogue.length === 0) {
     blocks.push("La collectivité ne propose aucune démarche en ligne pour le moment : dis-le.");
