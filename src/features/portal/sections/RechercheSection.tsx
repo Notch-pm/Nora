@@ -20,7 +20,9 @@
  */
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import type { RechercheSection as RechercheSectionData } from "@fn/_shared/domain/page.ts";
-import { resolveShortcuts } from "../composition.ts";
+import { AssistantSearchPrompt } from "@/features/assistant/AssistantSearchPrompt.tsx";
+import { assistantPriority } from "@/features/assistant/promotion.ts";
+import { filterDemarchesByQuery, resolveShortcuts } from "../composition.ts";
 import { imageBackdropStyle } from "../themeStyle.ts";
 import { useT } from "@/i18n/LanguageLayout.tsx";
 
@@ -47,17 +49,32 @@ export function RechercheSection({
   demarches,
   query,
   onQueryChange,
+  onStartAssistant,
 }: {
   section: RechercheSectionData;
   /** Catalogue complet (non filtré) : les raccourcis référencent l'ensemble des démarches publiées. */
   demarches: Demarche[];
   query: string;
   onQueryChange: (query: string) => void;
+  /**
+   * Bascule la page en conversation, avec la saisie en cours comme premier
+   * message. ⚠️ ABSENT = l'assistant est fermé (ou cette page n'en a pas) : le
+   * champ se comporte alors exactement comme avant, sans rien de neuf à
+   * l'écran. C'est ce qui rend ce lot inoffensif pour une collectivité qui
+   * n'a pas ouvert l'assistant.
+   */
+  onStartAssistant?: (query: string) => void;
 }) {
   const shortcuts = resolveShortcuts(section.shortcuts, demarches);
   const t = useT();
   const label =
     section.placeholder.trim() !== "" ? section.placeholder : t("search.placeholder");
+
+  // ⚠️ Calculé à chaque frappe, SANS AUCUN APPEL RÉSEAU (voir `promotion.ts`) :
+  // l'index est déjà en mémoire, c'est celui qui filtre la grille en dessous.
+  const priority =
+    onStartAssistant === undefined ? "none" : assistantPriority(query, filterDemarchesByQuery(demarches, query).length);
+  const armed = priority === "high";
 
   const backdrop = imageBackdropStyle(section.imageUrl, section.imageFixed);
   const hasImage = backdrop !== undefined;
@@ -94,24 +111,41 @@ export function RechercheSection({
             {section.subtitle}
           </p>
         )}
-        <div
-          className={
-            "flex h-12 w-full max-w-[520px] items-center gap-2.5 rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-field-border)] bg-white px-3.5 shadow-[var(--pt-shadow)] " +
-            // ⚠️ Le champ lui-même est en `focus:outline-none` (sa bordure est
-            // portée par CE conteneur) : l'anneau de focus doit donc
-            // apparaître ici (RGAA 10.7), pas sur l'`<input>`.
-            "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[color:var(--brand-primary)]"
-          }
-        >
-          <SearchIcon />
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder={section.placeholder}
-            aria-label={label}
-            className="w-full border-0 bg-transparent p-0 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] outline-none placeholder:text-[color:var(--pt-muted)] focus:outline-none focus:ring-0"
-          />
+        <div className="flex w-full max-w-[520px] flex-col gap-2">
+          <div
+            className={
+              "flex h-12 w-full items-center gap-2.5 rounded-[var(--pt-radius-sm)] border bg-white px-3.5 shadow-[var(--pt-shadow)] transition-colors " +
+              // ⚠️ Le champ « s'arme » quand Entrée déclenchera l'assistant : la
+              // bordure seule change de couleur, jamais d'épaisseur — un champ
+              // qui grossit d'un pixel fait sauter toute la ligne.
+              (armed ? "border-[color:var(--brand-primary)] " : "border-[color:var(--pt-field-border)] ") +
+              // ⚠️ Le champ lui-même est en `focus:outline-none` (sa bordure est
+              // portée par CE conteneur) : l'anneau de focus doit donc
+              // apparaître ici (RGAA 10.7), pas sur l'`<input>`.
+              "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[color:var(--brand-primary)]"
+            }
+          >
+            <SearchIcon />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              onKeyDown={(event) => {
+                // En priorité haute, Entrée ouvre l'assistant — c'est l'action
+                // par défaut. En priorité basse, elle ne fait rien de spécial :
+                // la grille en dessous est déjà filtrée, il n'y a rien à valider.
+                if (event.key !== "Enter" || !armed || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                onStartAssistant?.(query);
+              }}
+              placeholder={section.placeholder}
+              aria-label={label}
+              className="w-full border-0 bg-transparent p-0 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] outline-none placeholder:text-[color:var(--pt-muted)] focus:outline-none focus:ring-0"
+            />
+          </div>
+          {onStartAssistant !== undefined && (
+            <AssistantSearchPrompt priority={priority} onStart={() => onStartAssistant(query)} />
+          )}
         </div>
         {shortcuts.length > 0 && (
           <div className="flex flex-wrap justify-center gap-2">

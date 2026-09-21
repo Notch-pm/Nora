@@ -23,6 +23,7 @@ import type { Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import type { FooterSection as FooterSectionData, HomePage } from "@fn/_shared/domain/page.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
+import { AssistantConversation } from "@/features/assistant/AssistantConversation.tsx";
 import { AssistantEntryLink } from "@/features/assistant/AssistantEntryLink.tsx";
 import { headerLogoUrl, themeStyle } from "./themeStyle.ts";
 import { AccessibilityNotice, hasAccessibilityDeclaration } from "./AccessibilityNotice.tsx";
@@ -43,7 +44,8 @@ import { FooterSection } from "./sections/FooterSection.tsx";
 import { RechercheSection } from "./sections/RechercheSection.tsx";
 import { TexteImageSection } from "./sections/TexteImageSection.tsx";
 import { TexteSection } from "./sections/TexteSection.tsx";
-import { useLanguage } from "@/i18n/LanguageLayout.tsx";
+import { LINK_CLASS } from "@/features/assistant/cardStyles.ts";
+import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { homeTitle } from "@/i18n/pageTitle.ts";
 import { useDocumentTitle } from "@/i18n/useDocumentTitle.ts";
 
@@ -62,6 +64,7 @@ export function HomeComposition({
   branding: Branding | null;
 }) {
   const { lang } = useLanguage();
+  const t = useT();
   // RGAA 8.6 : le titre d'onglet identifie la page (ici, la collectivité)
   // puis le site — jamais figé sur « Démarches en ligne », et traduit.
   useDocumentTitle(homeTitle(lang, tenant.name));
@@ -69,6 +72,23 @@ export function HomeComposition({
   const [query, setQuery] = useState("");
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [audience, setAudience] = useState<Audience | null>(null);
+
+  /**
+   * La phrase qui a ouvert la conversation — `null` tant qu'on est sur le
+   * catalogue. C'est TOUT l'état de la bascule.
+   *
+   * ⚠️ **AUCUN CHANGEMENT D'ADRESSE**, et c'est délibéré : la conversation est
+   * la continuité de la recherche, pas une nouvelle destination. Rien n'est
+   * poussé dans l'historique du navigateur avant que l'usager n'ouvre une
+   * démarche — le bouton « page précédente » ne doit jamais casser une
+   * conversation en cours. Et le catalogue n'est pas détruit : `query`,
+   * `organizationId` et `audience` survivent, donc revenir le retrouve intact.
+   */
+  const [assistantSeed, setAssistantSeed] = useState<string | null>(null);
+  // ⚠️ `undefined` quand l'assistant est fermé : `RechercheSection` n'affiche
+  // alors RIEN de neuf, et le champ se comporte exactement comme avant. C'est
+  // ce qui rend ce lot inoffensif pour une collectivité qui n'en veut pas.
+  const startAssistant = tenant.assistant.enabled ? setAssistantSeed : undefined;
 
   const hasRecherche = page.sections.some((section) => section.kind === "recherche");
   const searchActive = hasRecherche && query.trim() !== "";
@@ -128,12 +148,14 @@ export function HomeComposition({
         // seule la balise change.
         nameAsHeading
       />
-      {/* ⚠️ HORS COMPOSITION, délibérément : ni une section (le schéma de page
-          n'en gagne pas une nouvelle sorte), ni dans l'en-tête partagé (qui
-          couvrirait aussi le formulaire et la déclaration d'accessibilité,
-          où ce lien n'a pas sa place — voir la fiche de mission). Rendu à
-          `null` par le composant lui-même tant que l'assistant est fermé. */}
-      {tenant.assistant.enabled && (
+      {/* ⚠️ LE DERNIER RECOURS, ET RIEN D'AUTRE. L'assistant naît normalement du
+          champ de recherche (`RechercheSection` → `AssistantSearchPrompt`), au
+          moment de l'hésitation : c'est la porte unique, et ce lien isolé en
+          haut de page est exactement ce que cette intégration supprime. Mais
+          une collectivité peut n'avoir composé AUCUNE section « recherche » —
+          il n'existe alors aucun champ d'où naître, et sans ce repli
+          l'assistant serait simplement injoignable. */}
+      {tenant.assistant.enabled && !hasRecherche && assistantSeed === null && (
         <div className="mx-auto w-full max-w-5xl px-6 pt-[var(--pt-pad)]">
           <AssistantEntryLink enabled />
         </div>
@@ -157,7 +179,27 @@ export function HomeComposition({
           paddingBottom: footerLast ? "var(--pt-gap)" : "var(--pt-pad)",
         }}
       >
-        {page.sections.map((section, index) => {
+        {/* ⚠️ LA CONVERSATION PREND LA PLACE DU CATALOGUE, sur la même surface
+            et à la même adresse. Les sections ne sont pas démontées « pour de
+            bon » : l'état des filtres vit ici, au-dessus, donc revenir les
+            retrouve tels quels. */}
+        {assistantSeed !== null ? (
+          <div className="mx-auto w-full max-w-5xl px-6">
+            <nav className="mb-6">
+              <button type="button" onClick={() => setAssistantSeed(null)} className={LINK_CLASS}>
+                {t("assistant.allDemarches")}
+              </button>
+            </nav>
+            <AssistantConversation
+              demarches={demarches}
+              lang={lang}
+              focusDemarcheId={null}
+              depositEnabled={tenant.assistant.depositEnabled}
+              initialMessage={assistantSeed}
+            />
+          </div>
+        ) : (
+          page.sections.map((section, index) => {
           if (section.kind === "footer") {
             // Extrait vers le pied de premier niveau, sous `main` : rendu
             // là-bas, pas ici.
@@ -181,6 +223,7 @@ export function HomeComposition({
                 demarches={demarches}
                 query={query}
                 onQueryChange={setQuery}
+                onStartAssistant={startAssistant}
               />
             );
           }
@@ -195,6 +238,7 @@ export function HomeComposition({
                         demarches={demarches}
                         query={query}
                         onQueryChange={setQuery}
+                        onStartAssistant={startAssistant}
                       />
                     );
                   case "demarches":
@@ -221,7 +265,8 @@ export function HomeComposition({
               })()}
             </div>
           );
-        })}
+          })
+        )}
       </main>
       {/* Le pied de page de premier niveau (`contentinfo`) : le pied composé
           quand il termine la page, puis la mention d'accessibilité — due sur

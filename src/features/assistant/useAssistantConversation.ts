@@ -75,6 +75,14 @@ export interface UseAssistantConversation {
 export function useAssistantConversation(
   focusDemarcheId: string | null,
   lang: string,
+  /**
+   * La phrase saisie dans le champ de recherche, qui devient le PREMIER message
+   * de la conversation — c'est la bascule de l'accueil (voir la règle de
+   * `promotion.ts`). ⚠️ Amorcé ICI, et pas par le composant : c'est le seul
+   * endroit où l'on sait que la restauration d'un onglet rechargé a déjà été
+   * tranchée. Un fil restauré ne se fait jamais écraser.
+   */
+  initialMessage: string | null = null,
 ): UseAssistantConversation {
   const [state, dispatch] = useReducer(reduceConversation, undefined, initialConversation);
   const [stillWaiting, setStillWaiting] = useState(false);
@@ -92,11 +100,22 @@ export function useAssistantConversation(
 
   // Relit une conversation interrompue par un rechargement — une fois, au
   // montage (tableau de dépendances vide, délibérément).
+  //
+  // ⚠️ L'AMORÇAGE EST DANS LE MÊME EFFET, et c'est ce qui le rend sûr : les
+  // deux gestes s'excluent, dans un ordre connu. Séparés, le second lirait un
+  // état d'où la restauration n'a pas encore été appliquée, et enverrait la
+  // phrase du champ de recherche par-dessus un fil que l'usager reprenait.
+  const initialMessageRef = useRef(initialMessage);
   useEffect(() => {
     const storage = tabStorage();
-    if (storage === null) return;
-    const stored = loadConversation(storage);
-    if (stored !== null) dispatch({ type: "restored", stored });
+    const stored = storage === null ? null : loadConversation(storage);
+    if (stored !== null) {
+      dispatch({ type: "restored", stored });
+      return;
+    }
+    const first = initialMessageRef.current;
+    if (first !== null && first.trim() !== "") sendMessage(first);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- au montage seulement
   }, []);
 
   // Range la conversation à chaque changement — tolérant, voir `conversation.ts`.
