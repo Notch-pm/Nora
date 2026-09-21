@@ -1041,6 +1041,19 @@ regarde ailleurs, une conversation non.
   guichet rend un `200` avec une chaîne tronquée, et c'est `JSON.parse` qui
   tombe plus loin, sous le visage d'une indisponibilité. Resté à 600 pendant que
   quatre champs rejoignaient le contrat, il vaut 1 100 ;
+- ⚠️ **ouvrir un recueil FAIT PARLER l'assistant.** Ouvrir est une action
+  locale, qui ne coûtait aucun appel : l'usager cliquait « Remplir cette
+  démarche ici » et l'assistant se taisait — une note, une liste de champs, et
+  à lui d'écrire le premier sans savoir quoi. `start()` rend désormais la
+  démarche ouverte, et l'écran enchaîne sur un tour dont le message dit ce que
+  le clic **veut dire**. Un appel de plus par ouverture, assumé : c'est le prix
+  d'un accueil et d'une première question, et sans eux il n'y a pas de
+  conversation du tout ;
+- **le modèle demande UNE chose à la fois, pas des libellés.** « À quelle
+  adresse ? » est une question ; « Numéro, BTQ, Voie, Complément d'adresse,
+  Code postal » est un formulaire lu à voix haute. `MAX_ASKING` vaut donc 6 et
+  non 3 — ce n'est pas un nombre de questions mais de **champs**, et une adresse
+  dite d'un trait en remplit cinq ;
 - **le modèle PROPOSE de remplir, il n'ouvre rien** (`offer_procedure_id`,
   revalidé au catalogue publié) : c'est un bouton sous sa bulle que l'usager
   presse. Un recueil qui démarrerait seul embarquerait dans un formulaire celui

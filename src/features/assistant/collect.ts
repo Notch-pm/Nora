@@ -109,31 +109,6 @@ export function stepOf(session: CollectSession): CollectStep {
   return "recap";
 }
 
-/**
- * Ce qui reste à renseigner, dit avec des NOMS plutôt qu'avec un nombre.
- *
- * « Encore 3 informations à préciser » n'apprend rien à personne : il faut
- * attendre la question suivante pour savoir de quoi il s'agit. Nommer les
- * champs restants ne coûte rien — les libellés sont déjà là (`remainingFields`)
- * — et rend son repère à qui ne voit pas l'écran comme à qui le voit.
- *
- * ⚠️ Borné à `max`. Une démarche à douze champs produirait une énumération plus
- * longue que la question du modèle : le repère deviendrait du bruit. Au-delà,
- * `truncated` le dit, et l'écran change de phrase plutôt que de couper au
- * milieu d'une liste.
- */
-export function remainingSummary(
-  fields: readonly { label: string }[],
-  max = 5,
-): { count: number; names: string; truncated: boolean } {
-  const labels = fields.map((field) => field.label.trim()).filter((label) => label !== "");
-  return {
-    count: fields.length,
-    names: labels.slice(0, max).join(", "),
-    truncated: labels.length > max,
-  };
-}
-
 export function answerField(session: CollectSession, fieldId: string, value: unknown): CollectSession {
   return { ...session, collection: answerCollectionField(session.demarche.form, session.collection, fieldId, value) };
 }

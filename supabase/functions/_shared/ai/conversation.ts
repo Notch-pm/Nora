@@ -131,8 +131,21 @@ export interface AssistantAnswer {
 
 const MAX_REPLY_CHARS = 2000;
 const MAX_SUGGESTIONS = 3;
-/** Une question qui porte sur plus de trois informations n'est plus une question. */
-const MAX_ASKING = 3;
+/**
+ * Combien d'informations UNE question peut porter.
+ *
+ * ⚠️ Ce n'est pas un nombre de questions, c'est un nombre de CHAMPS. « Quelle
+ * est votre adresse ? » est une seule question naturelle, et un formulaire la
+ * découpe volontiers en cinq (numéro, indice de répétition, voie, complément,
+ * code postal). Trois bornait la question vraie autant que la mauvaise : le
+ * modèle devait alors débiter les libellés du formulaire un par un, ce qui est
+ * exactement le ton qu'on cherche à quitter.
+ *
+ * Six laisse passer un bloc d'adresse entier sans laisser passer « pose-moi
+ * tout le formulaire d'un coup » — et de toute façon l'écran ne montre un
+ * contrôle que pour ce qui ne se dit pas.
+ */
+const MAX_ASKING = 6;
 
 /**
  * Retire tout lien d'une réponse. La consigne l'interdit déjà ; ceci le

@@ -65,6 +65,13 @@ function tabStorage(): CollectStorage | null {
 
 export type CollectLoadError = "no_form" | "failed";
 
+/** Ce qu'un recueil qui vient de s'ouvrir rend à son appelant — voir `start`. */
+export interface OpenedCollect {
+  name: string;
+  /** L'état à joindre au tour qui suit, sans attendre le prochain rendu. */
+  payload: CollectionPayload;
+}
+
 export interface UseAssistantCollect {
   session: CollectSession | null;
   /** `null` hors recueil. */
@@ -81,8 +88,18 @@ export interface UseAssistantCollect {
    * d'origine, qui n'est plus forcément à l'écran.
    */
   retryStart: (() => void) | null;
-  /** Ouvre un recueil pour cette démarche. `messagesLength` place la note dans le fil. */
-  start: (demarcheId: string, messagesLength: number) => void;
+  /**
+   * Ouvre un recueil pour cette démarche. `messagesLength` place la note dans
+   * le fil.
+   *
+   * ⚠️ Rend la démarche OUVERTE, ou `null` si rien ne s'est ouvert (échec de
+   * chargement, pas de formulaire, dépôt fermé, doublon de clic). C'est ce qui
+   * permet à l'appelant d'enchaîner sur un tour de conversation : sans cela,
+   * ouvrir un recueil laissait un SILENCE — la note « Vous remplissez… »
+   * s'affichait, et l'assistant ne disait rien tant que l'usager n'avait pas
+   * écrit le premier. On lui demandait de parler à quelqu'un qui se taisait.
+   */
+  start: (demarcheId: string, messagesLength: number) => Promise<OpenedCollect | null>;
   answerField: (fieldId: string, value: unknown) => void;
   skipField: (fieldId: string) => void;
   chooseOrganization: (organizationId: string) => void;
@@ -156,12 +173,12 @@ export function useAssistantCollect(params: {
     setSession((current) => applyServerCollection(current, collectionReply));
   }, [collectionReply]);
 
-  async function start(demarcheId: string, messagesLength: number): Promise<void> {
-    if (!depositEnabled) return;
+  async function start(demarcheId: string, messagesLength: number): Promise<OpenedCollect | null> {
+    if (!depositEnabled) return null;
     // ⚠️ Garde SYNCHRONE : `loading` est un état, et n'arrive qu'au rendu
     // suivant. Deux clics rapprochés sur « Oui, remplissons-la ici » lançaient
     // deux chargements, dont un pour rien. Même motif que `submit()`.
-    if (startingRef.current) return;
+    if (startingRef.current) return null;
     startingRef.current = true;
     lastStartRef.current = { demarcheId, messagesLength };
     setLoadError(null);
@@ -178,16 +195,16 @@ export function useAssistantCollect(params: {
       result = await fetchDemarche(demarcheId, lang);
     }
     startingRef.current = false;
-    if (loadGenerationRef.current !== generation) return; // Périmé.
+    if (loadGenerationRef.current !== generation) return null; // Périmé.
     setLoading(false);
     if (!result.ok) {
       setLoadError("failed");
-      return;
+      return null;
     }
     const detail = result.snapshot.demarche;
     if (detail.form === null) {
       setLoadError("no_form");
-      return;
+      return null;
     }
     const collectDemarche: CollectDemarche = {
       id: detail.id,
@@ -200,8 +217,13 @@ export function useAssistantCollect(params: {
     setRequesterErrors({});
     setPurgedCount(null);
     setSubmitFailure(null);
-    setSession(startSession(collectDemarche));
+    const opened = startSession(collectDemarche);
+    setSession(opened);
     setNotes((previous) => [...previous, startedNote(detail.name, messagesLength)]);
+    // ⚠️ L'état est rendu DIRECTEMENT, pas lu depuis `session` : celui-ci ne
+    // vaudra la nouvelle valeur qu'au rendu suivant, et l'appelant envoie son
+    // tour tout de suite. Même motif que le `prospective` de `sendMessage`.
+    return { name: detail.name, payload: collectionPayload(opened) };
   }
 
   function dismissLoadError(): void {

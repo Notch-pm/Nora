@@ -30,7 +30,7 @@ import {
   RecapCard,
   StartedNoteView,
 } from "./CollectCards.tsx";
-import { mergeTimeline, remainingSummary, type CollectStep } from "./collect.ts";
+import { mergeTimeline, type CollectStep } from "./collect.ts";
 import type { AssistantMessageView } from "./conversation.ts";
 import { assistantErrorMessage } from "./errorMessages.ts";
 import { useAssistantCollect } from "./useAssistantCollect.ts";
@@ -299,8 +299,27 @@ export function AssistantThread({
     submit();
   }
 
-  function startCollect(demarcheId: string): void {
-    void collect.start(demarcheId, state.messages.length);
+  /**
+   * Ouvre un recueil — ET fait parler l'assistant.
+   *
+   * ⚠️ Ouvrir ne coûtait aucun appel au modèle : c'est une action purement
+   * locale. Conséquence, l'usager cliquait « Remplir cette démarche ici » et
+   * l'assistant se TAISAIT : une note, une liste de champs, et à lui d'écrire
+   * le premier sans savoir quoi. On lui demandait de converser avec quelqu'un
+   * qui n'avait rien dit.
+   *
+   * Le tour qui suit coûte un appel par ouverture. C'est assumé : c'est le prix
+   * d'un accueil et d'une première question, et sans eux il n'y a pas de
+   * conversation du tout.
+   *
+   * Le message envoyé dit ce que le clic VEUT DIRE, dans les mots de l'usager.
+   * Ce n'est pas un faux tour glissé dans le fil : c'est sa demande, écrite
+   * pour lui parce qu'il l'a exprimée d'un bouton plutôt qu'au clavier.
+   */
+  async function startCollect(demarcheId: string): Promise<void> {
+    const opened = await collect.start(demarcheId, state.messages.length);
+    if (opened === null) return;
+    sendMessage(t("assistant.collect.openingSaid", { name: opened.name }), opened.payload);
   }
 
   function endConversation(): void {
@@ -330,7 +349,7 @@ export function AssistantThread({
   // serait déjà passé au récapitulatif.
   const remaining =
     collect.session !== null && collect.step === "fields" && fieldView !== null && fieldView.remaining > 0
-      ? remainingSummary(fieldView.remainingFields)
+      ? fieldView.remainingFields
       : null;
 
   return (
@@ -364,7 +383,7 @@ export function AssistantThread({
                   demarches={demarches}
                   depositEnabled={depositEnabled}
                   collectBusy={collectBusy}
-                  onStartCollect={startCollect}
+                  onStartCollect={(id) => void startCollect(id)}
                 />
               ) : entry.note.kind === "started" ? (
                 <StartedNoteView key={entry.note.id} note={entry.note} />
@@ -388,7 +407,7 @@ export function AssistantThread({
           <button
             type="button"
             disabled={collectBusy}
-            onClick={() => startCollect(collectOffer.id)}
+            onClick={() => void startCollect(collectOffer.id)}
             className={BUTTON_CLASS + " w-fit"}
           >
             {t("assistant.collect.offerAccept")}
@@ -410,10 +429,28 @@ export function AssistantThread({
             ? t(stillWaiting ? "assistant.status.stillWaiting" : "assistant.status.waiting")
             : remaining === null
               ? ""
-              : remaining.truncated
-                ? t("assistant.collect.remainingMore", { n: remaining.count, fields: remaining.names })
-                : tn("assistant.collect.remaining", remaining.count, { fields: remaining.names })}
+              : tn("assistant.collect.remaining", remaining.length)}
         </p>
+
+        {/* ⚠️ La liste des champs restants est REPLIÉE, et HORS de la région
+            d'état. Dépliée, elle affichait « Numéro, BTQ, Voie, Complément
+            d'adresse, Code postal » entre chaque question : le formulaire
+            reparaissait sous une autre forme, et son jargon avec lui.
+            Hors de la région : le compte est annoncé tout seul au lecteur
+            d'écran, et le détail reste atteignable d'un geste — sans qu'ouvrir
+            le repli déclenche une annonce de neuf libellés. */}
+        {remaining !== null && state.status !== "sending" && (
+          <details className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
+            <summary className="cursor-pointer">{t("assistant.collect.remainingSee")}</summary>
+            <ul className="mt-1 flex flex-col gap-0.5 ps-4">
+              {remaining.map((field) => (
+                <li key={field.id} className="list-disc">
+                  {field.label}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
 
         {collect.loading && (
           <p role="status" aria-live="polite" className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
@@ -646,7 +683,7 @@ export function AssistantThread({
               <button
                 type="button"
                 disabled={collectBusy}
-                onClick={() => startCollect(focusDemarche.id)}
+                onClick={() => void startCollect(focusDemarche.id)}
                 className="text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline disabled:opacity-60"
               >
                 {t("assistant.collect.start")}

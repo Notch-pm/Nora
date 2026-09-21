@@ -395,3 +395,50 @@ describe("les interdits du recueil survivent au ton", () => {
     expect(system).toContain('{ "id": …, "skip": true }');
   });
 });
+
+/**
+ * Le ton de l'ORIENTATION vit dans `BASE_RULES`, le jumeau de l'agent de la
+ * console Mistral. Ces assertions sont là pour qu'une retouche ici ne parte
+ * jamais sans qu'on se souvienne de la recopier — et pour que la chaleur
+ * n'emporte pas les gardes qui la bornent.
+ */
+describe("l'orientation parle à quelqu'un", () => {
+  const systemOf = async (collection: unknown) => {
+    const { deps, complete } = setup({});
+    await runAssistantTurn(tenant(true), "fr", await body("C'est pourri devant chez moi !", collection), deps);
+    return complete.mock.calls[0][0].system;
+  };
+
+  it("demande de compatir avant d'orienter — hors recueil comme dedans", async () => {
+    expect(await systemOf(undefined)).toContain("TU PARLES À QUELQU'UN");
+    expect(await systemOf(opening)).toContain("TU PARLES À QUELQU'UN");
+  });
+
+  it("⚠️ interdit d'INVENTER un délai pour rassurer", async () => {
+    // Le risque direct d'un ton chaleureux : « nos agents passent sous
+    // quelques jours » fait plus de mal qu'un silence, parce que l'usager
+    // attend dessus. Une démarche seulement SUGGÉRÉE n'a d'ailleurs aucun
+    // délai dans le prompt — il vit sur le détail, pas sur le catalogue.
+    const system = await systemOf(undefined);
+    expect(system).toContain("N'en INVENTE jamais un pour rassurer");
+    expect(system).toContain("sans le reformuler en promesse");
+  });
+
+  it("⚠️ ne se contredit plus sur le dépôt : proposer de remplir l'emporte", async () => {
+    // `BASE_RULES` disait « renvoie-le vers la démarche : c'est là qu'il la
+    // remplit », l'exact inverse d'`OFFER_RULES`. Le modèle arbitrait seul
+    // entre deux consignes, et l'offre passait à la trappe.
+    const { deps, complete } = setup({});
+    const asked = { ...(await body("J'ai un dépôt sauvage", undefined)), focusDemarcheId: PROPRETE };
+    await runAssistantTurn(tenant(true), "fr", asked, deps);
+    const system = complete.mock.calls[0][0].system;
+    expect(system).toContain("SAUF si des règles ci-dessous t'autorisent à recueillir un formulaire");
+    expect(system).toContain("Cette règle l'emporte sur la consigne générale");
+  });
+
+  it("demande UNE chose à la fois, et interdit de réciter un libellé", async () => {
+    const system = await systemOf(opening);
+    expect(system).toContain("Demande UNE chose à la fois");
+    expect(system).toContain("Ne récite JAMAIS un libellé de la liste tel quel");
+  });
+});

@@ -119,16 +119,26 @@ describe("parseAssistantAnswer — le guichet garantit que ça parse, pas que ç
   });
 
 
-  it("lit ce que la question PORTE — borné à trois, dédoublonné, formes molles écartées", () => {
+  it("lit ce que la question PORTE — dédoublonné, formes molles écartées", () => {
     const raw = JSON.stringify({
       reply: "Où, et de quelle nature ?",
       intent: "answer",
       procedure_ids: [],
       asking: ["f-lieu", "f-lieu", "", 42, "f-nature", "f-jour", "f-photo"],
     });
-    expect(parseAssistantAnswer(raw, ids)?.asking).toEqual(["f-lieu", "f-nature", "f-jour"]);
+    expect(parseAssistantAnswer(raw, ids)?.asking).toEqual(["f-lieu", "f-nature", "f-jour", "f-photo"]);
     // Absent, ce n'est pas une erreur : l'écran a son repli.
     expect(parseAssistantAnswer('{"reply":"x","intent":"answer"}', ids)?.asking).toEqual([]);
+  });
+
+  it("⚠️ borné à six CHAMPS — « quelle est votre adresse ? » en vaut cinq", () => {
+    // Ce n'est pas un nombre de questions : un formulaire découpe volontiers
+    // une adresse en numéro, indice, voie, complément et code postal. Trois
+    // bornait la question vraie autant que la mauvaise, et forçait le modèle à
+    // réciter les libellés un par un — le ton qu'on cherche justement à quitter.
+    const asking = Array.from({ length: 12 }, (_, i) => `f-${i}`);
+    const raw = JSON.stringify({ reply: "Votre adresse ?", intent: "answer", procedure_ids: [], asking });
+    expect(parseAssistantAnswer(raw, ids)?.asking).toEqual(["f-0", "f-1", "f-2", "f-3", "f-4", "f-5"]);
   });
 
   it("⚠️ une offre de remplir ne vaut que pour une démarche du catalogue publié", () => {
