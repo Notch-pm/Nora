@@ -8,14 +8,15 @@
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { isConversationField, viewOf } from "@fn/_shared/ai/collection.ts";
+import { viewOf } from "@fn/_shared/ai/collection.ts";
 import type { DemandeReceipt } from "@fn/_shared/domain/demande.ts";
+import type { Field } from "@fn/_shared/domain/formSchema.ts";
 import { isFieldRequired, validateForm, type FieldError, type FieldErrors } from "@fn/_shared/domain/formulaire.ts";
 import { enabledAudiences, requesterFieldsFor, type Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import { FormFieldControl } from "@/features/demarche/FormFields.tsx";
 import { Receipt } from "@/features/demarche/Receipt.tsx";
 import { RequesterSection } from "@/features/demarche/RequesterSection.tsx";
-import { useLanguage, useT, useTn } from "@/i18n/LanguageLayout.tsx";
+import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { errorText } from "@/i18n/t.ts";
 import { localizedPath } from "@/i18n/localizedPath.ts";
 import { BUTTON_CLASS, CARD_CLASS, EYEBROW_CLASS, SECONDARY_BUTTON_CLASS } from "./cardStyles.ts";
@@ -34,7 +35,17 @@ function tabStorage(): PrefillStorage | null {
 }
 
 /** Le repli permanent : à afficher pendant TOUT le recueil (fiche de mission). */
-export function ClassicFormLink({ session }: { session: CollectSession }) {
+export function ClassicFormLink({
+  session,
+  prominent = false,
+}: {
+  session: CollectSession;
+  /**
+   * Le repli devient le geste PRINCIPAL — quand la conversation s'arrête en
+   * plein recueil, il n'y a plus d'autre chemin vers l'envoi.
+   */
+  prominent?: boolean;
+}) {
   const { lang } = useLanguage();
   const t = useT();
   return (
@@ -44,7 +55,11 @@ export function ClassicFormLink({ session }: { session: CollectSession }) {
         const storage = tabStorage();
         if (storage !== null) writePrefill(storage, session.demarche.id, buildPrefill(session));
       }}
-      className="text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline"
+      className={
+        prominent
+          ? BUTTON_CLASS + " inline-flex"
+          : "text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline"
+      }
     >
       {t("assistant.collect.classicFormLink")}
     </Link>
@@ -98,114 +113,133 @@ export function ReceiptNoteView({ receipt, demarcheName }: { receipt: DemandeRec
 }
 
 /**
- * Le champ EN ATTENTE — la même carte pour les deux modes, mais pas la même
- * place donnée au contrôle : replié quand la question se DIT, ouvert quand
- * elle ne se dit pas (une date, une pièce jointe). Le modèle, lui, ne voit
- * jamais ce contrôle.
+ * Le COMPLÉMENT à renseigner — ce qui ne peut pas se dire, et ce qu'on peut
+ * choisir plutôt que décrire.
+ *
+ * ⚠️ **Cette carte NE POSE PLUS DE QUESTION.** C'est le modèle qui demande,
+ * dans ses mots ; elle ne fait qu'offrir le contrôle quand il en faut un. Elle
+ * récitait le libellé du champ avant le 2026-09-21, et deux voix demandaient
+ * alors la même chose de deux façons.
+ *
+ * Elle ne s'affiche donc que s'il y a quelque chose à montrer : un calendrier
+ * ou un dépôt de fichier (`controls` — on ne peut pas y répondre en parlant),
+ * ou, replié, le contrôle d'un champ à options que le modèle vient de demander
+ * (`assists` — pour qui préfère cliquer). Le reste du temps, elle disparaît et
+ * la conversation suffit.
  */
-export function PendingFieldCard({
+function FieldControl({
   session,
+  field,
+  folded,
   onAnswer,
   onSkip,
 }: {
   session: CollectSession;
+  field: Field;
+  /** Replié : un repli offert, pas la question. */
+  folded: boolean;
   onAnswer: (fieldId: string, value: unknown) => void;
   onSkip: (fieldId: string) => void;
 }) {
   const { lang } = useLanguage();
   const t = useT();
-  const tn = useTn();
-  const view = viewOf(session.demarche.form, session.collection);
-  const field = view.pending;
-  const [draft, setDraft] = useState<unknown>(field ? session.collection.values[field.id] : undefined);
+  const [draft, setDraft] = useState<unknown>(session.collection.values[field.id]);
   const [error, setError] = useState<FieldError | null>(null);
 
-  // Un nouveau champ en attente (ou une session différente) reprend un
-  // brouillon neuf — jamais le reliquat du champ précédent.
+  // Un champ différent (ou une session différente) reprend un brouillon neuf.
   useEffect(() => {
-    setDraft(field ? session.collection.values[field.id] : undefined);
+    setDraft(session.collection.values[field.id]);
     setError(null);
-  }, [field?.id, session.demarche.id]);
+  }, [field.id, session.demarche.id]);
 
-  if (field === null) return null;
   const required = isFieldRequired(field, session.collection.values);
-  const conversationMode = isConversationField(field);
 
   function validate() {
-    const trial = { ...session.collection.values, [field!.id]: draft };
-    const errors = validateForm(session.demarche.form, trial);
-    const fieldError = errors[field!.id] ?? null;
+    const trial = { ...session.collection.values, [field.id]: draft };
+    const fieldError = validateForm(session.demarche.form, trial)[field.id] ?? null;
     setError(fieldError);
-    if (fieldError === null) onAnswer(field!.id, draft);
+    if (fieldError === null) onAnswer(field.id, draft);
   }
+
+  const body = (
+    <>
+      <div className="mt-3">
+        <FormFieldControl
+          field={field}
+          value={draft}
+          onChange={setDraft}
+          required={required}
+          error={errorText(lang, error)}
+          demarcheId={session.demarche.id}
+        />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-3">
+        <button type="button" onClick={validate} className={BUTTON_CLASS}>
+          {t("assistant.collect.validate")}
+        </button>
+        {!required && (
+          <button type="button" onClick={() => onSkip(field.id)} className={SECONDARY_BUTTON_CLASS}>
+            {t("assistant.collect.skip")}
+          </button>
+        )}
+      </div>
+    </>
+  );
+
+  if (!folded) return body;
+  return (
+    <details>
+      <summary className="cursor-pointer text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)]">
+        {t("assistant.collect.answerInForm")}
+      </summary>
+      {body}
+    </details>
+  );
+}
+
+export function PendingFieldCard({
+  session,
+  asking,
+  onAnswer,
+  onSkip,
+}: {
+  session: CollectSession;
+  /** Ce que la question du modèle porte — revalidé par le serveur. */
+  asking: readonly string[];
+  onAnswer: (fieldId: string, value: unknown) => void;
+  onSkip: (fieldId: string) => void;
+}) {
+  const t = useT();
+  const view = viewOf(session.demarche.form, session.collection, asking);
+  if (view.controls.length === 0 && view.assists.length === 0) return null;
 
   return (
     <section aria-labelledby="collect-field-heading" className={CARD_CLASS}>
       <p id="collect-field-heading" className={EYEBROW_CLASS}>
         {t("assistant.collect.fieldCardHeading")}
       </p>
-      <p role="status" aria-live="polite" className="mt-1 text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
-        {tn("assistant.collect.remaining", view.remaining)}
-      </p>
-      <p className="mt-2 text-[length:var(--pt-body)] font-semibold text-[color:var(--pt-ink)]">
-        {field.label}
-      </p>
-
-      {/* ⚠️ Depuis que tout se dit, le contrôle n'est plus la question : c'est
-          un REPLI, pour qui préfère cocher une option plutôt que de la décrire.
-          Déplié d'office, il redeviendrait le geste principal — et l'on
-          retrouverait l'alternance conversation/carte que cette refonte
-          supprime. Une DATE et une PIÈCE JOINTE n'ont pas d'autre chemin (un
-          modèle n'a pas d'horloge, et un fichier ne lui transite pas) : leur
-          contrôle reste ouvert. */}
-      {conversationMode ? (
-        <details className="mt-2">
-          <summary className="cursor-pointer text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)]">
-            {t("assistant.collect.answerInForm")}
-          </summary>
-          <div className="mt-3">
-            <FormFieldControl
-              field={field}
-              value={draft}
-              onChange={setDraft}
-              required={required}
-              error={errorText(lang, error)}
-              demarcheId={session.demarche.id}
-            />
-          </div>
-          <div className="mt-3 flex flex-wrap gap-3">
-            <button type="button" onClick={validate} className={BUTTON_CLASS}>
-              {t("assistant.collect.validate")}
-            </button>
-          </div>
-        </details>
-      ) : (
-        <>
-          <div className="mt-3">
-            <FormFieldControl
-              field={field}
-              value={draft}
-              onChange={setDraft}
-              required={required}
-              error={errorText(lang, error)}
-              demarcheId={session.demarche.id}
-            />
-          </div>
-          <div className="mt-3 flex flex-wrap gap-3">
-            <button type="button" onClick={validate} className={BUTTON_CLASS}>
-              {t("assistant.collect.validate")}
-            </button>
-          </div>
-        </>
-      )}
-
-      {!required && (
-        <div className="mt-3">
-          <button type="button" onClick={() => onSkip(field!.id)} className={SECONDARY_BUTTON_CLASS}>
-            {t("assistant.collect.skip")}
-          </button>
-        </div>
-      )}
+      <div className="flex flex-col gap-4">
+        {view.controls.map((field) => (
+          <FieldControl
+            key={field.id}
+            session={session}
+            field={field}
+            folded={false}
+            onAnswer={onAnswer}
+            onSkip={onSkip}
+          />
+        ))}
+        {view.assists.map((field) => (
+          <FieldControl
+            key={field.id}
+            session={session}
+            field={field}
+            folded
+            onAnswer={onAnswer}
+            onSkip={onSkip}
+          />
+        ))}
+      </div>
     </section>
   );
 }

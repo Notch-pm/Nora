@@ -70,6 +70,18 @@ export interface UseAssistantConversation {
    * `sanitizeState` avant de s'en servir (même règle que partout ailleurs).
    */
   collectionReply: CollectionPayload | null;
+  /**
+   * Les champs sur lesquels porte la question que l'assistant vient de poser,
+   * revalidés par le serveur.
+   *
+   * ⚠️ Il décrit le DERNIER MESSAGE, pas l'état : il ne survit donc pas à un
+   * rechargement, et c'est voulu. `viewOf` a son repli — sans quoi il faudrait
+   * persister une intention de conversation, qui n'a pas de sens hors du tour
+   * où elle a été dite.
+   */
+  asking: string[];
+  /** La démarche que l'assistant propose de remplir — l'écran en fait un bouton. */
+  collectOffer: { id: string; name: string } | null;
 }
 
 export function useAssistantConversation(
@@ -80,6 +92,8 @@ export function useAssistantConversation(
   const [stillWaiting, setStillWaiting] = useState(false);
   const [problem, setProblem] = useState<MessageProblem | null>(null);
   const [collectionReply, setCollectionReply] = useState<CollectionPayload | null>(null);
+  const [asking, setAsking] = useState<string[]>([]);
+  const [collectOffer, setCollectOffer] = useState<{ id: string; name: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const newConversationButtonRef = useRef<HTMLButtonElement>(null);
   // Incrémenté à chaque geste de l'usager — voir l'en-tête du fichier.
@@ -196,6 +210,8 @@ export function useAssistantConversation(
     }
     dispatch({ type: "received", reply: result.reply });
     setCollectionReply(result.reply.collection);
+    setAsking(result.reply.asking);
+    setCollectOffer(result.reply.collectOffer);
   }
 
   function sendMessage(raw: string, collection: CollectionPayload | null = null): boolean {
@@ -229,6 +245,8 @@ export function useAssistantConversation(
     dispatch({ type: "reset" });
     setProblem(null);
     setCollectionReply(null);
+    setAsking([]);
+    setCollectOffer(null);
     lastCollectionRef.current = null;
     const storage = tabStorage();
     if (storage !== null) clearConversation(storage);
@@ -245,5 +263,7 @@ export function useAssistantConversation(
     retry,
     newConversation,
     collectionReply,
+    asking,
+    collectOffer,
   };
 }

@@ -209,6 +209,8 @@ export function AssistantThread({
     retry,
     newConversation,
     collectionReply,
+    asking,
+    collectOffer,
   } = useAssistantConversation(focusDemarcheId, lang);
   const collect = useAssistantCollect({ lang, depositEnabled, collectionReply });
   const [draft, setDraft] = useState("");
@@ -222,19 +224,23 @@ export function AssistantThread({
   // nouvelle étape) : répondre deux fois de suite au MÊME champ « conversation »
   // (le modèle n'a rien retenu) ne doit pas arracher le focus du clavier.
   //
-  // ⚠️ Sauf quand la question se répond EN ÉCRIVANT. Depuis que tout se dit,
-  // c'est le cas courant : arracher le focus vers un contrôle replié
-  // éloignerait l'usager de la zone où on attend justement sa réponse.
+  // ⚠️ Sauf quand la question se répond EN PARLANT — le cas courant depuis que
+  // le modèle mène la conversation. Le focus ne part au contrôle que s'il y en
+  // a un à remplir (un calendrier, un dépôt de fichier) ; sinon il reste dans
+  // la zone de saisie, là où on attend justement la réponse.
   const cardRef = useRef<HTMLDivElement>(null);
   const fieldView =
     collect.session !== null && collect.step === "fields"
-      ? viewOf(collect.session.demarche.form, collect.session.collection)
+      ? viewOf(collect.session.demarche.form, collect.session.collection, asking)
       : null;
-  const answeredInChat = fieldView !== null && fieldView.mode === "conversation";
   const cardSignature =
-    collect.session === null || answeredInChat
+    collect.session === null
       ? ""
-      : collect.session.demarche.id + ":" + collect.step + ":" + (fieldView?.pending?.id ?? "");
+      : collect.step !== "fields"
+        ? collect.session.demarche.id + ":" + collect.step
+        : fieldView !== null && fieldView.controls.length > 0
+          ? collect.session.demarche.id + ":fields:" + fieldView.controls[0].id
+          : "";
   useEffect(() => {
     if (cardSignature === "") return;
     const focusable = cardRef.current?.querySelector<HTMLElement>(
@@ -338,10 +344,33 @@ export function AssistantThread({
           )}
         </div>
 
+        {/* ⚠️ L'assistant a PROPOSÉ de remplir — il n'a rien ouvert. C'est ce
+            bouton, et lui seul, qui démarre : un recueil qui se lancerait tout
+            seul embarquerait dans un formulaire celui qui voulait juste poser
+            une question. */}
+        {collectOffer !== null && collect.session === null && depositEnabled && (
+          <button
+            type="button"
+            disabled={collectBusy}
+            onClick={() => startCollect(collectOffer.id)}
+            className={BUTTON_CLASS + " w-fit"}
+          >
+            {t("assistant.collect.offerAccept")}
+          </button>
+        )}
+
         {/* Région d'état SÉPARÉE du fil : c'est elle qui annonce l'attente,
-            jamais le fil lui-même (RGAA 4.1 — un seul message à la fois). */}
+            jamais le fil lui-même (RGAA 4.1 — un seul message à la fois).
+            ⚠️ Elle porte AUSSI l'avancement du recueil, qui vivait dans la
+            carte du champ : sans cela, un usager de lecteur d'écran perdrait
+            tout repère depuis que l'écran ne pose plus les questions. Un seul
+            message à la fois — l'attente l'emporte, puis l'avancement. */}
         <p role="status" aria-live="polite" className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
-          {state.status === "sending" ? t(stillWaiting ? "assistant.status.stillWaiting" : "assistant.status.waiting") : ""}
+          {state.status === "sending"
+            ? t(stillWaiting ? "assistant.status.stillWaiting" : "assistant.status.waiting")
+            : collect.session !== null && collect.step === "fields" && fieldView !== null
+              ? tn("assistant.collect.remaining", fieldView.remaining)
+              : ""}
         </p>
 
         {collect.loading && (
@@ -367,7 +396,12 @@ export function AssistantThread({
         {collect.session !== null && (
           <div ref={cardRef} className="flex flex-col gap-3">
             {collect.step === "fields" && (
-              <PendingFieldCard session={collect.session} onAnswer={collect.answerField} onSkip={collect.skipField} />
+              <PendingFieldCard
+                session={collect.session}
+                asking={asking}
+                onAnswer={collect.answerField}
+                onSkip={collect.skipField}
+              />
             )}
             {collect.step === "organization" && (
               <OrganizationCard
@@ -439,16 +473,37 @@ export function AssistantThread({
               {assistantErrorMessage({ reason: "conversation_ended" }, lang).title}
             </p>
             <p className="mt-1 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
-              {assistantErrorMessage({ reason: "conversation_ended" }, lang).detail}
+              {collect.session !== null
+                ? t("assistant.collect.endedPrefill")
+                : assistantErrorMessage({ reason: "conversation_ended" }, lang).detail}
             </p>
-            <button
-              ref={newConversationButtonRef}
-              type="button"
-              onClick={endConversation}
-              className={BUTTON_CLASS + " mt-3"}
-            >
-              {t("assistant.newConversation")}
-            </button>
+            {/* ⚠️ EN PLEIN RECUEIL, le formulaire prérempli devient le geste
+                PRINCIPAL. La zone de saisie vient de disparaître : sans cela,
+                l'usager resterait bloqué avec tout ce qu'il a déjà raconté.
+                « Nouvelle conversation » passe derrière — elle efface le
+                recueil (`collect.reset()`), c'est le pire geste ici. */}
+            {collect.session !== null ? (
+              <div className="mt-3 flex flex-col items-start gap-3">
+                <ClassicFormLink session={collect.session} prominent />
+                <button
+                  ref={newConversationButtonRef}
+                  type="button"
+                  onClick={endConversation}
+                  className="text-[length:var(--pt-small)] font-semibold text-[color:var(--pt-muted)] hover:underline"
+                >
+                  {t("assistant.newConversation")}
+                </button>
+              </div>
+            ) : (
+              <button
+                ref={newConversationButtonRef}
+                type="button"
+                onClick={endConversation}
+                className={BUTTON_CLASS + " mt-3"}
+              >
+                {t("assistant.newConversation")}
+              </button>
+            )}
           </div>
         ) : (
           <form onSubmit={submit} className="flex flex-col gap-2">

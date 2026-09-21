@@ -989,6 +989,15 @@ regarde ailleurs, une conversation non.
   ⚠️ Le modèle ne réécrit jamais une réponse déjà donnée, ni un champ que
   l'usager s'est approprié (`touched`, qui survit même à un champ vidé) :
   corriger est un geste de l'usager, sur le récapitulatif ;
+- **les tours d'une conversation en recueil montent à 40**, et sa durée de vie
+  à une heure. Remplir en parlant coûte des tours — une question, un appel — et
+  vingt tombaient au pire moment, en plein remplissage. ⚠️ La borne ne monte que
+  lorsque le SERVEUR a constaté un recueil valide, et le drapeau vit dans le
+  corps **signé** du ticket : un navigateur qui voudrait la borne haute devrait
+  réécrire le corps, et la signature ne suit pas. Il ne redescend jamais. Si la
+  conversation s'épuise malgré tout, la zone de saisie disparaît et le
+  **formulaire classique prérempli devient le geste principal** : rien de ce que
+  l'usager a raconté n'est perdu ;
 - **toute valeur posée par l'assistant porte son ORIGINE** (`FieldOrigin`), et
   le récapitulatif en fait un badge : « d'après votre message » / « déduit, à
   confirmer » / « rédigé pour vous ». C'est ce qui rend un formulaire prérempli
@@ -999,12 +1008,24 @@ regarde ailleurs, une conversation non.
   des mots de l'usager (« des gravats » → « Dépôt sauvage ») reste une déduction.
   Au doute, « déduit » : se tromper vers ce badge fait relire une valeur juste,
   se tromper vers l'autre fait signer une valeur inventée ;
-- **le contrôle du formulaire reste offert en repli** sous chaque question
-  (« Répondre avec le formulaire »), replié : pour qui préfère cliquer une date
-  que la décrire. Déplié d'office, il redeviendrait le geste principal, et l'on
-  retrouverait l'alternance conversation/carte que cette refonte supprime. Une
-  **pièce jointe** garde sa carte ouverte : elle n'a pas d'autre chemin, et un
-  fichier ne transite pas par un modèle. Une carte ne coûte aucun appel au guichet ;
+- ⚠️ **c'est le MODÈLE qui pose les questions**, depuis le 2026-09-21. L'écran
+  les posait avant, en récitant le libellé du champ : le remplissage avait le
+  ton d'un formulaire lu à voix haute, et l'alternance des deux voix cassait le
+  rythme. Une seule voix désormais. Il groupe deux ou trois informations qui
+  vont ensemble en une question, déclare dans `asking` ce qu'elle porte, et
+  `runAssistantTurn` refiltre cette déclaration contre ce qui reste vraiment à
+  renseigner — **après** `applyUpdates`, car ce qu'il vient de remplir n'est
+  plus une question. **Le formulaire ne s'affiche plus** : l'écran ne montre un
+  contrôle que pour ce à quoi on ne peut pas répondre en parlant (le calendrier
+  d'une date, le dépôt d'une pièce), ou, replié, pour un champ à options qu'il
+  vient de demander. Une carte ne coûte aucun appel au guichet ;
+- **le modèle PROPOSE de remplir, il n'ouvre rien** (`offer_procedure_id`,
+  revalidé au catalogue publié) : c'est un bouton sous sa bulle que l'usager
+  presse. Un recueil qui démarrerait seul embarquerait dans un formulaire celui
+  qui voulait juste poser une question ;
+- ⚠️ **un champ FACULTATIF refusé se passe** (`skip`). Sans ce geste, il
+  resterait en attente pour toujours : le modèle le redemanderait sans fin,
+  `complete` n'arriverait jamais et le récapitulatif ne s'ouvrirait pas ;
 - **l'identité du demandeur** se saisit dans sa propre carte, à la fin, et n'est
   **jamais montrée au modèle** — elle n'a aucun chemin jusqu'à lui (test).
   ⚠️ Les autres réponses, elles, **partent au modèle** depuis le 2026-09-21 : c'est
