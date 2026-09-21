@@ -1078,12 +1078,46 @@ regarde ailleurs, une conversation non.
   dit pas, et le récapitulatif n'ouvre pas tant qu'un obligatoire manque.
   Conversation sans issue. Le repli porte désormais les contrôles eux-mêmes :
   replié par défaut, disponible à tout moment, sans dépendre de ce que le modèle
-  veut bien demander — c'est quand il s'égare qu'on en a besoin ;
+  veut bien demander — c'est quand il s'égare qu'on en a besoin. **Il s'ouvre
+  seul** quand l'assistant ne demande plus rien alors qu'il manque un ou deux
+  obligatoires : replié, il existait, et l'usager ne l'a pas vu sous un « Votre
+  signalement est complet » ;
 - ⚠️ **ce n'est pas le modèle qui décide que c'est complet**, mais la ligne
   « INFORMATIONS À RECUEILLIR » du prompt, à trois états (obligatoires
   restantes / plus que des facultatives / plus aucune). Il lui est interdit de
   le décréter — et de **décrire l'écran** : il ne le voit pas, et il inventait
-  des boutons (« passez à l'étape suivante ») que l'usager cherchait ensuite ;
+  des boutons (« passez à l'étape suivante ») que l'usager cherchait ensuite.
+  ⚠️ Le premier état était **muet** (aucune ligne), alors que la règle y
+  renvoyait : faute de ligne, le modèle jugeait seul. Elle compte désormais ce
+  qui reste, et chaque obligatoire en attente est marqué « À OBTENIR » dans la
+  liste — ce qui bloque se lit, il ne se déduit plus par soustraction ;
+- ⚠️ **le filet : un modèle qui ne demande rien alors qu'il reste de
+  l'obligatoire est relancé UNE fois** (`runAssistantTurn`), avec la raison. Ce
+  que la première réponse a fait retenir reste retenu ; si le second appel
+  échoue ou s'égare autant, la première réponse part et l'écran garde son
+  repli. Le second appel est **facturé à la collectivité** comme le premier,
+  mais ne consomme pas de tour. Une consigne de prompt ne suffit pas : celle
+  qui disait « une réponse partielle n'est pas une réponse » était en place
+  quand le cas s'est reproduit. **Même filet pour l'égarement inverse** : une
+  réponse qui se termine par une question (« Depuis quand ? ») au tour même
+  qui complète la demande. L'écran passe aussitôt à l'identité ; la question
+  reste en l'air, sans champ où ranger la réponse. Le modèle est relancé pour
+  annoncer le récapitulatif sans rien demander — seulement au tour qui FERME le
+  recueil : ensuite, l'usager discute librement sous son récapitulatif. Et il
+  lui est dit de ne pas **creuser** une information déjà retenue : ce que
+  l'usager répondrait ne pourrait être rangé nulle part ;
+- **la ville se déduit du code postal — par un référentiel, jamais par le
+  modèle** (`postalCity.ts`). Personne ne répond « 44000 Nantes » à quelqu'un
+  qui sait lire un code postal. Les deux champs se reconnaissent à leur clé
+  (`<préfixe>_code_postal` / `<préfixe>_ville`, le bloc d'adresse du Socle).
+  Une seule commune : le serveur la renseigne, badge « déduit » — l'usager la
+  relit. Plusieurs : le modèle reçoit les noms et demande laquelle. Le
+  référentiel est interrogé **avant** le modèle, pour que sa réponse dise
+  « j'ai noté Nantes » et non « et la ville ? ». ⚠️ **C'est le seul appel de
+  l'assistant hors du Socle** : `geo.api.gouv.fr` (API publique de l'État, sans
+  clé), et **seuls les cinq chiffres du code postal y partent** — ni le
+  message, ni l'adresse, ni la collectivité. Délai de 1,5 s ; muet, la ville se
+  demande comme avant ;
 - **l'identité du demandeur** se saisit dans sa propre carte, à la fin, et n'est
   **jamais montrée au modèle** — elle n'a aucun chemin jusqu'à lui (test).
   ⚠️ Les autres réponses, elles, **partent au modèle** depuis le 2026-09-21 : c'est

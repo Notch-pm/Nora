@@ -54,6 +54,7 @@ import {
 import { clampBits, issueChallenge } from "../_shared/ai/challenge.ts";
 import { checkDepositChallenge } from "../_shared/ai/depositGate.ts";
 import { createSocleAiClient } from "../_shared/ai/socleAi.ts";
+import { lookupCommunes } from "../_shared/ai/communesClient.ts";
 import { runAssistantTurn } from "../_shared/ai/turn.ts";
 
 /**
@@ -877,6 +878,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       },
       nowSeconds,
       newConversationId: () => crypto.randomUUID(),
+      lookupCommunes,
     });
     if (!outcome.ok) {
       if (outcome.reason === "assistant_not_configured") {

@@ -448,6 +448,15 @@ export function AssistantThread({
           <RemainingRequiredFields
             session={collect.session}
             fields={remaining}
+            // L'assistant a parlé et ne demande rien de ce qui reste : sans
+            // question à laquelle répondre, les contrôles sont le seul chemin.
+            // ⚠️ Borné à deux champs : au-delà (fil restauré, premier tour sans
+            // `asking`), ouvrir reviendrait à réafficher le formulaire.
+            startOpen={
+              remaining.length <= 2 &&
+              state.messages.at(-1)?.role === "assistant" &&
+              !(fieldView?.remainingFields ?? []).some((field) => asking.includes(field.id))
+            }
             onAnswer={collect.answerField}
             onSkip={collect.skipField}
           />

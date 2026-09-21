@@ -29,6 +29,7 @@ import { isBlank, isFieldRequired, visibleFields } from "../domain/formulaire.ts
 import type { Tenant } from "../domain/tenant.ts";
 import { verifySolution } from "./challenge.ts";
 import {
+  answerField,
   applyUpdates,
   type CollectionState,
   isConversationField,
@@ -41,6 +42,13 @@ import {
   pickCandidates,
   windowHistory,
 } from "./conversation.ts";
+import {
+  type CityHint,
+  cityReason,
+  postalCityPairs,
+  postalCodeIn,
+  readPostalCode,
+} from "./postalCity.ts";
 import { buildAssistantPrompt, type CollectableField } from "./prompt.ts";
 import { issueTicket, readTicket, signReply, verifyReply, type Ticket } from "./signing.ts";
 import type { SocleAiClient } from "./socleAi.ts";
@@ -51,7 +59,9 @@ import type { SocleAiClient } from "./socleAi.ts";
  */
 const MAX_MESSAGES_RECEIVED = 2 * MAX_TURNS_COLLECT;
 const MAX_ASSISTANT_MESSAGE_CHARS = 4000;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Un message qui se termine par une question — guillemets et gras de fin compris. */
+const ENDS_WITH_QUESTION = /[?？]\s*[*_»"”)\s]*$/;
+const UUID_RE =/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface TurnDeps {
   /** Secret de signature du portail (tickets, réponses, défis). */
@@ -63,6 +73,12 @@ export interface TurnDeps {
   loadDemarche(id: string): Promise<DemarcheDetail | null>;
   nowSeconds(): number;
   newConversationId(): string;
+  /**
+   * Les communes d'un code postal, lues au référentiel officiel — `null` s'il
+   * ne répond pas. Facultatif : sans lui, la ville se demande, c'est tout.
+   * ⚠️ Seul le code postal sort d'ici : ni le message, ni l'adresse.
+   */
+  lookupCommunes?(postalCode: string): Promise<string[] | null>;
 }
 
 export type TurnOutcome =
@@ -146,6 +162,63 @@ function collectionDemarcheId(tenant: Tenant, raw: unknown): string | null {
   return typeof raw.demarcheId === "string" && UUID_RE.test(raw.demarcheId) ? raw.demarcheId : null;
 }
 
+/**
+ * La ville que le code postal désigne — cherchée pour la première adresse dont
+ * la ville manque encore.
+ *
+ * Le code postal vient de l'état s'il est déjà retenu ; sinon du DERNIER
+ * message, à condition qu'il n'y ait qu'un nombre à cinq chiffres. C'est ce
+ * second cas qui compte : le référentiel est interrogé AVANT le modèle, pour
+ * que sa réponse dise « j'ai noté Nantes » au lieu de « et la ville ? » au
+ * moment même où le serveur la renseigne.
+ */
+async function findCityHint(
+  schema: FormSchema,
+  state: CollectionState,
+  lastSaid: string,
+  deps: TurnDeps,
+): Promise<CityHint | null> {
+  if (deps.lookupCommunes === undefined) return null;
+  const pending = new Set(pendingFields(schema, state).map((field) => field.id));
+  for (const { postal, city } of postalCityPairs(schema)) {
+    if (!pending.has(city.id) || state.touched.includes(city.id)) continue;
+    const postalCode = pending.has(postal.id)
+      ? postalCodeIn(lastSaid)
+      : readPostalCode(state.values[postal.id]);
+    if (postalCode === null) continue;
+    const communes = await deps.lookupCommunes(postalCode);
+    if (communes === null || communes.length === 0) return null;
+    return { postalCode, cityFieldId: city.id, communes };
+  }
+  return null;
+}
+
+/**
+ * Renseigner la ville, quand le référentiel n'en connaît qu'UNE pour le code
+ * postal RETENU — pas pour celui qu'on a cru lire dans le message : si le
+ * modèle n'a pas retenu ce code postal, il ne se passe rien.
+ *
+ * La valeur porte le badge « déduit » et sa raison : l'usager la relit au
+ * récapitulatif, et la corrige d'un geste si le référentiel a tort pour lui.
+ */
+function fillCity(
+  schema: FormSchema,
+  state: CollectionState,
+  hint: CityHint | null,
+  lang: string,
+): CollectionState {
+  if (hint === null || hint.communes.length !== 1) return state;
+  const pair = postalCityPairs(schema).find(({ city }) => city.id === hint.cityFieldId);
+  if (pair === undefined) return state;
+  const stillPending = pendingFields(schema, state).some((field) => field.id === pair.city.id);
+  if (!stillPending || state.touched.includes(pair.city.id)) return state;
+  if (readPostalCode(state.values[pair.postal.id]) !== hint.postalCode) return state;
+  return answerField(schema, state, pair.city.id, hint.communes[0], {
+    origin: "inferred",
+    reason: cityReason(lang, hint.postalCode),
+  });
+}
+
 export async function runAssistantTurn(
   tenant: Tenant,
   lang: string,
@@ -221,6 +294,26 @@ export async function runAssistantTurn(
 
   const said = messages.filter((m) => m.role === "user").slice(-3).map((m) => m.content).join(" ");
   const lastSaid = messages[messages.length - 1].content;
+
+  // La ville que le code postal désigne. Si le code postal était DÉJÀ retenu
+  // (tour précédent, ou saisi dans son contrôle), elle se renseigne tout de
+  // suite : le modèle la lira « déjà renseigné » et ne la demandera pas.
+  const cityHint =
+    collection !== null && focus?.form != null
+      ? await findCityHint(focus.form, collection, lastSaid, deps)
+      : null;
+  if (collection !== null && focus?.form != null) {
+    collection = fillCity(focus.form, collection, cityHint, lang);
+  }
+
+  // Restait-il de l'obligatoire AVANT ce tour ? C'est ce qui dit, plus bas, si
+  // ce tour est celui qui ferme le recueil.
+  const before = collection;
+  const hadRequired =
+    before !== null && focus?.form != null
+      ? pendingFields(focus.form, before).some((field) => isFieldRequired(field, before.values))
+      : false;
+
   const system = buildAssistantPrompt({
     tenantName: tenant.name,
     lang,
@@ -237,6 +330,7 @@ export async function runAssistantTurn(
     // Proposer de remplir n'a de sens que si la collectivité l'a ouvert et que
     // la démarche consultée a bien un formulaire.
     offering: tenant.assistant.depositEnabled && focus?.form != null,
+    cityHint,
   });
 
   const completion = await deps.ai.complete({
@@ -269,6 +363,72 @@ export async function runAssistantTurn(
   // décide, jamais le modèle — sur les mots réels, pas sur ce qu'il en dit.
   if (collection !== null && focus?.form != null) {
     collection = applyUpdates(focus.form, collection, answer.fieldUpdates, lastSaid).state;
+    // Le modèle vient de retenir le code postal : la ville suit.
+    collection = fillCity(focus.form, collection, cityHint, lang);
+  }
+
+  // --- LE FILET. Le modèle ne demande rien, alors qu'il reste de l'obligatoire :
+  // il s'est égaré (« Votre signalement est complet », constaté en test avec la
+  // ville manquante). L'usager lirait une conversation finie sous un écran qui
+  // attend encore — on redemande au modèle UNE fois, en lui disant pourquoi.
+  //
+  // ⚠️ Une seule fois, et sans rien casser : ce que la première réponse a fait
+  // retenir RESTE retenu, et si le second appel échoue (quota, panne, json
+  // illisible) ou s'égare autant, c'est la première réponse qui part. L'écran
+  // garde son repli.
+  // ⚠️ Ce second appel est facturé à la collectivité comme le premier. Il ne
+  // consomme pas de tour : l'usager n'a parlé qu'une fois.
+  let reply = answer.reply;
+  let asked = answer.asking;
+  if (collection !== null && focus?.form != null) {
+    const form = focus.form;
+    // ⚠️ L'AUTRE ÉGAREMENT, constaté juste après : « C'est noté : des déchets.
+    // Depuis quand les avez-vous remarqués ? » — alors que cette réponse venait
+    // de compléter la demande. L'écran passe aussitôt à l'identité ; la question
+    // reste en l'air, sans personne pour y répondre ni champ où la ranger. Il
+    // n'est relevé qu'au tour qui FERME le recueil : après, l'usager discute
+    // librement sous son récapitulatif, et une question n'y gêne personne.
+    const strayed = (
+      state: CollectionState,
+      wanted: readonly string[],
+      text: string,
+    ): "missing" | "complete" | null => {
+      const left = pendingFields(form, state);
+      if (left.some((field) => wanted.includes(field.id))) return null;
+      if (left.some((field) => isFieldRequired(field, state.values))) return "missing";
+      return hadRequired && ENDS_WITH_QUESTION.test(text) ? "complete" : null;
+    };
+    const fault = strayed(collection, asked, reply);
+    if (fault !== null) {
+      const second = await deps.ai.complete({
+        organizationId: tenant.id,
+        system: buildAssistantPrompt({
+          tenantName: tenant.name,
+          lang,
+          catalogue,
+          candidates: [],
+          focus,
+          collecting: collectableFields(form, collection),
+          offering: false,
+          correcting: fault,
+        }),
+        messages: windowHistory(messages).map(({ role, content }) => ({ role, content })),
+        actorId: ticket.conversationId,
+        procedureId: focus.id,
+      });
+      const retried =
+        second.kind === "ok"
+          ? parseAssistantAnswer(second.answer, new Set(catalogue.map((d) => d.id)))
+          : null;
+      if (retried !== null) {
+        const next = applyUpdates(form, collection, retried.fieldUpdates, lastSaid).state;
+        if (strayed(next, retried.asking, retried.reply) === null) {
+          collection = next;
+          reply = retried.reply;
+          asked = retried.asking;
+        }
+      }
+    }
   }
 
   // Ce que le modèle dit DEMANDER — refiltré contre ce qui reste réellement à
@@ -278,7 +438,7 @@ export async function runAssistantTurn(
   const asking =
     collection !== null && focus?.form != null
       ? pendingFields(focus.form, collection)
-          .filter((field) => answer.asking.includes(field.id))
+          .filter((field) => asked.includes(field.id))
           .map((field) => field.id)
       : [];
 
@@ -311,8 +471,8 @@ export async function runAssistantTurn(
       ticket: await issueTicket(deps.secret, { ...ticket, turn, collecting }),
       message: {
         role: "assistant",
-        content: answer.reply,
-        signature: await signReply(deps.secret, ticket.conversationId, answer.reply),
+        content: reply,
+        signature: await signReply(deps.secret, ticket.conversationId, reply),
       },
       // ⚠️ AUCUNE suggestion pendant un recueil. La démarche est choisie, et
       // c'est elle qu'on remplit : sa carte se répétait sous CHAQUE réponse,

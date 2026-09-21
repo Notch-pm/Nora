@@ -23,6 +23,7 @@
 import type { Demarche, DemarcheDetail } from "../domain/demarche.ts";
 import { allFields, type FieldOption } from "../domain/formSchema.ts";
 import type { ResponseDelayUnit } from "../domain/userCommunication.ts";
+import type { CityHint } from "./postalCity.ts";
 
 const FENCE = "<<<<DONNÉES>>>>";
 const FENCE_END = "<<<<FIN DONNÉES>>>>";
@@ -87,6 +88,7 @@ const UNIT_LABELS: Record<ResponseDelayUnit, [string, string]> = {
  */
 const COLLECT_RULES = [
   "MODE RECUEIL — l'usager remplit la démarche consultée EN TE PARLANT. Ces règles complètent les règles générales et l'emportent sur elles.",
+  "- LA DÉMARCHE EST CHOISIE : tu n'orientes plus. Ne propose aucune démarche, ne cite pas le nom de celle-ci comme une suggestion, et ne redis pas ta phrase de compassion à chaque message. Quand l'usager décrit son problème (« des déchets », « un trou dans la chaussée »), ce n'est pas une nouvelle demande à orienter : c'est une RÉPONSE au formulaire — retiens-la dans `field_updates` et pose la question suivante.",
   "- C'EST TOI QUI MÈNES, et tu poses des questions D'HUMAIN, pas des libellés de formulaire. Demande UNE chose à la fois, celle qu'une personne demanderait à ce moment-là — « à quelle adresse ? », « qu'est-ce que vous avez constaté ? » — même quand le formulaire la découpe en plusieurs informations : une adresse dite d'un trait remplit le numéro, la voie et le code postal d'un coup. Ne récite JAMAIS un libellé de la liste tel quel, et ne demande jamais deux choses sans rapport dans la même phrase.",
   "- AVANCE PAS À PAS. Mieux vaut plusieurs échanges courts et naturels qu'une question qui ratisse large : l'usager répond mieux à ce qu'il comprend du premier coup. N'énumère pas non plus tout ce qui reste à venir : une question à la fois, pas un sommaire.",
   "- ⚠️ UNE RÉPONSE PARTIELLE N'EST PAS UNE RÉPONSE. Si ta question portait sur plusieurs informations et que l'usager n'en a donné qu'une partie — « le code postal et la ville ? », réponse « 44000 » —, redemande CE QUI MANQUE avant de passer à la suite. La liste ci-dessous fait foi : une information sans mention « déjà renseigné » n'a pas été obtenue, quoi que tu croies avoir compris.",
@@ -103,7 +105,10 @@ const COLLECT_RULES = [
   "- SOIS ACCOMPAGNANT. Tu aides quelqu'un à remplir un dossier administratif, pas un questionnaire : accuse réception en VALIDANT ce qu'il vient de faire (« c'est noté », « parfait, ça me suffit »), PUIS POSE LA QUESTION SUIVANTE dans la même réponse. Dis à quoi sert l'information que tu demandes quand ce n'est pas évident, et rassure sur la suite — rien ne part avant qu'il ait tout relu. Chaleureux et bref à la fois : 100 mots au plus, pas de flagornerie, pas de phrase creuse.",
   "- AU PREMIER MESSAGE DU RECUEIL, accueille l'usager avant de demander quoi que ce soit : dis en une phrase ce que vous allez remplir ensemble et ce que tu auras besoin de savoir en gros, puis pose la première question. N'attaque pas par une question sèche.",
   "- ⚠️ NE DÉCRIS JAMAIS L'ÉCRAN. Tu ne le vois pas. Ne parle ni de bouton, ni d'étape suivante, ni de ce sur quoi l'usager devrait cliquer — sauf pour annoncer un calendrier ou un dépôt de fichier, que tu viens de réclamer dans `asking`. Inventer un bouton qui n'existe pas laisse l'usager à chercher ce que tu lui as promis.",
-  "- ⚠️ NE DÉCLARE JAMAIS QUE C'EST COMPLET de ta propre autorité. C'est la ligne « INFORMATIONS À RECUEILLIR » ci-dessous qui le dit, et elle seule. Tant qu'elle ne l'a pas dit, il reste des informations obligatoires à demander, même si la demande te paraît déjà suffisante : continue de demander.",
+  "- CODE POSTAL ET VILLE : quand un bloc « COMMUNES DU CODE POSTAL » figure ci-dessous, il vient du référentiel officiel. S'il ne cite qu'UNE commune et que l'usager a bien donné ce code postal, ne demande pas la ville et ne la mets pas dans `field_updates` : le serveur la renseigne lui-même — dis simplement que tu as noté cette commune, et passe à la suite. S'il en cite PLUSIEURS, demande laquelle, en citant leurs noms. Sans ce bloc, ne devine jamais une ville d'après un code postal.",
+  "- ⚠️ NE DÉCLARE JAMAIS QUE C'EST COMPLET de ta propre autorité. C'est la ligne « INFORMATIONS À RECUEILLIR » ci-dessous qui le dit, et elle seule. Tant qu'elle compte des informations obligatoires — elles sont marquées « À OBTENIR » dans la liste —, la demande n'est PAS complète, même si elle te paraît déjà suffisante : continue de demander.",
+  "- ⚠️ LA DERNIÈRE RÉPONSE FERME LE RECUEIL. La liste décrit l'état AVANT le dernier message de l'usager. Si ce que tu retiens dans `field_updates` couvre TOUTES les informations « À OBTENIR », la demande devient complète avec ta réponse : l'écran passe aussitôt à la suite, et une question posée à ce moment-là resterait sans réponse possible. Ne demande donc PLUS RIEN — aucune précision, aucun « depuis quand ? » sur une information que tu viens de retenir : dis que le récapitulatif s'affiche sous ton message, que l'usager peut tout relire et corriger, puis envoyer lui-même. Une précision facultative qui reste dans la liste peut être proposée en une phrase, sans question.",
+  "- NE CREUSE PAS une information déjà retenue. Une description courte est une description : l'aide entre parenthèses (« Depuis quand ? ») sert à formuler TA question, pas à en poser d'autres ensuite. Ce que l'usager répondrait ne pourrait être rangé nulle part.",
   "- QUAND LA LIGNE DIT QU'IL N'EN RESTE AUCUNE, ne demande plus rien : dis que le récapitulatif s'affiche sous ton message, que l'usager peut tout relire, corriger chaque ligne, puis envoyer lui-même. `asking` vide.",
   "- QUAND ELLE DIT QU'IL NE RESTE QUE DES FACULTATIVES, la demande est déjà envoyable. Dis-le, propose UNE SEULE FOIS, en une phrase, celles qui vaudraient la peine (une photo, une précision), et redis que le récapitulatif est en dessous. S'il décline ou n'y répond pas, n'y reviens plus.",
 ].join("\n");
@@ -162,6 +167,10 @@ function collectBlock(fields: CollectableField[]): string {
         parts.push(`valeurs : ${listed}`);
       }
       if (f.skipped) parts.push("passé par l'usager");
+      // ⚠️ Ce qui BLOQUE l'envoi se lit sur la ligne même, pas par soustraction.
+      // Le modèle devait déduire « obligatoire, et pas de mention déjà
+      // renseigné » : il a sauté la ville, puis annoncé que tout était là.
+      else if (f.pending && f.required) parts.push("⚠️ À OBTENIR");
       else if (!f.pending) {
         // Une pièce déposée n'a pas de valeur à montrer : elle est là, c'est tout.
         parts.push(f.value === null ? "déjà renseigné" : `déjà renseigné : « ${clip(f.value, 160)} »`);
@@ -287,6 +296,18 @@ export interface AssistantPromptInput {
    * objet en recueil — il est déjà en train de le faire.
    */
   offering?: boolean;
+  /**
+   * Ce que le référentiel des codes postaux a répondu — absent hors recueil, et
+   * quand aucun code postal n'est en jeu. Voir `postalCity.ts`.
+   */
+  cityHint?: CityHint | null;
+  /**
+   * SECOND essai du même tour, et pourquoi. `missing` : la première réponse ne
+   * demandait rien alors qu'il reste de l'obligatoire. `complete` : elle posait
+   * encore une question alors que tout est là — l'écran est déjà passé à la
+   * suite, et la question resterait sans réponse. Voir `runAssistantTurn`.
+   */
+  correcting?: "missing" | "complete";
 }
 
 export function buildAssistantPrompt(input: AssistantPromptInput): string {
@@ -338,8 +359,25 @@ export function buildAssistantPrompt(input: AssistantPromptInput): string {
       : collecting.every((field) => !field.pending)
         ? "INFORMATIONS À RECUEILLIR : plus aucune. L'usager peut relire et envoyer sa demande avec le récapitulatif affiché."
         : collecting.some((field) => field.pending && field.required)
-          ? ""
+          // ⚠️ Cet état était MUET, et c'était la cause : la règle renvoyait le
+          // modèle à « la ligne INFORMATIONS À RECUEILLIR », qui n'existait que
+          // pour dire que c'était fini. Faute de ligne, il jugeait seul.
+          ? `INFORMATIONS À RECUEILLIR : il en reste ${
+              collecting.filter((field) => field.pending && field.required).length
+            } OBLIGATOIRE(S), marquée(s) « À OBTENIR » dans la liste. La demande n'est PAS complète et ne peut pas être envoyée : termine ta réponse par la question qui obtient l'une d'elles.`
           : "INFORMATIONS À RECUEILLIR : plus aucune OBLIGATOIRE. La demande est envoyable telle quelle, et le récapitulatif est affiché. Il reste des informations facultatives, marquées « facultatif » dans la liste.",
+    collecting === null || input.cityHint == null || input.cityHint.communes.length === 0
+      ? ""
+      : fenced(
+          `COMMUNES DU CODE POSTAL ${input.cityHint.postalCode} (information id: ${sanitizeBlock(input.cityHint.cityFieldId)})`,
+          input.cityHint.communes.join("\n"),
+        ),
+    collecting !== null && input.correcting === "complete"
+      ? "⚠️ CORRECTION — ta réponse précédente à ce même message se terminait par une question, alors que ce que tu venais de retenir a rendu la demande complète : l'écran est déjà passé à la suite, et l'usager ne pourrait pas te répondre. Ce que tu avais compris est déjà retenu dans la liste. Réécris ta réponse SANS AUCUNE QUESTION : accuse réception en une phrase, puis dis que le récapitulatif s'affiche sous ton message, qu'il peut tout relire et corriger, puis envoyer lui-même. `asking` vide, `field_updates` vide."
+      : "",
+    collecting !== null && input.correcting === "missing"
+      ? "⚠️ CORRECTION — ta réponse précédente à ce même message ne demandait rien, alors qu'il reste des informations marquées « À OBTENIR ». Ce que tu avais compris est déjà retenu dans la liste. Réécris ta réponse : ne dis pas que la demande est complète, accuse réception en une phrase, et termine par la question qui obtient la première information « À OBTENIR ». Mets son id dans `asking`."
+      : "",
   ];
   if (input.catalogue.length === 0) {
     blocks.push("La collectivité ne propose aucune démarche en ligne pour le moment : dis-le.");

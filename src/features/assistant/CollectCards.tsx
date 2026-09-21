@@ -212,22 +212,38 @@ function FieldControl({
  * Replié par défaut : la conversation reste le chemin, ceci n'est qu'une porte.
  * Mais elle existe désormais à tout moment, sans dépendre de ce que le modèle
  * veut bien demander — c'est justement quand il s'égare qu'on en a besoin.
+ *
+ * ⚠️ `startOpen` : la porte S'OUVRE SEULE quand l'assistant ne demande plus rien
+ * alors qu'il manque encore de l'obligatoire. Repliée, elle existait — et
+ * l'usager, sous un « Votre signalement est complet », ne l'a pas vue : un lien
+ * discret ne pèse rien contre une phrase qui dit que c'est fini. Elle reste
+ * repliée tant que le modèle pose une question, et l'usager peut la refermer.
  */
 export function RemainingRequiredFields({
   session,
   fields,
+  startOpen,
   onAnswer,
   onSkip,
 }: {
   session: CollectSession;
   fields: readonly Field[];
+  startOpen: boolean;
   onAnswer: (fieldId: string, value: unknown) => void;
   onSkip: (fieldId: string) => void;
 }) {
   const t = useT();
+  const [open, setOpen] = useState(startOpen);
+  useEffect(() => {
+    if (startOpen) setOpen(true);
+  }, [startOpen]);
   if (fields.length === 0) return null;
   return (
-    <details className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
+    <details
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+      className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]"
+    >
       <summary className="cursor-pointer text-[color:var(--brand-primary)]">
         {t("assistant.collect.remainingSee")}
       </summary>
