@@ -27,6 +27,7 @@ import type {
   AssistantSuggestion,
   AssistantTurnReply,
   AssistantTurnRequest,
+  SolvedChallenge,
 } from "@fn/_shared/domain/assistantTurn.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
@@ -570,8 +571,17 @@ export type DemandeSend =
  * c'est lui qui rend un double envoi inoffensif. Le renvoyer après une coupure
  * réseau est le geste normal — Iris rend alors la demande déjà créée, et
  * l'usager voit le même accusé.
+ *
+ * `challenge` est la preuve de travail résolue pour CETTE demande (voir
+ * `fetchDepositChallenge` et `challengeToSolve` dans
+ * `src/services/portal/depositChallenge.ts`) — absente ou omise, le serveur
+ * dépose quand même tant qu'il ne l'exige pas (`depositGate.ts`, côté
+ * fonctions).
  */
-export async function sendDemande(submission: DemandeSubmission): Promise<DemandeSend> {
+export async function sendDemande(
+  submission: DemandeSubmission,
+  challenge?: SolvedChallenge | null,
+): Promise<DemandeSend> {
   const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
   if (!baseUrl) return { ok: false, reason: "not_configured" };
 
@@ -580,14 +590,21 @@ export async function sendDemande(submission: DemandeSubmission): Promise<Demand
     response = await fetch(baseUrl.replace(/\/+$/, "") + "/v1/demandes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(submission),
+      body: JSON.stringify(challenge ? { ...submission, challenge } : submission),
     });
   } catch {
     return { ok: false, reason: "network" };
   }
 
   const body = await response.json().catch(() => null);
-  if (!response.ok) return { ok: false, reason: readFailure(body) };
+  if (!response.ok) {
+    // La preuve manque, ou est fausse : le même échec réessayable qu'un dépôt
+    // qui rate pour de vrai — pas de nouveau `PortalFailure` pour ce cas (voir
+    // la fiche de mission).
+    const code = (body as { error?: { code?: unknown } } | null)?.error?.code;
+    if (code === "challenge_required") return { ok: false, reason: "iris_unavailable" };
+    return { ok: false, reason: readFailure(body) };
+  }
 
   const receipt = (body as { receipt?: DemandeReceipt } | null)?.receipt;
   // Une demande partie sans référence lisible ne peut pas être annoncée comme
@@ -596,6 +613,42 @@ export async function sendDemande(submission: DemandeSubmission): Promise<Demand
     return { ok: false, reason: "iris_unavailable" };
   }
   return { ok: true, receipt };
+}
+
+/**
+ * Le défi anti-robot d'un DÉPÔT (`POST /v1/defi`) — à part de
+ * `fetchAssistantChallenge` (`/v1/assistant/defi`, qui n'existe que si la
+ * collectivité a ouvert l'assistant) : déposer par le formulaire classique
+ * demande la même preuve, assistant ou pas (voir `depositGate.ts`, côté
+ * fonctions).
+ *
+ * ⚠️ AUCUN ÉCHEC N'EST DISTINGUÉ : `404` (le portail n'a pas de secret de
+ * signature — la porte n'existe pas), `429` (cadence), un réseau coupé, une
+ * réponse illisible valent tous « pas de défi » — voir `challengeToSolve`
+ * (`src/services/portal/depositChallenge.ts`), qui décide ce qu'on en fait.
+ * Jamais un échec qui empêcherait de tenter le dépôt.
+ */
+export type DepositChallengeLoad = { ok: true; challenge: AssistantChallenge } | { ok: false };
+
+export async function fetchDepositChallenge(): Promise<DepositChallengeLoad> {
+  const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
+  if (!baseUrl) return { ok: false };
+
+  let response: Response;
+  try {
+    response = await fetch(baseUrl.replace(/\/+$/, "") + "/v1/defi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+  } catch {
+    return { ok: false };
+  }
+  if (!response.ok) return { ok: false };
+
+  const body = await response.json().catch(() => null);
+  const challenge = readChallenge(body);
+  return challenge === null ? { ok: false } : { ok: true, challenge };
 }
 
 // ── L'assistant conversationnel ──────────────────────────────────────────────

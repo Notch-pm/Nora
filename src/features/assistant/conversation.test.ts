@@ -182,6 +182,29 @@ describe("buildTurnRequest", () => {
       buildTurnRequest({ ticket: null, challenge: { ...CHALLENGE }, messages, focusDemarcheId: null, lang: "fr" }),
     ).toBeNull();
   });
+
+  it("porte le recueil en cours (lot 2), premier tour comme tour suivant", () => {
+    const collection = { demarcheId: "d1", values: { "f-lieu": "Ici" }, skipped: [] };
+    const first: AssistantMessageView[] = [{ id: "m1", role: "user", content: "Bonjour" }];
+    expect(
+      buildTurnRequest({ ticket: null, challenge: CHALLENGE, messages: first, focusDemarcheId: null, lang: "fr", collection }),
+    ).toMatchObject({ collection });
+
+    const next: AssistantMessageView[] = [
+      { id: "m1", role: "user", content: "Bonjour" },
+      { id: "m2", role: "assistant", content: "Bonjour !", signature: "sig1" },
+      { id: "m3", role: "user", content: "Et pour un chien ?" },
+    ];
+    expect(
+      buildTurnRequest({ ticket: "t1", challenge: null, messages: next, focusDemarcheId: null, lang: "fr", collection }),
+    ).toMatchObject({ collection });
+  });
+
+  it("sans recueil, la requête ne porte aucune clé `collection`", () => {
+    const messages: AssistantMessageView[] = [{ id: "m1", role: "user", content: "Bonjour" }];
+    const request = buildTurnRequest({ ticket: null, challenge: CHALLENGE, messages, focusDemarcheId: null, lang: "fr" });
+    expect(request).not.toHaveProperty("collection");
+  });
 });
 
 describe("reduceConversation", () => {

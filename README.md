@@ -949,9 +949,46 @@ et signalement du dépôt à la fin de `POST /v1/demandes`.
 
 Depuis le 2026-09-20, une collectivité peut proposer un **assistant** sur son
 site : l'usager décrit son besoin (« comment signaler un dépôt sauvage ? »),
-l'assistant le renseigne et lui propose la bonne démarche, en carte. **Il ne
-dépose rien** : l'usager remplit la démarche proposée, par son formulaire. Le
-recueil du formulaire dans la conversation est le lot suivant.
+l'assistant le renseigne et lui propose la bonne démarche, en carte. Si la
+collectivité l'a ouvert (`tenant.assistant.depositEnabled`), l'usager peut
+**remplir la démarche dans la conversation**, relire un récapitulatif, et
+envoyer **lui-même** : sa référence s'affiche dans le fil. **L'assistant ne
+dépose jamais** — le dépôt est un geste de l'usager, par le chemin de toujours
+(`POST /v1/demandes`).
+
+**Le recueil** (`_shared/ai/collection.ts`, pur, même code côté serveur et côté
+écran) partage les rôles :
+
+- **ce qui se dit** passe par la conversation — texte, nombre, courriel,
+  téléphone. Le modèle DIT ce qu'il a compris (`field_updates`) ; le serveur n'en
+  retient que ce qui vise un champ **en attente**, **qui s'écrit**, et **passe la
+  validation du formulaire** (`applyUpdates`). ⚠️ Il ne réécrit jamais une réponse
+  déjà donnée : corriger est un geste de l'usager, sur le récapitulatif ;
+- **ce qui se choisit ou se joint** passe par une **carte** insérée dans le fil,
+  faite des contrôles du formulaire : listes, cases, dates, pièces jointes. Une
+  valeur hors options n'existe pas, un fichier ne transite pas par un modèle — et
+  une carte ne coûte aucun appel au guichet IA ;
+- **l'identité du demandeur** se saisit dans sa propre carte, à la fin, et n'est
+  **jamais montrée au modèle**. ⚠️ Les réponses déjà données non plus : le prompt
+  ne porte que les LIBELLÉS de ce qu'il reste à demander (test). Formulation
+  honnête à tenir devant l'usager : « aucun champ d'identité n'est envoyé au
+  prestataire » — pas « aucune donnée personnelle », puisqu'un lieu d'intervention
+  est une adresse.
+- ⚠️ **L'état du recueil vit dans le navigateur et n'est pas signé** : il n'en a
+  pas besoin. Il ne contient que ce que l'usager pourrait taper dans le
+  formulaire, `sanitizeState` le nettoie avant de servir, et le dépôt refiltre
+  tout contre la démarche publiée. Un champ masqué n'existe pas : changer une
+  réponse purge ce qu'elle vient de masquer.
+
+**La porte anti-robot du dépôt** (`_shared/ai/depositGate.ts`, 2026-09-20) :
+`POST /v1/demandes` n'avait aucun frein, ni ici ni chez Iris — tolérable tant
+qu'il fallait remplir un formulaire à la main. Il demande désormais une preuve
+de travail (`POST /v1/defi`), **liée au `submissionId`** : le serveur n'a pas de
+mémoire et ne voit pas un rejeu, mais une preuve rejouée ne peut redéposer que
+**la même** demande, qu'Iris dédoublonne. Elle vaut pour le formulaire classique
+comme pour l'assistant. ⚠️ Déploiement en **deux temps**
+(`DEPOSIT_CHALLENGE_REQUIRED`, voir `.env.example`) ; sans secret de signature,
+la porte n'existe pas et le portail dépose comme avant.
 
 - **C'est le Socle qui l'ouvre, pas le portail.** Le super administrateur du
   Socle l'active collectivité par collectivité (fiche du client › « Assistant du

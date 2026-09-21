@@ -14,8 +14,9 @@
  * cadre à hauteur fixe ni défilement interne — un zoom à 200 % (RGAA 10.4)
  * doit pouvoir agrandir tout le contenu sans le couper.
  */
-import { useEffect, useId, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
+import { viewOf } from "@fn/_shared/ai/collection.ts";
 import { MAX_USER_MESSAGE_CHARS } from "@fn/_shared/domain/assistantTurn.ts";
 import { DemarcheError, DemarcheLoading, DemarcheShell } from "@/features/demarche/DemarcheShell.tsx";
 import { errorMessageFor } from "@/features/portal/errorMessages.ts";
@@ -26,16 +27,21 @@ import { localizedPath, servedLanguage, splitScopedPath } from "@/i18n/localized
 import { assistantTitle, errorPageTitle } from "@/i18n/pageTitle.ts";
 import { useDocumentTitle } from "@/i18n/useDocumentTitle.ts";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
+import { BUTTON_CLASS, CARD_CLASS, LINK_CLASS } from "./cardStyles.ts";
+import {
+  ClassicFormLink,
+  IdentityCard,
+  OrganizationCard,
+  PendingFieldCard,
+  ReceiptNoteView,
+  RecapCard,
+  StartedNoteView,
+} from "./CollectCards.tsx";
+import { mergeTimeline } from "./collect.ts";
 import { assistantErrorMessage } from "./errorMessages.ts";
 import type { AssistantMessageView } from "./conversation.ts";
+import { useAssistantCollect } from "./useAssistantCollect.ts";
 import { useAssistantConversation } from "./useAssistantConversation.ts";
-
-const CARD_CLASS =
-  "rounded-[var(--pt-radius)] border border-[color:var(--pt-border)] bg-white p-[var(--pt-pad)]";
-const LINK_CLASS =
-  "rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] px-4 py-2 text-[length:var(--pt-body)] hover:bg-[color:var(--pt-surface)]";
-const BUTTON_CLASS =
-  "rounded-[var(--pt-radius-sm)] bg-[color:var(--brand-primary)] px-5 py-3 text-[length:var(--pt-body)] font-bold text-white hover:opacity-90 disabled:opacity-60";
 
 /** La mention permanente : obligation de transparence, jamais reléguée au premier message. */
 function AssistantNotice() {
@@ -93,10 +99,18 @@ function MessageBubble({
   message,
   lang,
   demarches,
+  depositEnabled,
+  collectBusy,
+  onStartCollect,
 }: {
   message: AssistantMessageView;
   lang: string;
   demarches: Demarche[];
+  /** La collectivité a ouvert le recueil dans la conversation (lot 2). */
+  depositEnabled: boolean;
+  /** Un recueil est déjà en cours, ou en cours de chargement : le bouton se désactive. */
+  collectBusy: boolean;
+  onStartCollect: (demarcheId: string) => void;
 }) {
   const t = useT();
   const isUser = message.role === "user";
@@ -127,10 +141,10 @@ function MessageBubble({
               const known = demarches.some((d) => d.id === suggestion.id);
               if (!known) return null;
               return (
-                <li key={suggestion.id}>
+                <li key={suggestion.id} className="flex flex-col items-start gap-2">
                   <Link
                     to={localizedPath(lang, "/demarches/" + encodeURIComponent(suggestion.id))}
-                    className="block rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-4 py-3 hover:border-[color:var(--brand-primary)]"
+                    className="block w-full rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-4 py-3 hover:border-[color:var(--brand-primary)]"
                   >
                     <span className="block text-[length:var(--pt-body)] font-semibold text-[color:var(--pt-ink)]">
                       {suggestion.name}
@@ -141,6 +155,16 @@ function MessageBubble({
                       </span>
                     )}
                   </Link>
+                  {depositEnabled && (
+                    <button
+                      type="button"
+                      disabled={collectBusy}
+                      onClick={() => onStartCollect(suggestion.id)}
+                      className="rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] px-3 py-1.5 text-[length:var(--pt-small)] font-semibold text-[color:var(--pt-ink)] hover:border-[color:var(--brand-primary)] hover:text-[color:var(--brand-primary)] disabled:opacity-60"
+                    >
+                      {t("assistant.collect.start")}
+                    </button>
+                  )}
                 </li>
               );
             })}
@@ -155,10 +179,13 @@ function AssistantConversation({
   demarches,
   lang,
   focusDemarcheId,
+  depositEnabled,
 }: {
   demarches: Demarche[];
   lang: string;
   focusDemarcheId: string | null;
+  /** La collectivité a ouvert le recueil dans la conversation (lot 2). */
+  depositEnabled: boolean;
 }) {
   const t = useT();
   const tn = useTn();
@@ -172,16 +199,37 @@ function AssistantConversation({
     sendMessage,
     retry,
     newConversation,
+    collectionReply,
   } = useAssistantConversation(focusDemarcheId, lang);
+  const collect = useAssistantCollect({ lang, depositEnabled, collectionReply });
   const [draft, setDraft] = useState("");
   const inputId = useId();
   const hintId = useId();
   const counterId = useId();
   const problemId = useId();
+  // Le premier contrôle de la carte active reçoit le focus À SON APPARITION
+  // (fiche de mission, RGAA 10.7) — jamais la zone de saisie. La « signature »
+  // ne change QUE quand la carte affichée change réellement (nouveau champ,
+  // nouvelle étape) : répondre deux fois de suite au MÊME champ « conversation »
+  // (le modèle n'a rien retenu) ne doit pas arracher le focus du clavier.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const activePendingFieldId =
+    collect.session !== null && collect.step === "fields"
+      ? (viewOf(collect.session.demarche.form, collect.session.collection).pending?.id ?? null)
+      : null;
+  const cardSignature =
+    collect.session === null ? "" : collect.session.demarche.id + ":" + collect.step + ":" + (activePendingFieldId ?? "");
+  useEffect(() => {
+    if (cardSignature === "") return;
+    const focusable = cardRef.current?.querySelector<HTMLElement>(
+      'input, select, textarea, button, a[href], [tabindex]:not([tabindex="-1"])',
+    );
+    focusable?.focus();
+  }, [cardSignature]);
 
   function submit(event?: { preventDefault(): void }) {
     event?.preventDefault();
-    if (sendMessage(draft)) setDraft("");
+    if (sendMessage(draft, collect.turnCollectionPayload)) setDraft("");
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -192,6 +240,15 @@ function AssistantConversation({
     if (event.nativeEvent.isComposing) return;
     event.preventDefault();
     submit();
+  }
+
+  function startCollect(demarcheId: string): void {
+    void collect.start(demarcheId, state.messages.length);
+  }
+
+  function endConversation(): void {
+    newConversation();
+    collect.reset();
   }
 
   const describedBy = [
@@ -207,6 +264,9 @@ function AssistantConversation({
   // ce serait un lien vers une page qui ne s'ouvrira pas.
   const focusDemarche =
     focusDemarcheId === null ? null : demarches.find((d) => d.id === focusDemarcheId) ?? null;
+
+  const timeline = mergeTimeline(state.messages, collect.notes);
+  const collectBusy = collect.loading || collect.session !== null;
 
   return (
     <>
@@ -241,12 +301,30 @@ function AssistantConversation({
           aria-busy={state.status === "sending"}
           className="flex flex-col gap-3"
         >
-          {state.messages.length === 0 ? (
+          {timeline.length === 0 ? (
             <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("assistant.empty")}</p>
           ) : (
-            state.messages.map((message) => (
-              <MessageBubble key={message.id} message={message} lang={lang} demarches={demarches} />
-            ))
+            timeline.map((entry) =>
+              entry.kind === "message" ? (
+                <MessageBubble
+                  key={entry.message.id}
+                  message={entry.message}
+                  lang={lang}
+                  demarches={demarches}
+                  depositEnabled={depositEnabled}
+                  collectBusy={collectBusy}
+                  onStartCollect={startCollect}
+                />
+              ) : entry.note.kind === "started" ? (
+                <StartedNoteView key={entry.note.id} note={entry.note} />
+              ) : (
+                <ReceiptNoteView
+                  key={entry.note.id}
+                  receipt={entry.note.receipt}
+                  demarcheName={entry.note.demarcheName}
+                />
+              ),
+            )
           )}
         </div>
 
@@ -255,6 +333,68 @@ function AssistantConversation({
         <p role="status" aria-live="polite" className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
           {state.status === "sending" ? t(stillWaiting ? "assistant.status.stillWaiting" : "assistant.status.waiting") : ""}
         </p>
+
+        {collect.loading && (
+          <p role="status" aria-live="polite" className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
+            {t("assistant.collect.loading")}
+          </p>
+        )}
+
+        {collect.loadError !== null && (
+          <div role="alert" className="rounded-[var(--pt-radius-sm)] border border-red-300 bg-red-50 px-4 py-3">
+            <p className="text-[length:var(--pt-body)] text-red-800">
+              {t(collect.loadError === "no_form" ? "assistant.collect.noForm" : "assistant.collect.loadFailed")}
+            </p>
+          </div>
+        )}
+
+        {collect.purgedCount !== null && (
+          <p role="status" aria-live="polite" className="text-[length:var(--pt-body)] text-amber-800">
+            {tn("assistant.collect.purgeNotice", collect.purgedCount)}
+          </p>
+        )}
+
+        {collect.session !== null && (
+          <div ref={cardRef} className="flex flex-col gap-3">
+            {collect.step === "fields" && (
+              <PendingFieldCard session={collect.session} onAnswer={collect.answerField} onSkip={collect.skipField} />
+            )}
+            {collect.step === "organization" && (
+              <OrganizationCard
+                session={collect.session}
+                onChoose={collect.chooseOrganization}
+                onConfirm={() => {
+                  if (collect.session === null || collect.session.organizationId === null) return false;
+                  collect.confirmOrganization();
+                  return true;
+                }}
+              />
+            )}
+            {collect.step === "identity" && (
+              <IdentityCard
+                session={collect.session}
+                requesterErrors={collect.requesterErrors}
+                onAudienceChange={collect.setAudience}
+                onFieldChange={collect.setRequesterValue}
+                onConfirm={collect.confirmIdentity}
+              />
+            )}
+            {collect.step === "recap" && (
+              <RecapCard
+                session={collect.session}
+                submitting={collect.submitting}
+                submitFailureMessage={
+                  collect.submitFailure !== null ? errorMessageFor(collect.submitFailure, lang) : null
+                }
+                onModifyField={collect.reopenField}
+                onModifyOrganization={collect.reopenOrganization}
+                onModifyIdentity={collect.reopenIdentity}
+                onSubmit={() => void collect.submit(state.messages.length)}
+              />
+            )}
+            <ClassicFormLink session={collect.session} />
+          </div>
+        )}
 
         {/* ⚠️ Pas quand `status === "ended"` : la carte juste en dessous porte
             déjà le même message (« conversation_ended »), avec le bon geste
@@ -266,15 +406,19 @@ function AssistantConversation({
             <p className="mt-1 text-[length:var(--pt-body)] text-red-800">
               {assistantErrorMessage(state.failure, lang).detail}
             </p>
-            {assistantErrorMessage(state.failure, lang).retryable && (
-              <button
-                type="button"
-                onClick={retry}
-                className="mt-2 rounded-[var(--pt-radius-sm)] border border-red-300 bg-white px-4 py-2 text-[length:var(--pt-body)] font-semibold text-red-800 hover:bg-red-100"
-              >
-                {t("page.retry")}
-              </button>
-            )}
+            <div className="mt-2 flex flex-wrap items-center gap-4">
+              {/* Un échec pendant un recueil propose D'ABORD le repli garanti. */}
+              {collect.session !== null && <ClassicFormLink session={collect.session} />}
+              {assistantErrorMessage(state.failure, lang).retryable && (
+                <button
+                  type="button"
+                  onClick={retry}
+                  className="rounded-[var(--pt-radius-sm)] border border-red-300 bg-white px-4 py-2 text-[length:var(--pt-body)] font-semibold text-red-800 hover:bg-red-100"
+                >
+                  {t("page.retry")}
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -289,7 +433,7 @@ function AssistantConversation({
             <button
               ref={newConversationButtonRef}
               type="button"
-              onClick={newConversation}
+              onClick={endConversation}
               className={BUTTON_CLASS + " mt-3"}
             >
               {t("assistant.newConversation")}
@@ -350,7 +494,7 @@ function AssistantConversation({
               {state.ticket !== null && (
                 <button
                   type="button"
-                  onClick={newConversation}
+                  onClick={endConversation}
                   className="text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline"
                 >
                   {t("assistant.newConversation")}
@@ -366,12 +510,24 @@ function AssistantConversation({
         )}
 
         {focusDemarche !== null && (
-          <Link
-            to={localizedPath(lang, "/demarches/" + encodeURIComponent(focusDemarche.id))}
-            className="text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline"
-          >
-            {t("demarche.back")}
-          </Link>
+          <div className="flex flex-wrap items-center gap-4">
+            <Link
+              to={localizedPath(lang, "/demarches/" + encodeURIComponent(focusDemarche.id))}
+              className="text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline"
+            >
+              {t("demarche.back")}
+            </Link>
+            {depositEnabled && (
+              <button
+                type="button"
+                disabled={collectBusy}
+                onClick={() => startCollect(focusDemarche.id)}
+                className="text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline disabled:opacity-60"
+              >
+                {t("assistant.collect.start")}
+              </button>
+            )}
+          </div>
         )}
       </div>
     </>
@@ -453,7 +609,12 @@ export function AssistantPage() {
       villes={villes}
     >
       {tenant.assistant.enabled ? (
-        <AssistantConversation demarches={demarches} lang={lang} focusDemarcheId={focusDemarcheId} />
+        <AssistantConversation
+          demarches={demarches}
+          lang={lang}
+          focusDemarcheId={focusDemarcheId}
+          depositEnabled={tenant.assistant.depositEnabled}
+        />
       ) : (
         <AssistantDisabled lang={lang} />
       )}

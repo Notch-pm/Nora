@@ -18,6 +18,7 @@
  */
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
+import { solveChallenge } from "@fn/_shared/ai/challenge.ts";
 import { useLanguage, useT, useTn } from "@/i18n/LanguageLayout.tsx";
 import { errorText } from "@/i18n/t.ts";
 import { organismePath, servedLanguage, splitScopedPath } from "@/i18n/localizedPath.ts";
@@ -29,9 +30,12 @@ import type { DemandeReceipt } from "@fn/_shared/domain/demande.ts";
 import type { Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import { CONTACT_TYPES, enabledAudiences, requesterFieldsFor } from "@fn/_shared/domain/requesterConfig.ts";
 import { errorMessageFor } from "@/features/portal/errorMessages.ts";
-import { sendDemande, type PortalLoadFailure } from "@/services/portal/portalClient.ts";
+import { challengeToSolve } from "@/services/portal/depositChallenge.ts";
+import { fetchDepositChallenge, sendDemande, type PortalLoadFailure } from "@/services/portal/portalClient.ts";
+import { readAndClearPrefill } from "@/features/assistant/prefill.ts";
 import { DemarcheError, DemarcheLoading, DemarcheShell } from "./DemarcheShell.tsx";
 import { FormFieldControl } from "./FormFields.tsx";
+import { Receipt } from "./Receipt.tsx";
 import { RequesterSection } from "./RequesterSection.tsx";
 import {
   isFieldRequired,
@@ -54,32 +58,13 @@ function newSubmissionId(): string {
   return "dep-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
 }
 
-/** L'accusé de dépôt. Ce que l'usager doit pouvoir noter avant de fermer. */
-function Receipt({ receipt, demarcheName }: { receipt: DemandeReceipt; demarcheName: string }) {
-  const { lang } = useLanguage();
-  const t = useT();
-  // Le périmètre vient de l'adresse — même raison que dans `DemarchePage` :
-  // après un dépôt sous une mairie, on revient à la page de cette mairie.
-  const { organisme } = splitScopedPath(useLocation().pathname);
-  return (
-    <section className="rounded-[var(--pt-radius)] border border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_6%,white)] p-6">
-      <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">
-        {t(receipt.created ? "receipt.title" : "receipt.titleAgain")}
-      </h1>
-      <p className="mt-2 text-[color:var(--pt-ink)]">{demarcheName}</p>
-      <p className="mt-6 text-[length:var(--pt-body)] font-semibold uppercase tracking-wide text-[color:var(--pt-muted)]">
-        {t("receipt.reference")}
-      </p>
-      <p className="mt-1 text-[length:var(--pt-h1)] font-black tracking-tight text-[color:var(--pt-ink)]">{receipt.reference}</p>
-      <p className="mt-4 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("receipt.note")}</p>
-      <Link
-        to={organismePath(lang, organisme, "/")}
-        className="mt-6 inline-flex rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-4 py-2 text-[length:var(--pt-body)] font-semibold hover:bg-[color:var(--pt-surface)]"
-      >
-        {t("demarche.backHome")}
-      </Link>
-    </section>
-  );
+/** `sessionStorage` peut lever (navigation privée) ou ne pas exister (rendu hors navigateur). */
+function tabStorage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.sessionStorage;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -146,6 +131,26 @@ export function FormulairePage() {
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
   const demarche = state.status === "ready" ? state.snapshot.demarche : null;
+
+  // Le pré-remplissage venu d'un recueil de l'assistant (lot 2, « Continuer
+  // dans le formulaire classique ») — lu UNE fois, puis effacé : rouvrir
+  // cette page ensuite retrouve un formulaire vide, comme d'habitude. Gardé
+  // par démarche (`prefillAppliedForRef`) : naviguer d'une démarche à l'autre
+  // sans démonter ce composant doit pouvoir le relire pour la suivante.
+  const prefillAppliedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (demarche === null) return;
+    if (prefillAppliedForRef.current === demarche.id) return;
+    prefillAppliedForRef.current = demarche.id;
+    const storage = tabStorage();
+    if (storage === null) return;
+    const prefill = readAndClearPrefill(storage, demarche.id);
+    if (prefill === null) return;
+    setValues(prefill.values);
+    setRequesterValues(prefill.requesterValues);
+    setAudience(prefill.audience);
+    setOrganizationId(prefill.organizationId);
+  }, [demarche]);
 
   const audiences = useMemo(
     () => (demarche === null ? [] : enabledAudiences(demarche.requester)),
@@ -231,7 +236,18 @@ export function FormulairePage() {
       languages={tenant.languages}
       villes={villes}
     >
-        <Receipt receipt={receipt} demarcheName={detail.name} />
+        <Receipt
+          receipt={receipt}
+          demarcheName={detail.name}
+          footer={
+            <Link
+              to={organismePath(lang, organisme, "/")}
+              className="mt-6 inline-flex rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] bg-white px-4 py-2 text-[length:var(--pt-body)] font-semibold hover:bg-[color:var(--pt-surface)]"
+            >
+              {t("demarche.backHome")}
+            </Link>
+          }
+        />
       </DemarcheShell>
     );
   }
@@ -311,19 +327,28 @@ export function FormulairePage() {
 
     setSending(true);
     setSendFailure(null);
-    const result = await sendDemande({
-      demarcheId: detail.id,
-      organizationId: effectiveOrganizationId,
-      formData: toFormData(schema, values),
-      requester:
-        currentAudience === null
-          ? null
-          : toRequester(CONTACT_TYPES[currentAudience], requesterFields, requesterValues),
-      submissionId,
-      // Les fichiers sont déjà chez Iris : seuls leurs identifiants partent,
-      // et un rejeu après coupure les renvoie tels quels.
-      attachments: toAttachments(schema, values),
-    });
+    // La preuve de travail se résout ICI, dans le navigateur — comme pour
+    // l'assistant : une panne de `/v1/defi` ne doit pas empêcher de tenter le
+    // dépôt (voir `challengeToSolve`).
+    const challengeLoad = await fetchDepositChallenge();
+    const toSolve = challengeToSolve(challengeLoad);
+    const challenge = toSolve === null ? null : await solveChallenge(toSolve, 2000, submissionId);
+    const result = await sendDemande(
+      {
+        demarcheId: detail.id,
+        organizationId: effectiveOrganizationId,
+        formData: toFormData(schema, values),
+        requester:
+          currentAudience === null
+            ? null
+            : toRequester(CONTACT_TYPES[currentAudience], requesterFields, requesterValues),
+        submissionId,
+        // Les fichiers sont déjà chez Iris : seuls leurs identifiants partent,
+        // et un rejeu après coupure les renvoie tels quels.
+        attachments: toAttachments(schema, values),
+      },
+      challenge,
+    );
     setSending(false);
     if (result.ok) setReceipt(result.receipt);
     else setSendFailure(result.reason);

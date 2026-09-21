@@ -19,6 +19,7 @@ import {
   type AssistantSuggestion,
   type AssistantTurnReply,
   type AssistantTurnRequest,
+  type CollectionPayload,
   type SolvedChallenge,
   type TurnMessage,
 } from "@fn/_shared/domain/assistantTurn.ts";
@@ -261,6 +262,12 @@ export function toTurnMessages(messages: readonly AssistantMessageView[]): TurnM
  * Rend `null` quand la requête ne peut pas se construire : pas de défi résolu
  * pour un premier tour, ou fil qui ne se termine pas par un message usager
  * (l'appelant a un bogue — mieux vaut refuser que d'envoyer n'importe quoi).
+ *
+ * `collection` porte le recueil en cours (lot 2), s'il y en a un — voir
+ * `collect.ts`. `undefined` : pas de recueil, la clé n'apparaît même pas dans
+ * la requête ; `null` : un recueil qui vient de se refermer (l'écran le
+ * repasse explicitement à `null` le temps d'un tour, plutôt que de continuer à
+ * l'envoyer par erreur).
  */
 export function buildTurnRequest(params: {
   ticket: string | null;
@@ -268,18 +275,26 @@ export function buildTurnRequest(params: {
   messages: readonly AssistantMessageView[];
   focusDemarcheId: string | null;
   lang: string;
+  collection?: CollectionPayload | null;
 }): AssistantTurnRequest | null {
-  const { ticket, challenge, messages, focusDemarcheId, lang } = params;
+  const { ticket, challenge, messages, focusDemarcheId, lang, collection } = params;
+  const collectionField = collection === undefined ? {} : { collection };
   if (ticket === null) {
     if (challenge === null) return null;
     const last = messages.length > 0 ? messages[messages.length - 1] : undefined;
     if (last === undefined || last.role !== "user") return null;
-    return { challenge, messages: [{ role: "user", content: last.content }], focusDemarcheId, lang };
+    return {
+      challenge,
+      messages: [{ role: "user", content: last.content }],
+      focusDemarcheId,
+      lang,
+      ...collectionField,
+    };
   }
   const turnMessages = toTurnMessages(messages);
   const last = turnMessages.length > 0 ? turnMessages[turnMessages.length - 1] : undefined;
   if (last === undefined || last.role !== "user") return null;
-  return { ticket, messages: turnMessages, focusDemarcheId, lang };
+  return { ticket, messages: turnMessages, focusDemarcheId, lang, ...collectionField };
 }
 
 // ── Persistance sessionStorage ───────────────────────────────────────────────

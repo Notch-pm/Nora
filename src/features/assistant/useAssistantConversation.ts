@@ -13,7 +13,7 @@
  */
 import { useEffect, useReducer, useRef, useState, type RefObject } from "react";
 import { solveChallenge } from "@fn/_shared/ai/challenge.ts";
-import type { SolvedChallenge } from "@fn/_shared/domain/assistantTurn.ts";
+import type { CollectionPayload, SolvedChallenge } from "@fn/_shared/domain/assistantTurn.ts";
 import { fetchAssistantChallenge, sendAssistantTurn } from "@/services/portal/portalClient.ts";
 import {
   buildTurnRequest,
@@ -53,11 +53,23 @@ export interface UseAssistantConversation {
   textareaRef: RefObject<HTMLTextAreaElement>;
   /** À poser sur le bouton « Nouvelle conversation » : y reçoit le focus quand le fil se termine. */
   newConversationButtonRef: RefObject<HTMLButtonElement>;
-  /** Rend `true` quand le message a été accepté et pris en charge — l'appelant peut alors vider sa saisie. */
-  sendMessage: (raw: string) => boolean;
+  /**
+   * Rend `true` quand le message a été accepté et pris en charge — l'appelant
+   * peut alors vider sa saisie. `collection` porte le recueil en cours (lot
+   * 2), s'il y en a un — voir `useAssistantCollect.ts`. Retenu pour le rejeu
+   * automatique d'un ticket périmé et pour `retry()`, qui doivent porter EXACTEMENT
+   * ce qui a été envoyé la première fois.
+   */
+  sendMessage: (raw: string, collection?: CollectionPayload | null) => boolean;
   /** Rejoue le DERNIER message déjà dans le fil — celui qui a échoué. */
   retry: () => void;
   newConversation: () => void;
+  /**
+   * Le recueil que le serveur a RETENU du dernier tour reçu — `null` hors
+   * recueil, ou avant toute réponse. `useAssistantCollect.ts` le repasse par
+   * `sanitizeState` avant de s'en servir (même règle que partout ailleurs).
+   */
+  collectionReply: CollectionPayload | null;
 }
 
 export function useAssistantConversation(
@@ -67,6 +79,7 @@ export function useAssistantConversation(
   const [state, dispatch] = useReducer(reduceConversation, undefined, initialConversation);
   const [stillWaiting, setStillWaiting] = useState(false);
   const [problem, setProblem] = useState<MessageProblem | null>(null);
+  const [collectionReply, setCollectionReply] = useState<CollectionPayload | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const newConversationButtonRef = useRef<HTMLButtonElement>(null);
   // Incrémenté à chaque geste de l'usager — voir l'en-tête du fichier.
@@ -123,10 +136,16 @@ export function useAssistantConversation(
    * la fiche de mission). `messagesForRequest` est le fil TEL QU'IL DOIT
    * PARTIR (le message qui vient d'être ajouté y figure déjà).
    */
+  // Le recueil attaché au DERNIER envoi — retenu pour que le rejeu automatique
+  // d'un ticket périmé (ci-dessous) et `retry()` portent exactement ce qui a
+  // été envoyé la première fois, sans que l'appelant ait à s'en souvenir.
+  const lastCollectionRef = useRef<CollectionPayload | null>(null);
+
   async function runTurn(
     messagesForRequest: readonly AssistantMessageView[],
     ticket: string | null,
     generation: number,
+    collection: CollectionPayload | null,
   ): Promise<void> {
     let challenge: SolvedChallenge | null = null;
     if (ticket === null) {
@@ -150,6 +169,7 @@ export function useAssistantConversation(
       // La démarche proposée au tour précédent, à défaut celle de l'adresse.
       focusDemarcheId: focusDemarcheOf(messagesForRequest, fromAddress),
       lang: currentLang,
+      collection,
     });
     if (request === null) {
       dispatch({ type: "failed", reason: "bad_request" });
@@ -168,16 +188,17 @@ export function useAssistantConversation(
       if (result.reason === "challenge_required" && ticket !== null) {
         dispatch({ type: "reopen" });
         const last = [...messagesForRequest].reverse().find((m) => m.role === "user");
-        if (last !== undefined) await runTurn([{ ...last }], null, generation);
+        if (last !== undefined) await runTurn([{ ...last }], null, generation, collection);
         return;
       }
       dispatch({ type: "failed", reason: result.reason, retryAfterSeconds: result.retryAfterSeconds });
       return;
     }
     dispatch({ type: "received", reply: result.reply });
+    setCollectionReply(result.reply.collection);
   }
 
-  function sendMessage(raw: string): boolean {
+  function sendMessage(raw: string, collection: CollectionPayload | null = null): boolean {
     if (state.status === "sending" || state.status === "ended") return false;
     const validation = validateMessage(raw);
     if (!validation.ok) {
@@ -185,13 +206,14 @@ export function useAssistantConversation(
       return false;
     }
     setProblem(null);
+    lastCollectionRef.current = collection;
     const generation = ++generationRef.current;
     // Calculé PUREMENT, pour construire la requête sans attendre le prochain
     // rendu (voir l'en-tête) — et réellement appliqué juste après, par la
     // même action.
     const prospective = reduceConversation(state, { type: "sent", content: validation.content });
     dispatch({ type: "sent", content: validation.content });
-    void runTurn(prospective.messages, state.ticket, generation);
+    void runTurn(prospective.messages, state.ticket, generation, collection);
     return true;
   }
 
@@ -199,13 +221,15 @@ export function useAssistantConversation(
     if (state.failure === null || state.status === "ended") return;
     const generation = ++generationRef.current;
     dispatch({ type: "retrying" });
-    void runTurn(state.messages, state.ticket, generation);
+    void runTurn(state.messages, state.ticket, generation, lastCollectionRef.current);
   }
 
   function newConversation(): void {
     generationRef.current += 1; // Toute réponse en vol devient périmée.
     dispatch({ type: "reset" });
     setProblem(null);
+    setCollectionReply(null);
+    lastCollectionRef.current = null;
     const storage = tabStorage();
     if (storage !== null) clearConversation(storage);
   }
@@ -220,5 +244,6 @@ export function useAssistantConversation(
     sendMessage,
     retry,
     newConversation,
+    collectionReply,
   };
 }
