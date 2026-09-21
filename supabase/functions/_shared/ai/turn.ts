@@ -225,7 +225,10 @@ export async function runAssistantTurn(
     tenantName: tenant.name,
     lang,
     catalogue,
-    candidates: pickCandidates(catalogue, said),
+    // Chercher les démarches proches n'a plus d'objet une fois qu'on en remplit
+    // une : le prompt ne les enverrait pas (voir `buildAssistantPrompt`), et
+    // `pickCandidates` balaie tout le catalogue pour rien.
+    candidates: collection === null ? pickCandidates(catalogue, said) : [],
     focus,
     collecting:
       collection === null || focus?.form == null

@@ -91,12 +91,13 @@ const COLLECT_RULES = [
   "- La liste « LE FORMULAIRE, DANS L'ORDRE » donne tout le formulaire : ce qui reste à renseigner, ce qui est « déjà renseigné » et ce qui a été « passé par l'usager ». Ne demande QUE des informations de cette liste, et n'en invente aucune.",
   "- Pour chaque information marquée [écrit] que le DERNIER message de l'usager fournit, ajoute { \"id\", \"value\" } dans `field_updates`. Un même message peut en fournir plusieurs : parcours la liste ENTIÈRE — un usager qui décrit son problème en donnant l'adresse a répondu aux deux (une « description » demandée plus bas se remplit avec ce qu'il vient de raconter).",
   "- La forme de `value` dépend de l'information : si des « valeurs : » sont listées, rends EXACTEMENT l'une d'elles, entre guillemets dans la liste, et aucune autre — plusieurs se rendent en tableau ; un oui/non se rend `true` ou `false` ; tout le reste se rend avec les mots de l'usager, sans rien inventer, compléter ni corriger.",
-  "- DIS TOUJOURS D'OÙ VIENT TA VALEUR, avec `origin` : « extracted » si tu reprends les mots de l'usager tels quels — recopie-les alors dans `source`, mot pour mot, sans rien changer ; « inferred » si tu interprètes, rapproches ou complètes — explique en une phrase courte dans `reason` ; « generated » si tu rédiges un texte à partir de plusieurs de ses messages (texte long seulement). Dans le doute, « inferred » : une valeur relue coûte un coup d'œil, une valeur fausse signée par l'usager coûte bien plus.",
+  "- DIS TOUJOURS D'OÙ VIENT TA VALEUR, avec `origin` : « extracted » si tu reprends les mots de l'usager tels quels — recopie-les alors dans `source`, mot pour mot, sans rien changer, et une quinzaine de mots au plus (c'est une citation qui justifie un repère, pas le message rejoué) ; « inferred » si tu interprètes, rapproches ou complètes — explique en une phrase courte dans `reason` ; « generated » si tu rédiges un texte à partir de plusieurs de ses messages (texte long seulement). Dans le doute, « inferred » : une valeur relue coûte un coup d'œil, une valeur fausse signée par l'usager coûte bien plus.",
   "- Ne remplis JAMAIS une information marquée [carte] : c'est une DATE ou une pièce à joindre. Une date ne se devine pas — « jeudi », « demain », « la semaine dernière » supposent de savoir quel jour on est, et tu ne le sais pas. ANNONCE-LA (« je vous affiche le calendrier juste en dessous », « déposez le fichier ci-dessous ») et mets son id dans `asking` : c'est l'usager qui la renseigne avec le contrôle affiché.",
   "- Une information FACULTATIVE que l'usager refuse ou dit ne pas avoir SE PASSE : { \"id\": …, \"skip\": true } dans `field_updates`. Ne la repose plus. Sans ce geste, la question reviendrait sans fin et l'usager ne pourrait jamais envoyer sa demande.",
   "- Ne redemande pas une information « déjà renseigné » ou « passé par l'usager », et ne la corrige pas de toi-même. Si l'usager veut revenir dessus, dis-lui qu'il pourra la modifier sur le récapitulatif, avant l'envoi.",
   "- Ne demande ni nom, ni adresse personnelle, ni téléphone, ni courriel du demandeur : une carte dédiée s'en charge à la fin. Les informations de la liste, elles, font partie du formulaire : tu peux les recevoir, et les redire pour accuser réception.",
-  "- Accuse réception en UNE phrase de ce que tu viens de comprendre, puis pose la question suivante. Rien de plus : 80 mots au plus.",
+  "- SOIS ACCOMPAGNANT. Tu aides quelqu'un à remplir un dossier administratif, pas un questionnaire : accuse réception en VALIDANT ce qu'il vient de faire (« c'est noté », « parfait, ça me suffit »), dis à quoi sert l'information que tu demandes quand ce n'est pas évident, et rassure sur la suite — rien ne part avant qu'il ait tout relu. Chaleureux et bref à la fois : 100 mots au plus, pas de flagornerie, pas de phrase creuse.",
+  "- AU PREMIER MESSAGE DU RECUEIL, accueille l'usager avant de demander quoi que ce soit : dis en une phrase ce que vous allez remplir ensemble et ce que tu auras besoin de savoir en gros, puis pose la première question. N'attaque pas par une question sèche.",
   "- QUAND PLUS RIEN N'EST EN ATTENTE, ne demande plus rien : dis que le récapitulatif s'affiche sous ton message, que l'usager peut tout relire, corriger chaque ligne, puis envoyer lui-même. `asking` vide.",
 ].join("\n");
 
@@ -201,7 +202,16 @@ function candidateBlock(demarche: Demarche): string {
   return lines.join("\n");
 }
 
-function focusBlock(detail: DemarcheDetail): string {
+/**
+ * La démarche consultée, en entier.
+ *
+ * `withFormFields` : faux EN RECUEIL seulement. La liste des champs y serait un
+ * doublon — `collectBlock` rend les mêmes libellés, avec leurs identifiants,
+ * leurs valeurs acceptées et ce qui est déjà renseigné. Deux listes des mêmes
+ * champs coûtent des jetons à chaque tour et donnent au modèle deux sources
+ * pour une seule vérité, dont une sans identifiants.
+ */
+function focusBlock(detail: DemarcheDetail, withFormFields: boolean): string {
   const parts = [candidateBlock(detail)];
   if (detail.estimatedMinutes !== null) {
     parts.push(`temps pour remplir le formulaire: environ ${detail.estimatedMinutes} minutes`);
@@ -223,7 +233,7 @@ function focusBlock(detail: DemarcheDetail): string {
     );
   }
   if (detail.form !== null) {
-    const fields = allFields(detail.form).slice(0, 60);
+    const fields = withFormFields ? allFields(detail.form).slice(0, 60) : [];
     if (fields.length > 0) {
       parts.push(
         "informations demandées par le formulaire:\n" +
@@ -282,15 +292,33 @@ export function buildAssistantPrompt(input: AssistantPromptInput): string {
     offering ? OFFER_RULES : "",
     outputContract(input.lang, collecting !== null, offering),
     fenced("COLLECTIVITÉ", input.tenantName),
-    fenced(
-      "CATALOGUE — toutes les démarches en ligne de la collectivité",
-      input.catalogue.map(catalogueLine).join("\n"),
-    ),
-    fenced(
-      "DÉMARCHES LES PLUS PROCHES DE LA DEMANDE",
-      input.candidates.map(candidateBlock).join("\n\n"),
-    ),
-    input.focus === null ? "" : fenced("DÉMARCHE CONSULTÉE PAR L'USAGER", focusBlock(input.focus)),
+    // ⚠️ EN RECUEIL, ni catalogue ni candidats. La démarche est choisie — elle
+    // est en train d'être remplie ; orienter vers une autre n'a plus de sens, et
+    // ces deux blocs sont les plus gros du prompt (tout le catalogue publié, plus
+    // huit démarches décrites). Les retirer, c'est rendre la réponse plus rapide
+    // à l'usager, qui attend sans affichage progressif — le guichet refuse le
+    // flux. `procedure_ids` reste au contrat : sans catalogue à citer, le modèle
+    // n'a rien à y mettre, et `parseAssistantAnswer` revalide de toute façon
+    // chaque identifiant contre le catalogue réel.
+    collecting !== null
+      ? ""
+      : fenced(
+          "CATALOGUE — toutes les démarches en ligne de la collectivité",
+          input.catalogue.map(catalogueLine).join("\n"),
+        ),
+    collecting !== null
+      ? ""
+      : fenced(
+          "DÉMARCHES LES PLUS PROCHES DE LA DEMANDE",
+          input.candidates.map(candidateBlock).join("\n\n"),
+        ),
+    // La démarche consultée, elle, RESTE en recueil : c'est d'elle que viennent
+    // le descriptif, le délai, les pièces à prévoir et la FAQ — de quoi répondre
+    // à « pourquoi vous me demandez ça ? » en plein remplissage. Seule sa liste
+    // de champs s'en va : `collectBlock` la rend juste en dessous, en mieux.
+    input.focus === null
+      ? ""
+      : fenced("DÉMARCHE CONSULTÉE PAR L'USAGER", focusBlock(input.focus, collecting === null)),
     collecting === null ? "" : fenced("LE FORMULAIRE, DANS L'ORDRE", collectBlock(collecting)),
     collecting !== null && collecting.every((field) => !field.pending)
       ? "INFORMATIONS À RECUEILLIR : plus aucune. L'usager peut relire et envoyer sa demande avec le récapitulatif affiché."

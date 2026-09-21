@@ -306,3 +306,92 @@ describe("le recueil dans la conversation", () => {
     expect(read?.ok && read.ticket.collecting).toBe(false);
   });
 });
+
+/**
+ * Ce qu'on ENVOIE au modèle pendant un recueil — et surtout ce qu'on n'envoie
+ * plus. L'usager attend la réponse entière sans affichage progressif (le
+ * guichet refuse le flux) : chaque bloc inutile se paie en secondes d'attente.
+ */
+describe("le prompt d'un recueil, allégé", () => {
+  /** La même démarche, mais documentée : c'est ce qui DOIT survivre à l'allègement. */
+  const documented = (id: string): DemarcheDetail => ({
+    ...detail(id),
+    userDescription: "Ce signalement sert à faire enlever un dépôt sauvage sur l'espace public.",
+    userCommunication: {
+      ...emptyUserCommunication(),
+      faq: [{ question: "Pourquoi une photo ?", answer: "Elle aide l'agent à prévoir le bon véhicule." }],
+    },
+  });
+
+  function setupDocumented(modelAnswer: Record<string, unknown> = {}) {
+    const { deps, complete } = setup(modelAnswer);
+    return { deps: { ...deps, loadDemarche: async (id: string) => documented(id) }, complete };
+  }
+
+  it("⚠️ ni catalogue ni démarches proches : celle qu'on remplit est déjà choisie", async () => {
+    const { deps, complete } = setupDocumented();
+    await runAssistantTurn(tenant(true), "fr", await body("Et ensuite ?", opening), deps);
+    const system = complete.mock.calls[0][0].system;
+    expect(system).not.toContain("CATALOGUE");
+    expect(system).not.toContain("DÉMARCHES LES PLUS PROCHES");
+    // Y compris l'autre démarche du catalogue, qui n'a plus rien à faire là.
+    expect(system).not.toContain("Prendre rendez-vous");
+  });
+
+  it("⚠️ la liste des champs n'est plus rendue DEUX fois", async () => {
+    // `focusBlock` la rendait sans identifiants, `collectBlock` avec : deux
+    // listes des mêmes champs, dont une inutile, à chaque tour.
+    const { deps, complete } = setupDocumented();
+    await runAssistantTurn(tenant(true), "fr", await body("Et ensuite ?", opening), deps);
+    const system = complete.mock.calls[0][0].system;
+    expect(system.split("Lieu du dépôt").length - 1).toBe(1);
+    expect(system).not.toContain("informations demandées par le formulaire");
+    // Celle qui reste est la bonne : avec les identifiants et les valeurs.
+    expect(system).toContain("id: f-lieu | Lieu du dépôt");
+  });
+
+  it("⚠️ le descriptif et la FAQ RESTENT — « pourquoi vous me demandez ça ? » doit trouver réponse", async () => {
+    // C'est la contrepartie assumée de l'allègement : on coupe ce qui oriente,
+    // jamais ce qui renseigne sur la démarche en cours de remplissage.
+    const { deps, complete } = setupDocumented();
+    await runAssistantTurn(tenant(true), "fr", await body("Pourquoi une photo ?", opening), deps);
+    const system = complete.mock.calls[0][0].system;
+    expect(system).toContain("faire enlever un dépôt sauvage");
+    expect(system).toContain("Elle aide l'agent à prévoir le bon véhicule.");
+  });
+
+  it("HORS recueil, rien de tout cela ne change", async () => {
+    // L'orientation a besoin du catalogue entier : l'allègement ne doit pas
+    // fuir hors du recueil, où il coûterait la mission principale.
+    const { deps, complete } = setupDocumented();
+    // Avec la démarche ouverte à l'écran, pour que `focusBlock` soit bien rendu.
+    const asked = { ...(await body("J'ai un dépôt sauvage", undefined)), focusDemarcheId: PROPRETE };
+    await runAssistantTurn(tenant(true), "fr", asked, deps);
+    const system = complete.mock.calls[0][0].system;
+    expect(system).toContain("CATALOGUE");
+    expect(system).toContain("DÉMARCHES LES PLUS PROCHES");
+    expect(system).toContain("Prendre rendez-vous");
+    expect(system).toContain("informations demandées par le formulaire");
+  });
+});
+
+/**
+ * Le ton du recueil s'est réchauffé le 2026-09-21. Réécrire des règles est le
+ * moment exact où une garde se perd par distraction : ces assertions sont là
+ * pour que la prochaine retouche du ton ne puisse pas en emporter une.
+ */
+describe("les interdits du recueil survivent au ton", () => {
+  it("garde ses quatre gardes, quoi qu'on fasse de la formulation", async () => {
+    const { deps, complete } = setup({});
+    await runAssistantTurn(tenant(true), "fr", await body("Bonjour", opening), deps);
+    const system = complete.mock.calls[0][0].system;
+    // 1. L'identité du demandeur ne se demande pas dans la conversation.
+    expect(system).toContain("Ne demande ni nom, ni adresse personnelle, ni téléphone, ni courriel du demandeur");
+    // 2. Une date ou une pièce jointe ne se remplit jamais par le modèle.
+    expect(system).toContain("Ne remplis JAMAIS une information marquée [carte]");
+    // 3. Un champ déjà renseigné ne se réécrit pas de sa propre initiative.
+    expect(system).toContain("Ne redemande pas une information « déjà renseigné »");
+    // 4. Un facultatif refusé se passe — sans quoi la question revient sans fin.
+    expect(system).toContain('{ "id": …, "skip": true }');
+  });
+});

@@ -25,8 +25,28 @@ import type { TurnMessage } from "../domain/assistantTurn.ts";
 export const AGENT_ALIAS = "assistant-usager";
 export const FEATURE = "assistant-usager";
 const DEFAULT_TIMEOUT_MS = 75_000;
-/** ≈ 120 mots de réponse + l'enveloppe JSON. Borne aussi ce qu'un tour peut coûter. */
-export const MAX_OUTPUT_TOKENS = 600;
+/**
+ * Borne ce qu'un tour peut coûter — et ce n'est PAS le texte visible qui la
+ * remplit.
+ *
+ * ⚠️ **À relire chaque fois que le contrat de sortie grossit** (`outputContract`
+ * dans `prompt.ts`). En recueil, le modèle rend le message à l'usager (≈ 100
+ * mots) PLUS une enveloppe JSON qui pèse davantage : jusqu'à 20 `field_updates`
+ * portant chacun `origin`, et une citation (`source`) ou une justification
+ * (`reason`). Trois champs remplis en un tour valent déjà autant que la phrase.
+ *
+ * ⚠️ Ce que coûte un dépassement n'est PAS une réponse écourtée, mais un tour
+ * PERDU : le guichet rend quand même un `200` avec une chaîne tronquée, on la
+ * prend pour bonne, et c'est `JSON.parse` qui tombe plus loin — l'usager lit
+ * « L'assistant est momentanément indisponible » au tour où le modèle avait le
+ * plus compris. Relevé de 600 à 1 100 le 2026-09-21, après que `origin`,
+ * `source`, `reason` et `asking` ont rejoint le contrat sans que ce plafond
+ * bouge.
+ *
+ * C'est un PLAFOND, pas une consommation : une réponse courte ne coûte pas plus
+ * cher qu'avant.
+ */
+export const MAX_OUTPUT_TOKENS = 1_100;
 
 export interface CompletionInput {
   /** La collectivité débitée — TOUJOURS dérivée du domaine visité, jamais du navigateur. */
