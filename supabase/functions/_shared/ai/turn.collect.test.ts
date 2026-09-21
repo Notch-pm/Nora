@@ -82,33 +82,37 @@ const body = async (said: string, collection: unknown) => ({
 const opening = { demarcheId: PROPRETE, values: {}, skipped: [] };
 
 describe("le recueil dans la conversation", () => {
-  it("« c'est devant le 12 rue de la Paix » → la réponse est retenue, le choix reste à la carte", async () => {
+  it("« devant le 12 rue de la Paix, des gravats » → les DEUX réponses sont retenues, le choix compris", async () => {
     const { deps, complete } = setup({
       field_updates: [
         { id: "f-lieu", value: "devant le 12 rue de la Paix" },
-        // Le modèle tente aussi le CHOIX : ce n'est pas à lui de le faire.
-        { id: "f-nature", value: "gravats" },
+        { id: "f-nature", value: "Gravats" },
       ],
     });
     const outcome = await runAssistantTurn(tenant(true), "fr", await body("C'est devant le 12 rue de la Paix, des gravats.", opening), deps);
 
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
+    // Le libellé dit par l'usager ressort en VALEUR du schéma publié.
     expect(outcome.reply.collection).toEqual({
       demarcheId: PROPRETE,
-      values: { "f-lieu": "devant le 12 rue de la Paix" },
+      values: { "f-lieu": "devant le 12 rue de la Paix", "f-nature": "gravats" },
       skipped: [],
     });
 
-    // Ce que le modèle a lu : les règles du recueil, et des LIBELLÉS — qui se dit, qui se choisit.
     const system = complete.mock.calls[0][0].system;
     expect(system).toContain("MODE RECUEIL");
     expect(system).toContain("field_updates");
     expect(system).toContain("id: f-lieu | Lieu du dépôt (Adresse ou repère) | obligatoire | [écrit]");
-    expect(system).toContain("id: f-nature | Nature | obligatoire | [carte]");
     expect(system).toContain("id: f-precisions | Précisions | facultatif | [écrit]");
     // C'est la démarche remplie qui est décrite, et journalisée au Socle.
     expect(complete.mock.calls[0][0].procedureId).toBe(PROPRETE);
+  });
+
+  it("⚠️ une option INVENTÉE ne rentre pas, et la question reste posée", async () => {
+    const { deps } = setup({ field_updates: [{ id: "f-nature", value: "du plutonium" }] });
+    const outcome = await runAssistantTurn(tenant(true), "fr", await body("C'est du plutonium.", opening), deps);
+    expect(outcome.ok && outcome.reply.collection?.values).toEqual({});
   });
 
   it("⚠️ les réponses déjà données ne sont PAS montrées au modèle — seulement ce qu'il reste à demander", async () => {

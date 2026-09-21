@@ -3,6 +3,7 @@ import type { FormSchema } from "../domain/formSchema.ts";
 import {
   answerField,
   applyUpdates,
+  coerceUpdate,
   pendingFields,
   readFieldUpdates,
   sanitizeState,
@@ -44,12 +45,19 @@ const empty: CollectionState = { demarcheId: "d1", values: {}, skipped: [] };
 const ids = (state: CollectionState) => pendingFields(SCHEMA, state).map((f) => f.id);
 
 describe("viewOf — quoi demander, et comment", () => {
-  it("suit l'ordre du formulaire ; ce qui se dit en conversation, ce qui se choisit en carte", () => {
-    expect(viewOf(SCHEMA, empty)).toMatchObject({ mode: "conversation", remaining: 4, complete: false });
+  it("suit l'ordre du formulaire ; tout se dit, sauf une pièce jointe", () => {
+    expect(viewOf(SCHEMA, empty)).toMatchObject({ mode: "conversation", assist: false, remaining: 4 });
     expect(viewOf(SCHEMA, empty).pending?.id).toBe("f-lieu");
+
+    // Un choix se dit aussi — mais son contrôle reste offert en repli.
     const afterLieu = answerField(SCHEMA, empty, "f-lieu", "12 rue de la Paix");
-    expect(viewOf(SCHEMA, afterLieu)).toMatchObject({ mode: "card" });
+    expect(viewOf(SCHEMA, afterLieu)).toMatchObject({ mode: "conversation", assist: true });
     expect(viewOf(SCHEMA, afterLieu).pending?.id).toBe("f-nature");
+
+    // Une pièce jointe, elle, ne se raconte pas : c'est une carte.
+    const afterNature = answerField(SCHEMA, afterLieu, "f-nature", "depot");
+    expect(viewOf(SCHEMA, afterNature)).toMatchObject({ mode: "card", assist: false });
+    expect(viewOf(SCHEMA, afterNature).pending?.id).toBe("f-photo");
   });
 
   it("⚠️ un champ masqué n'existe pas : ni demandé, ni compté", () => {
@@ -62,7 +70,13 @@ describe("viewOf — quoi demander, et comment", () => {
     state = answerField(SCHEMA, state, "f-nature", "depot");
     expect(viewOf(SCHEMA, state).complete).toBe(false); // photo et courriel restent à proposer
     state = skipField(SCHEMA, skipField(SCHEMA, state, "f-photo"), "f-courriel");
-    expect(viewOf(SCHEMA, state)).toEqual({ pending: null, mode: null, remaining: 0, complete: true });
+    expect(viewOf(SCHEMA, state)).toEqual({
+      pending: null,
+      mode: null,
+      assist: false,
+      remaining: 0,
+      complete: true,
+    });
   });
 
   it("⚠️ un champ OBLIGATOIRE ne se passe pas", () => {
@@ -99,13 +113,16 @@ describe("applyUpdates — ce que le modèle dit avoir compris, et ce qu'on en r
     expect(result.state.values).toEqual({ "f-lieu": "12 rue de la Paix" });
   });
 
-  it("⚠️ le modèle ne remplit JAMAIS un choix ni une pièce — même avec une valeur juste", () => {
-    const result = applyUpdates(SCHEMA, empty, [
-      { id: "f-nature", value: "depot" },
-      { id: "f-photo", value: "photo.jpg" },
-    ]);
-    expect(result.rejected).toEqual(["f-nature", "f-photo"]);
+  it("⚠️ le modèle ne remplit JAMAIS une pièce jointe — même avec une valeur qui en a l'air", () => {
+    const result = applyUpdates(SCHEMA, empty, [{ id: "f-photo", value: "photo.jpg" }]);
+    expect(result.rejected).toEqual(["f-photo"]);
     expect(result.state.values).toEqual({});
+  });
+
+  it("retient un choix DIT en toutes lettres, ramené à la valeur du schéma publié", () => {
+    const result = applyUpdates(SCHEMA, empty, [{ id: "f-nature", value: "Dépôt sauvage" }]);
+    expect(result.accepted).toEqual(["f-nature"]);
+    expect(result.state.values).toEqual({ "f-nature": "depot" });
   });
 
   it("⚠️ il ne réécrit pas une réponse déjà donnée : corriger est un geste de l'usager", () => {
@@ -136,7 +153,7 @@ describe("applyUpdates — ce que le modèle dit avoir compris, et ce qu'on en r
 });
 
 describe("readFieldUpdates — la forme de ce que rend le modèle", () => {
-  it("lit des couples id/valeur, accepte un nombre, écarte le reste", () => {
+  it("lit des couples id/valeur, accepte un nombre, un booléen, un tableau, écarte le reste", () => {
     expect(
       readFieldUpdates([
         { id: "a", value: " oui " },
@@ -144,15 +161,104 @@ describe("readFieldUpdates — la forme de ce que rend le modèle", () => {
         { id: "c", value: "" },
         { id: 4, value: "x" },
         { id: "d", value: { x: 1 } },
+        { id: "e", value: true },
+        { id: "f", value: [" un ", "", { x: 1 }, "deux"] },
+        { id: "g", value: [] },
         "bonjour",
         null,
       ]),
     ).toEqual([
       { id: "a", value: "oui" },
       { id: "b", value: "3" },
+      { id: "e", value: "true" },
+      { id: "f", value: ["un", "deux"] },
     ]);
     expect(readFieldUpdates("rien")).toEqual([]);
     expect(readFieldUpdates(Array.from({ length: 50 }, (_, i) => ({ id: "f" + i, value: "x" })))).toHaveLength(20);
+  });
+});
+
+/** De quoi éprouver chaque type sans déranger les comptes du signalement. */
+const TYPES: FormSchema = {
+  version: 1,
+  content: [
+    {
+      id: "f-jour",
+      key: "jour",
+      type: "date",
+      label: "Jour souhaité",
+    },
+    {
+      id: "f-accord",
+      key: "accord",
+      type: "boolean",
+      label: "J'accepte d'être recontacté",
+    },
+    {
+      id: "f-creneaux",
+      key: "creneaux",
+      type: "checkboxes",
+      label: "Créneaux possibles",
+      options: [
+        { value: "matin", label: "Le matin" },
+        { value: "soir", label: "Le soir" },
+      ],
+    },
+    { id: "f-quantite", key: "quantite", type: "number", label: "Quantité" },
+  ],
+};
+
+const field = (id: string) => TYPES.content.find((node) => node.id === id) as never;
+
+describe("coerceUpdate — la valeur rendue par le modèle, ramenée au schéma publié", () => {
+  it("apparie un choix par sa valeur ou par son LIBELLÉ, accents et casse indifférents", () => {
+    const nature = SCHEMA.content.find((node) => node.id === "f-nature") as never;
+    expect(coerceUpdate(nature, "depot")).toBe("depot");
+    expect(coerceUpdate(nature, "Dépôt sauvage")).toBe("depot");
+    expect(coerceUpdate(nature, "  DEPOT SAUVAGE  ")).toBe("depot");
+  });
+
+  it("⚠️ n'invente jamais une option : un libellé inconnu ne rend rien", () => {
+    const nature = SCHEMA.content.find((node) => node.id === "f-nature") as never;
+    expect(coerceUpdate(nature, "du plutonium")).toBeNull();
+  });
+
+  it("lit des cases à cocher, dédoublonne, et refuse tout le lot si une case est inventée", () => {
+    expect(coerceUpdate(field("f-creneaux"), ["Le matin", "matin", "soir"])).toEqual(["matin", "soir"]);
+    expect(coerceUpdate(field("f-creneaux"), "Le soir")).toEqual(["soir"]);
+    expect(coerceUpdate(field("f-creneaux"), ["matin", "la nuit"])).toBeNull();
+  });
+
+  it("lit un oui/non, et rien d'autre", () => {
+    expect(coerceUpdate(field("f-accord"), "Oui")).toBe(true);
+    expect(coerceUpdate(field("f-accord"), "non")).toBe(false);
+    expect(coerceUpdate(field("f-accord"), "true")).toBe(true);
+    expect(coerceUpdate(field("f-accord"), "peut-être")).toBeNull();
+  });
+
+  it("⚠️ n'accepte une date qu'en AAAA-MM-JJ, et qu'un jour qui existe", () => {
+    // `validateForm` ne vérifie aucun format de date : c'est la SEULE barrière.
+    expect(coerceUpdate(field("f-jour"), "2026-09-24")).toBe("2026-09-24");
+    expect(coerceUpdate(field("f-jour"), "24/09/2026")).toBeNull();
+    expect(coerceUpdate(field("f-jour"), "2026-02-31")).toBeNull();
+    expect(coerceUpdate(field("f-jour"), "jeudi")).toBeNull();
+  });
+
+  it("refuse un nombre qui n'en est pas, et une pièce jointe quoi qu'il arrive", () => {
+    expect(coerceUpdate(field("f-quantite"), "12")).toBe("12");
+    expect(coerceUpdate(field("f-quantite"), "beaucoup")).toBeNull();
+    const photo = SCHEMA.content.find((node) => node.id === "f-photo") as never;
+    expect(coerceUpdate(photo, "photo.jpg")).toBeNull();
+  });
+
+  it("⚠️ « non » à une question facultative est une RÉPONSE : le champ est passé, pas reposé", () => {
+    // `isBlank(false)` étant vrai, ranger `false` laisserait le champ en
+    // attente — et l'assistant reposerait la question sans fin.
+    const vide: CollectionState = { demarcheId: "d1", values: {}, skipped: [] };
+    const result = applyUpdates(TYPES, vide, [{ id: "f-accord", value: "non" }]);
+    expect(result.accepted).toEqual(["f-accord"]);
+    expect(result.state.skipped).toEqual(["f-accord"]);
+    expect(pendingFields(TYPES, result.state).map((f) => f.id)).not.toContain("f-accord");
   });
 });
 

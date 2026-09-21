@@ -2,16 +2,17 @@
  * Le RECUEIL d'un formulaire dans la conversation — règles pures, partagées par
  * le serveur (qui encadre le modèle) et par l'écran (qui avance sans lui).
  *
- * Le partage des rôles, décidé le 2026-09-20 :
+ * Le partage des rôles, revu le 2026-09-21 :
  *
- *  • **Ce qui se dit** passe par la conversation : texte court, texte long,
- *    nombre, courriel, téléphone. L'usager écrit « c'est devant le 12 rue de la
- *    Paix, il y a des gravats », le modèle en tire les champs qu'il reconnaît —
- *    et le serveur n'en croit rien (`applyUpdates`).
- *  • **Ce qui se choisit ou se joint** passe par une CARTE insérée dans le fil,
- *    faite des contrôles du formulaire : listes, cases, dates, pièces jointes.
- *    Une valeur hors options n'existe pas ; un fichier ne transite pas par un
- *    modèle de langage. Une carte ne coûte aucun appel au guichet IA.
+ *  • **Tout se dit**, sauf les pièces jointes. L'usager écrit « c'est devant le
+ *    12 rue de la Paix, des gravats, jeudi » et le modèle en tire les champs
+ *    qu'il reconnaît — y compris un choix, une date, un oui/non. Le serveur
+ *    n'en croit rien : `coerceUpdate` ramène ce qu'il rend à une valeur du
+ *    schéma PUBLIÉ, et `applyUpdates` la soumet encore à la validation.
+ *  • **Une pièce jointe** reste une CARTE, faite des contrôles du formulaire :
+ *    un fichier ne transite pas par un modèle de langage. Les champs à options
+ *    et les dates gardent leur contrôle en repli (`assist`), pour l'usager qui
+ *    préfère choisir que décrire — et une carte ne coûte aucun appel au guichet.
  *  • **L'identité du demandeur** n'est PAS ici : elle se saisit dans sa propre
  *    carte, à la fin, et n'est jamais montrée au modèle.
  *
@@ -26,7 +27,7 @@
  * un fichier déjà déposé.
  */
 import type { FormValues } from "../domain/conditions.ts";
-import type { Field, FormSchema } from "../domain/formSchema.ts";
+import type { ChoiceField, Field, FormSchema } from "../domain/formSchema.ts";
 import { allFields } from "../domain/formSchema.ts";
 import { isBlank, isFieldRequired, piecesOf, validateForm, visibleFields } from "../domain/formulaire.ts";
 
@@ -39,17 +40,26 @@ export interface CollectionState {
   skipped: string[];
 }
 
-/** Les types auxquels on répond en écrivant. Tout le reste est une carte. */
-const CONVERSATION_TYPES: ReadonlySet<Field["type"]> = new Set([
-  "text",
-  "textarea",
-  "number",
-  "email",
-  "phone",
+/** On répond en écrivant à tout, sauf à une pièce jointe. */
+export function isConversationField(field: Field): boolean {
+  return field.type !== "attachment";
+}
+
+/**
+ * Les types dont le CONTRÔLE aide, sans être imposé : choisir dans une liste ou
+ * cliquer une date reste plus sûr que de les décrire. L'écran les offre en
+ * repli sous la question, jamais à sa place.
+ */
+const ASSISTED_TYPES: ReadonlySet<Field["type"]> = new Set([
+  "select",
+  "radio",
+  "checkboxes",
+  "date",
+  "boolean",
 ]);
 
-export function isConversationField(field: Field): boolean {
-  return CONVERSATION_TYPES.has(field.type);
+export function isAssistedField(field: Field): boolean {
+  return ASSISTED_TYPES.has(field.type);
 }
 
 const MAX_TEXT_CHARS = 5000;
@@ -127,6 +137,8 @@ export interface CollectionView {
   pending: Field | null;
   /** `conversation` : l'usager répond en écrivant ; `card` : l'écran montre le contrôle. */
   mode: "conversation" | "card" | null;
+  /** Le contrôle du formulaire mérite d'être offert EN PLUS de la question. */
+  assist: boolean;
   remaining: number;
   /** Plus rien à demander ET le formulaire est valide : le récapitulatif peut s'afficher. */
   complete: boolean;
@@ -138,6 +150,7 @@ export function viewOf(schema: FormSchema, state: CollectionState): CollectionVi
   return {
     pending: next,
     mode: next === null ? null : isConversationField(next) ? "conversation" : "card",
+    assist: next !== null && isAssistedField(next),
     remaining: pending.length,
     complete: pending.length === 0 && Object.keys(validateForm(schema, state.values)).length === 0,
   };
@@ -167,7 +180,19 @@ export function answerField(
 
 export interface FieldUpdate {
   id: string;
-  value: string;
+  /** Un tableau ne vaut que pour des cases à cocher. */
+  value: string | string[];
+}
+
+/** Une valeur simple rendue par le modèle, ramenée à du texte non vide. */
+function readScalar(value: unknown): string | null {
+  // Un modèle rend parfois un nombre pour un champ numérique, ou un booléen
+  // pour un oui/non : les deux se lisent comme du texte.
+  const text = typeof value === "number" && Number.isFinite(value) ? String(value)
+    : typeof value === "boolean" ? String(value)
+    : value;
+  if (typeof text !== "string" || text.trim() === "") return null;
+  return text.trim();
 }
 
 /** Les `field_updates` d'une réponse du modèle — forme seulement. */
@@ -178,12 +203,87 @@ export function readFieldUpdates(raw: unknown): FieldUpdate[] {
     if (typeof entry !== "object" || entry === null) continue;
     const { id, value } = entry as Record<string, unknown>;
     if (typeof id !== "string") continue;
-    // Un modèle rend parfois un nombre pour un champ numérique : on l'accepte.
-    const text = typeof value === "number" && Number.isFinite(value) ? String(value) : value;
-    if (typeof text !== "string" || text.trim() === "") continue;
-    updates.push({ id, value: text.trim() });
+    if (Array.isArray(value)) {
+      const items = value.map(readScalar).filter((item): item is string => item !== null);
+      if (items.length > 0) updates.push({ id, value: items });
+      continue;
+    }
+    const scalar = readScalar(value);
+    if (scalar !== null) updates.push({ id, value: scalar });
   }
   return updates;
+}
+
+/** Comparer sans se soucier de la casse, des accents ni des espaces de bord. */
+function fold(value: string): string {
+  return value.trim().toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
+}
+
+/**
+ * La valeur d'option qui correspond — par sa `value`, sinon par son LIBELLÉ.
+ * Le modèle voit les deux et rend souvent le libellé ; ce qu'on retient reste
+ * toujours une `value` lue dans le schéma publié.
+ */
+function optionValue(field: ChoiceField, raw: string): string | null {
+  const wanted = fold(raw);
+  const match = field.options.find((option) => fold(option.value) === wanted)
+    ?? field.options.find((option) => fold(option.label) === wanted);
+  return match?.value ?? null;
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const YES: ReadonlySet<string> = new Set(["true", "oui", "yes"]);
+const NO: ReadonlySet<string> = new Set(["false", "non", "no"]);
+
+/** Un jour qui existe vraiment — `2026-02-31` n'en est pas un. */
+function isRealDate(iso: string): boolean {
+  const date = new Date(`${iso}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === iso;
+}
+
+/**
+ * Ce que le modèle a rendu, ramené à une valeur que CE champ accepte — ou
+ * `null`, et il ne se passe rien.
+ *
+ * ⚠️ C'est la seule barrière pour un choix et pour une date : `validateForm` ne
+ * vérifie ni les options ni le format d'un jour. Un modèle ne peut donc pas
+ * inventer une option — la valeur retenue sort toujours du schéma publié.
+ */
+export function coerceUpdate(field: Field, raw: string | string[]): unknown | null {
+  if (field.type === "attachment") return null;
+
+  if (Array.isArray(raw)) {
+    if (field.type !== "checkboxes") return null;
+    const values: string[] = [];
+    for (const entry of raw) {
+      const value = optionValue(field, entry);
+      // Une seule case inventée et on ne retient rien : mieux vaut reposer la
+      // question que déposer une réponse à moitié comprise.
+      if (value === null) return null;
+      if (!values.includes(value)) values.push(value);
+    }
+    return values.length === 0 ? null : values;
+  }
+
+  switch (field.type) {
+    case "select":
+    case "radio":
+      return optionValue(field, raw);
+    case "checkboxes": {
+      const value = optionValue(field, raw);
+      return value === null ? null : [value];
+    }
+    case "boolean": {
+      const folded = fold(raw);
+      return YES.has(folded) ? true : NO.has(folded) ? false : null;
+    }
+    case "date":
+      return ISO_DATE.test(raw) && isRealDate(raw) ? raw : null;
+    case "number":
+      return Number.isFinite(Number(raw)) ? raw : null;
+    default:
+      return raw.length > MAX_TEXT_CHARS ? null : raw;
+  }
 }
 
 /**
@@ -191,9 +291,10 @@ export function readFieldUpdates(raw: unknown): FieldUpdate[] {
  *
  * ⚠️ Une valeur n'entre que si : le champ est EN ATTENTE (le modèle ne réécrit
  * pas une réponse déjà donnée — une correction est un geste de l'usager, sur le
- * récapitulatif) ; c'est un champ auquel on répond en écrivant (jamais un choix,
- * jamais une pièce) ; et elle passe la validation du formulaire. Le reste tombe
- * en silence dans `rejected`, et le champ reste simplement à demander.
+ * récapitulatif) ; `coerceUpdate` la reconnaît comme une valeur de CE champ
+ * (jamais une pièce jointe) ; et elle passe la validation du formulaire. Le
+ * reste tombe en silence dans `rejected`, et le champ reste simplement à
+ * demander — l'usager a toujours son contrôle en repli sous la question.
  */
 export function applyUpdates(
   schema: FormSchema,
@@ -205,16 +306,23 @@ export function applyUpdates(
   const rejected: string[] = [];
   for (const update of updates) {
     const field = pendingFields(schema, current).find((f) => f.id === update.id);
-    if (field === undefined || !isConversationField(field) || update.value.length > MAX_TEXT_CHARS) {
+    const value = field === undefined ? null : coerceUpdate(field, update.value);
+    if (field === undefined || value === null) {
       rejected.push(update.id);
       continue;
     }
-    const trial = { ...current.values, [field.id]: update.value };
+    const trial = { ...current.values, [field.id]: value };
     if (validateForm(schema, trial)[field.id] !== undefined) {
       rejected.push(update.id);
       continue;
     }
-    current = answerField(schema, current, field.id, update.value);
+    // ⚠️ `isBlank(false)` est VRAI : un « non » rangé tel quel laisserait le
+    // champ en attente et la question reviendrait sans fin. Un « non » à une
+    // question facultative est une réponse — on la note comme passée. À une
+    // question obligatoire, `validateForm` l'a déjà écartée plus haut.
+    current = value === false
+      ? skipField(schema, current, field.id)
+      : answerField(schema, current, field.id, value);
     accepted.push(field.id);
   }
   return { state: current, accepted, rejected };
