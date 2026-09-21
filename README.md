@@ -952,28 +952,52 @@ site : l'usager décrit son besoin (« comment signaler un dépôt sauvage ? »)
 l'assistant le renseigne et lui propose la bonne démarche, en carte. Si la
 collectivité l'a ouvert (`tenant.assistant.depositEnabled`), l'usager peut
 **remplir la démarche dans la conversation**, relire un récapitulatif, et
-envoyer **lui-même** : sa référence s'affiche dans le fil. **L'assistant ne
-dépose jamais** — le dépôt est un geste de l'usager, par le chemin de toujours
-(`POST /v1/demandes`).
+envoyer **lui-même** : sa référence s'affiche dans le fil. **Le modèle ne dépose
+jamais** — il n'a aucun outil. Le dépôt reste **un geste de l'usager** : c'est
+lui qui appuie sur Envoyer, par le même `POST /v1/demandes`, la même porte
+anti-robot liée au `submissionId`, la même validation contre la démarche publiée.
+
+**La bulle** (2026-09-21, `src/features/assistant/AssistantBubble.tsx`) :
+l'assistant est un panneau flottant en bas à droite, monté **une seule fois**
+au-dessus de l'`Outlet` (`LanguageLayout`) — donc présent sur tous les écrans,
+y compris depuis le moteur de recherche, et **sa conversation survit à la
+navigation**. Il remplace la page d'entrée : ouvrir une démarche ne fait plus
+perdre le fil. ⚠️ `/assistant` reste, comme **repli grand format** — c'est ce qui
+rend la bulle tenable au zoom (RGAA 10.4) : sous 48rem de largeur CSS, ce qu'un
+zoom à 200 % atteint mécaniquement, le panneau passe en plein écran ; au-dessus
+il flotte, sans aucune hauteur en pixels. Il porte en permanence un lien « voir
+en grand », et le fil vivant en `sessionStorage`, la conversation s'y poursuit
+intacte. ⚠️ Le panneau ne se ferme ni au changement d'adresse ni au clic
+extérieur, contrairement au bandeau « Ma ville » : un menu se referme quand on
+regarde ailleurs, une conversation non.
 
 **Le recueil** (`_shared/ai/collection.ts`, pur, même code côté serveur et côté
 écran) partage les rôles :
 
-- **ce qui se dit** passe par la conversation — texte, nombre, courriel,
-  téléphone. Le modèle DIT ce qu'il a compris (`field_updates`) ; le serveur n'en
-  retient que ce qui vise un champ **en attente**, **qui s'écrit**, et **passe la
-  validation du formulaire** (`applyUpdates`). ⚠️ Il ne réécrit jamais une réponse
-  déjà donnée : corriger est un geste de l'usager, sur le récapitulatif ;
-- **ce qui se choisit ou se joint** passe par une **carte** insérée dans le fil,
-  faite des contrôles du formulaire : listes, cases, dates, pièces jointes. Une
-  valeur hors options n'existe pas, un fichier ne transite pas par un modèle — et
-  une carte ne coûte aucun appel au guichet IA ;
+- **tout se dit, sauf les pièces jointes.** Le modèle DIT ce qu'il a compris
+  (`field_updates`) ; le serveur le ramène au schéma **publié** (`coerceUpdate`)
+  et n'en retient que ce qui vise un champ **en attente** et **passe la
+  validation du formulaire** (`applyUpdates`). Un choix rendu par son libellé
+  ressort en `option.value` ; une date n'entre qu'en `AAAA-MM-JJ` et si le jour
+  existe ; un oui/non ne connaît que oui et non. ⚠️ `coerceUpdate` est la **seule**
+  barrière pour un choix et pour une date — `validateForm` ne vérifie ni les
+  options ni le format d'un jour. Le modèle ne peut donc pas inventer une option.
+  ⚠️ Il ne réécrit jamais une réponse déjà donnée : corriger est un geste de
+  l'usager, sur le récapitulatif ;
+- **le contrôle du formulaire reste offert en repli** sous chaque question
+  (« Répondre avec le formulaire »), replié : pour qui préfère cliquer une date
+  que la décrire. Déplié d'office, il redeviendrait le geste principal, et l'on
+  retrouverait l'alternance conversation/carte que cette refonte supprime. Une
+  **pièce jointe** garde sa carte ouverte : elle n'a pas d'autre chemin, et un
+  fichier ne transite pas par un modèle. Une carte ne coûte aucun appel au guichet ;
 - **l'identité du demandeur** se saisit dans sa propre carte, à la fin, et n'est
-  **jamais montrée au modèle**. ⚠️ Les réponses déjà données non plus : le prompt
-  ne porte que les LIBELLÉS de ce qu'il reste à demander (test). Formulation
-  honnête à tenir devant l'usager : « aucun champ d'identité n'est envoyé au
-  prestataire » — pas « aucune donnée personnelle », puisqu'un lieu d'intervention
-  est une adresse.
+  **jamais montrée au modèle** — elle n'a aucun chemin jusqu'à lui (test).
+  ⚠️ Les autres réponses, elles, **partent au modèle** depuis le 2026-09-21 : c'est
+  ce qui permet de répondre en langage naturel sur tous les types de champs, et
+  d'accuser réception sans reposer deux fois la même question. Formulation
+  honnête à tenir devant l'usager, inchangée : « aucun champ d'identité n'est
+  envoyé au prestataire » — pas « aucune donnée personnelle », puisqu'un lieu
+  d'intervention est une adresse.
 - ⚠️ **L'état du recueil vit dans le navigateur et n'est pas signé** : il n'en a
   pas besoin. Il ne contient que ce que l'usager pourrait taper dans le
   formulaire, `sanitizeState` le nettoie avant de servir, et le dépôt refiltre
@@ -1030,11 +1054,13 @@ la porte n'existe pas et le portail dépose comme avant.
 - **Rien n'est conservé ni journalisé du contenu**, ni ici ni au Socle. ⚠️ Ne pas
   ajouter de `console.*` qui cite un message. Le fil n'existe que dans l'onglet de
   l'usager : il est gardé en `sessionStorage` (jamais `localStorage`) pour survivre
-  à un rechargement, et s'efface avec l'onglet ou par « Nouvelle conversation ». ⚠️
-  C'est le SEUL stockage que le portail écrit sur le poste du visiteur ; il est
-  strictement fonctionnel, ne sert à aucune mesure et ne part nulle part — la
-  mesure d'audience, elle, reste sans aucun stockage, et `/assistant` n'est pas
-  une page comptée. L'urgence (112, 15, 17, 18) est décidée sur **ses mots**, par une règle
+  à un rechargement et à une navigation, et s'efface avec l'onglet ou par
+  « Nouvelle conversation ». Trois clés, et elles seules : `nora.assistant` (le
+  fil), `nora.assistant.collect` (le recueil), `nora.assistant.ui` (la bulle est-elle
+  ouverte — au doute, fermée). ⚠️ C'est le SEUL stockage que le portail écrit sur le
+  poste du visiteur ; il est strictement fonctionnel, ne sert à aucune mesure et ne
+  part nulle part — la mesure d'audience, elle, reste sans aucun stockage, la bulle
+  n'est comptée nulle part, et `/assistant` n'est pas une page comptée. L'urgence (112, 15, 17, 18) est décidée sur **ses mots**, par une règle
   pure (`detectEmergency`), pas par le modèle.
 - **L'assistant n'est jamais un passage obligé** : plafond atteint, cadence, panne,
   assistant fermé — chaque échec a son code (`AssistantFailure`) et renvoie vers

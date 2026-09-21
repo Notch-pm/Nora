@@ -1714,17 +1714,21 @@ export const STRINGS = {
     zh: "请勿在消息中输入任何个人信息或敏感信息。",
   },
   "assistant.notice.notStored": {
-    fr: "La conversation n'est pas conservée : elle disparaît dès que vous quittez cette page.",
-    en: "This conversation is not stored: it disappears as soon as you leave this page.",
-    es: "La conversación no se conserva: desaparece en cuanto abandona esta página.",
-    de: "Das Gespräch wird nicht gespeichert: Es verschwindet, sobald Sie diese Seite verlassen.",
-    it: "La conversazione non viene conservata: scompare non appena lasci questa pagina.",
-    pt: "A conversa não é conservada: desaparece assim que sair desta página.",
-    ar: "لا يتم حفظ المحادثة: فهي تختفي بمجرد مغادرتكم هذه الصفحة.",
-    tr: "Bu görüşme saklanmaz: bu sayfadan ayrıldığınızda kaybolur.",
-    ru: "Переписка не сохраняется: она исчезает, как только вы покидаете эту страницу.",
-    uk: "Розмова не зберігається: вона зникає, щойно ви покидаєте цю сторінку.",
-    zh: "对话内容不会被保存：一旦离开本页面即会消失。",
+    // ⚠️ « cet onglet », et non « cette page » : depuis la bulle, la
+    // conversation suit la navigation d'une page à l'autre. Le dire autrement
+    // serait visiblement faux, et une mention qu'on prend en défaut ne vaut
+    // plus rien pour le reste de ce qu'elle affirme.
+    fr: "La conversation n'est pas conservée : elle disparaît dès que vous fermez cet onglet.",
+    en: "This conversation is not stored: it disappears as soon as you close this tab.",
+    es: "La conversación no se conserva: desaparece en cuanto cierra esta pestaña.",
+    de: "Das Gespräch wird nicht gespeichert: Es verschwindet, sobald Sie diesen Tab schließen.",
+    it: "La conversazione non viene conservata: scompare non appena chiudi questa scheda.",
+    pt: "A conversa não é conservada: desaparece assim que fechar este separador.",
+    ar: "لا يتم حفظ المحادثة: فهي تختفي بمجرد إغلاقكم هذه العلامة.",
+    tr: "Bu görüşme saklanmaz: bu sekmeyi kapattığınızda kaybolur.",
+    ru: "Переписка не сохраняется: она исчезает, как только вы закрываете эту вкладку.",
+    uk: "Розмова не зберігається: вона зникає, щойно ви закриваєте цю вкладку.",
+    zh: "对话内容不会被保存：一旦关闭此标签页即会消失。",
   },
   "assistant.notice.provider": {
     fr: "Vos messages sont traités par un prestataire d'intelligence artificielle.",
