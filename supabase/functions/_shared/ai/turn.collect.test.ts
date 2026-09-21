@@ -394,6 +394,30 @@ describe("les interdits du recueil survivent au ton", () => {
     // 4. Un facultatif refusé se passe — sans quoi la question revient sans fin.
     expect(system).toContain('{ "id": …, "skip": true }');
   });
+
+  it("⚠️ exige TOUJOURS une question à la fin — la consigne perdue une fois", async () => {
+    // Perdue par distraction en réchauffant le ton : « Accuse réception en UNE
+    // phrase… PUIS POSE LA QUESTION SUIVANTE » est devenu une consigne de ton
+    // qui ne demandait plus rien. Le modèle répondait « Merci, je note votre
+    // adresse. » et s'arrêtait là, laissant l'usager devant un silence.
+    const { deps, complete } = setup({});
+    await runAssistantTurn(tenant(true), "fr", await body("1 rue de la République", opening), deps);
+    const system = complete.mock.calls[0][0].system;
+    expect(system).toContain("TERMINE TOUJOURS PAR UNE QUESTION");
+    expect(system).toContain("PUIS POSE LA QUESTION SUIVANTE");
+  });
+
+  it("⚠️ ne renvoie JAMAIS l'usager à l'écran — deux règles ne doivent pas se contredire", async () => {
+    // Une règle disait « l'écran s'en charge », une autre « ne décris jamais
+    // l'écran ». Le modèle a suivi la PREMIÈRE : « Si, mais l'écran vous
+    // affiche la suite : complétez le code postal… ». Empiler un interdit ne
+    // suffit pas — il faut retirer ce qu'il contredit.
+    const { deps, complete } = setup({});
+    await runAssistantTurn(tenant(true), "fr", await body("Bonjour", opening), deps);
+    const system = complete.mock.calls[0][0].system;
+    expect(system).toContain("NE DÉCRIS JAMAIS L'ÉCRAN");
+    expect(system).not.toContain("l'écran s'en charge");
+  });
 });
 
 /**
