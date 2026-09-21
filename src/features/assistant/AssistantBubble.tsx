@@ -63,6 +63,30 @@ export function useAssistantLauncher(): AssistantLauncher | null {
   return useContext(LauncherContext);
 }
 
+/**
+ * « Poser une question sur cette démarche » — sobre, sous le bouton principal,
+ * jamais en concurrence avec « Commencer la démarche ».
+ *
+ * Il OUVRE LA BULLE au lieu de mener à `/assistant` : l'usager pose sa
+ * question sans quitter la page qu'il était en train de lire, ce qui était
+ * tout le problème de l'ancien lien. Rendu à `null` quand la collectivité a
+ * fermé l'assistant — le contexte est alors absent.
+ */
+export function AskAboutDemarche({ demarcheId }: { demarcheId: string }) {
+  const launcher = useAssistantLauncher();
+  const t = useT();
+  if (launcher === null) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => launcher.open(demarcheId)}
+      className="w-fit text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline"
+    >
+      {t("assistant.askAboutThis")}
+    </button>
+  );
+}
+
 /** `sessionStorage` peut lever (navigation privée) ou ne pas exister (rendu hors navigateur). */
 function tabStorage(): Storage | null {
   try {
