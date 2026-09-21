@@ -18,6 +18,7 @@ import {
   needsOrganizationChoice,
   parseStoredCollect,
   receiptNote,
+  remainingSummary,
   reopenField,
   reopenIdentity,
   reopenOrganization,
@@ -393,5 +394,34 @@ describe("persistance sessionStorage", () => {
   it("`parseStoredCollect` écarte une note sans référence lisible", () => {
     const raw = JSON.stringify({ session: null, notes: [{ id: "n1", afterMessageCount: 0, kind: "receipt" }] });
     expect(parseStoredCollect(raw)).toEqual({ session: null, notes: [] });
+  });
+});
+
+describe("remainingSummary — nommer ce qui reste plutôt que le compter", () => {
+  const champs = (...labels: string[]) => labels.map((label) => ({ label }));
+
+  it("joint les libellés, dans l'ordre reçu", () => {
+    expect(remainingSummary(champs("Lieu", "Nature du problème", "Photo"))).toEqual({
+      count: 3,
+      names: "Lieu, Nature du problème, Photo",
+      truncated: false,
+    });
+  });
+
+  it("⚠️ s'arrête à cinq : une énumération plus longue que la question devient du bruit", () => {
+    const beaucoup = champs("A", "B", "C", "D", "E", "F", "G");
+    expect(remainingSummary(beaucoup)).toEqual({ count: 7, names: "A, B, C, D, E", truncated: true });
+    // Exactement cinq ne tronque pas : le repère reste complet.
+    expect(remainingSummary(champs("A", "B", "C", "D", "E")).truncated).toBe(false);
+  });
+
+  it("⚠️ `count` compte les CHAMPS, pas les libellés retenus", () => {
+    // La phrase dit « encore 7 informations » tout en n'en nommant que cinq :
+    // le nombre reste vrai, c'est la clé « et d'autres ensuite » qui le porte.
+    expect(remainingSummary(champs("A", "B", "C", "D", "E", "F", "G")).count).toBe(7);
+  });
+
+  it("un libellé vide ne fabrique pas de virgule orpheline", () => {
+    expect(remainingSummary(champs("Lieu", "  ", "Photo")).names).toBe("Lieu, Photo");
   });
 });

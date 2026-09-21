@@ -78,6 +78,7 @@ describe("viewOf — quoi demander, et comment", () => {
       controls: [],
       assists: [],
       remaining: 0,
+      remainingFields: [],
       complete: true,
     });
   });
@@ -86,6 +87,38 @@ describe("viewOf — quoi demander, et comment", () => {
     expect(skipField(SCHEMA, empty, "f-lieu")).toBe(empty);
     expect(skipField(SCHEMA, empty, "inconnu")).toBe(empty);
     expect(skipField(SCHEMA, empty, "f-photo").skipped).toEqual(["f-photo"]);
+  });
+});
+
+describe("viewOf — NOMMER ce qui reste, pas seulement le compter", () => {
+  it("rend les champs en attente dans l'ordre du formulaire", () => {
+    // « f-precisez » est masqué tant que « nature » ne vaut pas « autre » :
+    // l'annoncer serait promettre une question qui ne viendra peut-être pas.
+    expect(viewOf(SCHEMA, empty).remainingFields.map((f) => f.label)).toEqual([
+      "Lieu",
+      "Nature du problème",
+      "Photo",
+      "Courriel de suivi",
+    ]);
+  });
+
+  it("⚠️ ni les champs répondus, ni les passés, ni les masqués", () => {
+    const answered = answerField(SCHEMA, empty, "f-lieu", "12 rue de la Paix");
+    const skipped = skipField(SCHEMA, answered, "f-photo");
+    expect(viewOf(SCHEMA, skipped).remainingFields.map((f) => f.id)).toEqual(["f-nature", "f-courriel"]);
+
+    // Répondre « autre » DÉMASQUE un champ : il entre dans la liste.
+    const autre = answerField(SCHEMA, skipped, "f-nature", "autre");
+    expect(viewOf(SCHEMA, autre).remainingFields.map((f) => f.id)).toEqual(["f-precisez", "f-courriel"]);
+  });
+
+  it("⚠️ le compte et la liste ne peuvent pas diverger — ils sortent du même tableau", () => {
+    // L'écran annonce les deux dans la même phrase : un compteur qui dirait
+    // « encore 3 » en n'en nommant que deux serait pire que le compteur nu.
+    for (const state of [empty, answerField(SCHEMA, empty, "f-lieu", "Ici"), skipField(SCHEMA, empty, "f-photo")]) {
+      const view = viewOf(SCHEMA, state);
+      expect(view.remainingFields).toHaveLength(view.remaining);
+    }
   });
 });
 

@@ -30,7 +30,7 @@ import {
   RecapCard,
   StartedNoteView,
 } from "./CollectCards.tsx";
-import { mergeTimeline, type CollectStep } from "./collect.ts";
+import { mergeTimeline, remainingSummary, type CollectStep } from "./collect.ts";
 import type { AssistantMessageView } from "./conversation.ts";
 import { assistantErrorMessage } from "./errorMessages.ts";
 import { useAssistantCollect } from "./useAssistantCollect.ts";
@@ -98,6 +98,33 @@ function EmergencyCard() {
 }
 
 /** Une bulle du fil — texte brut pour l'usager, Markdown pour l'assistant (jamais `innerHTML`). */
+/**
+ * La bulle d'attente — trois points, à la place où la réponse va paraître.
+ *
+ * Le guichet IA refuse le flux : aucun affichage progressif n'est possible, et
+ * l'usager attend la réponse ENTIÈRE. On ne peut pas raccourcir cette attente
+ * par le texte qui arrive, seulement par ce qu'on montre pendant.
+ *
+ * ⚠️ `aria-hidden` : l'annonce reste dans la région `role="status"`, et elle
+ * seule (RGAA 4.1 — un seul message à la fois). Cette bulle est un signe pour
+ * l'œil, pas un message. L'animation se coupe sous `prefers-reduced-motion`.
+ */
+function WaitingBubble() {
+  return (
+    <div aria-hidden="true" className="flex justify-start">
+      <div className="flex items-center gap-1.5 rounded-[var(--pt-radius)] border border-[color:var(--pt-border)] bg-white px-4 py-3">
+        {[0, 150, 300].map((delay) => (
+          <span
+            key={delay}
+            style={{ animationDelay: `${delay}ms` }}
+            className="h-2 w-2 rounded-full bg-[color:var(--pt-muted)] motion-safe:animate-pulse"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MessageBubble({
   message,
   lang,
@@ -298,6 +325,14 @@ export function AssistantThread({
   const timeline = mergeTimeline(state.messages, collect.notes);
   const collectBusy = collect.loading || collect.session !== null;
 
+  // `null` hors du remplissage des champs : la ligne d'état retombe alors sur
+  // l'attente seule. Zéro champ restant n'est pas un cas ici — `collect.step`
+  // serait déjà passé au récapitulatif.
+  const remaining =
+    collect.session !== null && collect.step === "fields" && fieldView !== null && fieldView.remaining > 0
+      ? remainingSummary(fieldView.remainingFields)
+      : null;
+
   return (
     <div className="flex flex-col gap-4">
         <AssistantNotice variant={variant} />
@@ -342,6 +377,7 @@ export function AssistantThread({
               ),
             )
           )}
+          {state.status === "sending" && <WaitingBubble />}
         </div>
 
         {/* ⚠️ L'assistant a PROPOSÉ de remplir — il n'a rien ouvert. C'est ce
@@ -364,13 +400,19 @@ export function AssistantThread({
             ⚠️ Elle porte AUSSI l'avancement du recueil, qui vivait dans la
             carte du champ : sans cela, un usager de lecteur d'écran perdrait
             tout repère depuis que l'écran ne pose plus les questions. Un seul
-            message à la fois — l'attente l'emporte, puis l'avancement. */}
+            message à la fois — l'attente l'emporte, puis l'avancement.
+            ⚠️ Et l'avancement NOMME ce qui reste. C'est l'écran qui le fait,
+            pas le modèle : une liste de libellés ne coûte aucun jeton (donc
+            aucune seconde d'attente de plus), ne se trompe jamais et ne
+            s'oublie pas d'un tour à l'autre. */}
         <p role="status" aria-live="polite" className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
           {state.status === "sending"
             ? t(stillWaiting ? "assistant.status.stillWaiting" : "assistant.status.waiting")
-            : collect.session !== null && collect.step === "fields" && fieldView !== null
-              ? tn("assistant.collect.remaining", fieldView.remaining)
-              : ""}
+            : remaining === null
+              ? ""
+              : remaining.truncated
+                ? t("assistant.collect.remainingMore", { n: remaining.count, fields: remaining.names })
+                : tn("assistant.collect.remaining", remaining.count, { fields: remaining.names })}
         </p>
 
         {collect.loading && (
@@ -379,11 +421,24 @@ export function AssistantThread({
           </p>
         )}
 
+        {/* ⚠️ Le message dit « Réessayez » : il faut donc quelque chose à
+            presser. Sans ce bouton, le seul recours était de retrouver le
+            bouton d'origine — qui a pu défiler hors de vue entre-temps. */}
         {collect.loadError !== null && (
           <div role="alert" className="rounded-[var(--pt-radius-sm)] border border-red-300 bg-red-50 px-4 py-3">
             <p className="text-[length:var(--pt-body)] text-red-800">
               {t(collect.loadError === "no_form" ? "assistant.collect.noForm" : "assistant.collect.loadFailed")}
             </p>
+            {collect.retryStart !== null && (
+              <button
+                type="button"
+                disabled={collect.loading}
+                onClick={collect.retryStart}
+                className={BUTTON_CLASS + " mt-3 w-fit"}
+              >
+                {t("assistant.collect.retry")}
+              </button>
+            )}
           </div>
         )}
 

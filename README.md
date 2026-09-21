@@ -1019,6 +1019,28 @@ regarde ailleurs, une conversation non.
   contrôle que pour ce à quoi on ne peut pas répondre en parlant (le calendrier
   d'une date, le dépôt d'une pièce), ou, replié, pour un champ à options qu'il
   vient de demander. Une carte ne coûte aucun appel au guichet ;
+- **l'écran NOMME ce qui reste**, sous le fil : « Encore 3 informations : le
+  lieu, la nature du dépôt, une photo » plutôt qu'un nombre nu, qui n'apprenait
+  rien avant la question suivante. C'est l'écran qui le fait, pas le modèle :
+  les libellés sont déjà là (`viewOf().remainingFields`), une liste ne coûte
+  aucun jeton — donc aucune seconde d'attente de plus —, ne se trompe jamais et
+  ne s'oublie pas d'un tour à l'autre. Bornée à cinq noms : au-delà,
+  l'énumération serait plus longue que la question. ⚠️ Elle vit dans la même
+  région `role="status"` que l'attente, jamais dans une seconde (RGAA 4.1) ;
+- ⚠️ **le prompt d'un RECUEIL est allégé** : ni catalogue, ni démarches
+  candidates, et la liste des champs n'est plus rendue deux fois (`focusBlock`
+  la cédait en doublon de `collectBlock`). Une fois la démarche choisie, on la
+  remplit — on n'oriente plus. Le guichet **refuse le flux** : l'usager attend
+  la réponse ENTIÈRE, et chaque bloc inutile se paie en secondes. Le descriptif,
+  le délai, les pièces à prévoir et la FAQ **restent** : « pourquoi vous me
+  demandez ça ? » doit trouver réponse en plein remplissage (test) ;
+- ⚠️ **`MAX_OUTPUT_TOKENS` se relit chaque fois que le contrat de sortie
+  grossit.** Ce n'est pas le texte visible qui le remplit, mais l'enveloppe
+  JSON : `origin`, `source`, `reason`, `asking`, jusqu'à 20 `field_updates`.
+  Dépassé, il ne produit pas une réponse écourtée mais un tour **perdu** — le
+  guichet rend un `200` avec une chaîne tronquée, et c'est `JSON.parse` qui
+  tombe plus loin, sous le visage d'une indisponibilité. Resté à 600 pendant que
+  quatre champs rejoignaient le contrat, il vaut 1 100 ;
 - **le modèle PROPOSE de remplir, il n'ouvre rien** (`offer_procedure_id`,
   revalidé au catalogue publié) : c'est un bouton sous sa bulle que l'usager
   presse. Un recueil qui démarrerait seul embarquerait dans un formulaire celui

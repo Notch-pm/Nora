@@ -245,6 +245,19 @@ export interface CollectionView {
    */
   assists: Field[];
   remaining: number;
+  /**
+   * TOUT ce qu'il reste à renseigner, dans l'ordre du formulaire — de quoi
+   * NOMMER ce qui manque, au lieu d'en annoncer le nombre.
+   *
+   * ⚠️ C'est l'écran qui les nomme, pas le modèle. Une liste de libellés ne
+   * coûte aucun jeton, ne se trompe jamais et ne s'oublie pas ; la même chose
+   * demandée au modèle allongerait chaque réponse (donc l'attente) sans que le
+   * serveur puisse en vérifier l'exactitude.
+   *
+   * `remainingFields.length === remaining` : les deux sortent du même tableau,
+   * et un test l'épingle pour qu'ils ne puissent pas diverger.
+   */
+  remainingFields: Field[];
   /** Plus rien à demander ET le formulaire est valide : le récapitulatif peut s'afficher. */
   complete: boolean;
 }
@@ -288,6 +301,7 @@ export function viewOf(schema: FormSchema, state: CollectionState, asking?: read
     controls: shown.filter((field) => !isConversationField(field)),
     assists: shown.filter((field) => isConversationField(field) && isAssistedField(field)),
     remaining: pending.length,
+    remainingFields: pending,
     complete: pending.length === 0 && Object.keys(validateForm(schema, state.values)).length === 0,
   };
 }

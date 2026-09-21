@@ -74,6 +74,13 @@ export interface UseAssistantCollect {
   loading: boolean;
   loadError: CollectLoadError | null;
   dismissLoadError: () => void;
+  /**
+   * Relance le dernier chargement qui a échoué — `null` quand il n'y a rien à
+   * relancer. Le message d'échec disait « Réessayez » depuis le premier jour
+   * sans rien offrir à presser : le seul recours était de retrouver le bouton
+   * d'origine, qui n'est plus forcément à l'écran.
+   */
+  retryStart: (() => void) | null;
   /** Ouvre un recueil pour cette démarche. `messagesLength` place la note dans le fil. */
   start: (demarcheId: string, messagesLength: number) => void;
   answerField: (fieldId: string, value: unknown) => void;
@@ -117,8 +124,11 @@ export function useAssistantCollect(params: {
   const [submitting, setSubmitting] = useState(false);
   const [submitFailure, setSubmitFailure] = useState<PortalLoadFailure | null>(null);
   const submissionIdRef = useRef<string>(newSubmissionId());
-  // Garde synchrone contre le double-clic — voir `submit()`.
+  // Gardes synchrones contre le double-clic — voir `submit()` et `start()`.
   const submittingRef = useRef(false);
+  const startingRef = useRef(false);
+  /** Le dernier `start()` tenté — de quoi le rejouer depuis le message d'échec. */
+  const lastStartRef = useRef<{ demarcheId: string; messagesLength: number } | null>(null);
   // Un chargement de démarche périmé (l'usager a changé d'avis, ou relancé un
   // second recueil très vite) ne doit pas écraser un état plus récent.
   const loadGenerationRef = useRef(0);
@@ -148,10 +158,26 @@ export function useAssistantCollect(params: {
 
   async function start(demarcheId: string, messagesLength: number): Promise<void> {
     if (!depositEnabled) return;
+    // ⚠️ Garde SYNCHRONE : `loading` est un état, et n'arrive qu'au rendu
+    // suivant. Deux clics rapprochés sur « Oui, remplissons-la ici » lançaient
+    // deux chargements, dont un pour rien. Même motif que `submit()`.
+    if (startingRef.current) return;
+    startingRef.current = true;
+    lastStartRef.current = { demarcheId, messagesLength };
     setLoadError(null);
     setLoading(true);
     const generation = ++loadGenerationRef.current;
-    const result = await fetchDemarche(demarcheId, lang);
+    let result = await fetchDemarche(demarcheId, lang);
+    // ⚠️ UNE reprise, et seulement sur une coupure : un accroc transitoire ne
+    // doit pas coûter à l'usager un encart rouge et un geste de plus. Les
+    // autres échecs ne guériront pas d'un second appel — une démarche
+    // dépubliée, une adresse d'API absente ou un corps illisible sont des faits
+    // stables, et réessayer ne ferait que doubler l'attente avant la même
+    // mauvaise nouvelle.
+    if (!result.ok && result.reason === "network" && loadGenerationRef.current === generation) {
+      result = await fetchDemarche(demarcheId, lang);
+    }
+    startingRef.current = false;
     if (loadGenerationRef.current !== generation) return; // Périmé.
     setLoading(false);
     if (!result.ok) {
@@ -181,6 +207,15 @@ export function useAssistantCollect(params: {
   function dismissLoadError(): void {
     setLoadError(null);
   }
+
+  // ⚠️ Seulement pour « failed ». Une démarche SANS formulaire (« no_form ») ne
+  // se recharge pas : la relancer rendrait exactement le même refus, et le
+  // bouton promettrait une issue qui n'existe pas.
+  const lastStart = lastStartRef.current;
+  const retryStart =
+    loadError === "failed" && lastStart !== null
+      ? () => void start(lastStart.demarcheId, lastStart.messagesLength)
+      : null;
 
   function answerFieldAction(fieldId: string, value: unknown): void {
     if (session === null) return;
@@ -289,6 +324,13 @@ export function useAssistantCollect(params: {
 
   function reset(): void {
     loadGenerationRef.current += 1; // Tout chargement en vol devient périmé.
+    // ⚠️ Et il faut DÉGELER l'écran. Le chargement périmé sortira de `start()`
+    // avant d'atteindre `setLoading(false)` : sans ces deux lignes, `loading`
+    // restait vrai pour toujours — « Chargement du formulaire… » ne partait
+    // plus, et `collectBusy` désactivait définitivement tous les boutons de
+    // recueil, sans la moindre erreur affichée pour l'expliquer.
+    startingRef.current = false;
+    setLoading(false);
     setSession(null);
     setNotes([]);
     setLoadError(null);
@@ -306,6 +348,7 @@ export function useAssistantCollect(params: {
     loading,
     loadError,
     dismissLoadError,
+    retryStart,
     start,
     answerField: answerFieldAction,
     skipField: skipFieldAction,

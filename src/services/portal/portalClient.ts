@@ -383,6 +383,9 @@ function readDemarcheSnapshot(body: unknown): DemarcheSnapshot | null {
  * qu'un identifiant inventé, sans jamais révéler qu'une démarche existe mais
  * n'est pas ouverte.
  */
+/** Le délai d'une lecture de démarche — au-dessus des 8 s du Socle, voir `fetchDemarche`. */
+const DEMARCHE_TIMEOUT_MS = 12_000;
+
 export async function fetchDemarche(
   demarcheId: string,
   lang: string,
@@ -405,8 +408,16 @@ export async function fetchDemarche(
         "?lang=" +
         encodeURIComponent(lang) +
         (organisme === null ? "" : "&organisme=" + encodeURIComponent(organisme)),
+      // ⚠️ Un délai, sans quoi un appel qui PEND ne se termine jamais : l'écran
+      // reste en « Chargement… » indéfiniment, sans erreur à montrer ni geste à
+      // proposer. Au-dessus des 8 s que `portal-api` accorde au Socle, pour que
+      // le serveur ait le temps de répondre « indisponible » lui-même — c'est
+      // une meilleure information qu'un abandon côté navigateur.
+      { signal: AbortSignal.timeout(DEMARCHE_TIMEOUT_MS) },
     );
   } catch {
+    // Un abandon sur délai arrive ici comme une coupure réseau, et c'est bien
+    // ce que c'est du point de vue de l'usager : rien n'est venu.
     return { ok: false, reason: "network" };
   }
 
