@@ -104,3 +104,27 @@ export function assistantPriority(query: string, matchCount: number): AssistantP
   if (matchCount === 0) return "high";
   return readsAsSentence(query) ? "high" : "low";
 }
+
+/*
+ * ⚠️ POURQUOI UN « OU » ET NON UN « ET », question déjà tranchée — ne pas la
+ * rouvrir sans lire ceci.
+ *
+ * Le dossier de passation se contredit : sa formule dit
+ * `(mots >= 5) || (verbe) || (score < seuil)`, sa prose dit « phrase longue ET
+ * aucune correspondance fiable ». La formule l'emporte ici, pour deux raisons.
+ *
+ * 1. Le « ET » littéral ferait retomber en priorité BASSE une saisie d'un seul
+ *    mot que l'index ne trouve pas (« cimetière ») : l'assistant réduit à une
+ *    ligne discrète au bas d'une liste vide, alors que c'est le seul cas où il
+ *    est la seule chose utile de l'écran.
+ * 2. La divergence est de toute façon théorique avec l'index ACTUEL.
+ *    `filterDemarchesByQuery` cherche la requête ENTIÈRE comme sous-chaîne du
+ *    nom et du descriptif : une phrase n'est presque jamais une sous-chaîne
+ *    d'un intitulé de démarche, donc elle tombe à zéro correspondance et c'est
+ *    la première branche qui la promeut. `readsAsSentence` ne décide que d'un
+ *    cas de figure rare — phrase ET sous-chaîne d'un intitulé.
+ *
+ * Le jour où la recherche deviendra un vrai index SCORÉ, la question se reposera
+ * pour de bon : `matchCount === 0` deviendra « meilleur score sous le seuil »,
+ * et c'est ce seuil — pas cette fonction — qui portera l'arbitrage.
+ */
