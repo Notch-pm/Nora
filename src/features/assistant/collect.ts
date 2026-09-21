@@ -92,14 +92,16 @@ export function startSession(demarche: CollectDemarche): CollectSession {
 /**
  * L'étape à montrer — jamais mémorisée, toujours recalculée depuis l'état.
  *
- * ⚠️ Sûr par construction : `view.complete` exige `validateForm(...) === {}`
- * en plus de « plus aucun champ en attente ». Un champ « carte » (choix, date,
- * pièce) ne peut porter une valeur mal formée — ses contrôles ne produisent
- * que des valeurs valides. Un champ « conversation » (texte, nombre…) n'est
- * accepté, ici comme au serveur (`applyUpdates`), qu'après avoir passé
- * `validateForm` — jamais avant. Il ne peut donc pas exister d'état où
- * `pending` est `null` et `complete` faux : la carte suivante a toujours
- * quelque chose à montrer.
+ * ⚠️ Sûr par construction : `view.complete` vaut `validateForm(...) === {}`,
+ * qui rend une erreur pour chaque champ OBLIGATOIRE vide comme pour chaque
+ * valeur mal formée. Un champ « carte » (choix, date, pièce) ne peut porter une
+ * valeur mal formée — ses contrôles ne produisent que des valeurs valides. Un
+ * champ « conversation » (texte, nombre…) n'est accepté, ici comme au serveur
+ * (`applyUpdates`), qu'après avoir passé `validateForm` — jamais avant.
+ *
+ * ⚠️ Des champs FACULTATIFS peuvent donc rester en attente alors que l'étape
+ * est déjà « recap », et c'est voulu : voir `complete` dans `collection.ts`.
+ * Le récapitulatif les montre vides, avec leur « Modifier ».
  */
 export function stepOf(session: CollectSession): CollectStep {
   const view = viewOf(session.demarche.form, session.collection);

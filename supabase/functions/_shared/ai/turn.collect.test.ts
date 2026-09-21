@@ -442,3 +442,63 @@ describe("l'orientation parle à quelqu'un", () => {
     expect(system).toContain("Ne récite JAMAIS un libellé de la liste tel quel");
   });
 });
+
+/**
+ * La FIN d'un recueil — là où une conversation réussie se perdait.
+ *
+ * Constaté en test réel : tout était renseigné, le modèle annonçait « votre
+ * signalement est complet, vous pouvez l'envoyer », l'écran affichait « Encore
+ * 3 informations à préciser », et il n'y avait aucun bouton d'envoi. Les trois
+ * étaient facultatives, et personne — ni l'usager, ni le modèle — n'avait de
+ * raison de les évoquer.
+ */
+describe("la fin d'un recueil ne se bloque plus sur des facultatifs", () => {
+  /** Lieu et nature renseignés : tout l'obligatoire est là, restent photo et précisions. */
+  const obligatoiresFaits = {
+    demarcheId: PROPRETE,
+    values: { "f-lieu": "1 rue de Gaulle, Rosny-sous-Bois", "f-nature": "gravats" },
+    skipped: [],
+  };
+
+  it("⚠️ dit au modèle qu'il ne reste QUE des facultatives — il ne le décide plus seul", async () => {
+    const { deps, complete } = setup({});
+    await runAssistantTurn(tenant(true), "fr", await body("Et donc ?", obligatoiresFaits), deps);
+    const system = complete.mock.calls[0][0].system;
+    expect(system).toContain("INFORMATIONS À RECUEILLIR : plus aucune OBLIGATOIRE");
+    expect(system).toContain("La demande est envoyable telle quelle");
+    // Et l'interdiction qui va avec : c'est la ligne qui tranche, pas lui.
+    expect(system).toContain("NE DÉCLARE JAMAIS QUE C'EST COMPLET de ta propre autorité");
+  });
+
+  it("ne dit rien de tel tant qu'un obligatoire manque", async () => {
+    const { deps, complete } = setup({});
+    await runAssistantTurn(tenant(true), "fr", await body("Bonjour", opening), deps);
+    // ⚠️ Pas `not.toContain("INFORMATIONS À RECUEILLIR")` : la règle elle-même
+    // nomme cette ligne pour y renvoyer le modèle. C'est le CONSTAT qui doit
+    // être absent, pas son nom.
+    const system = complete.mock.calls[0][0].system;
+    expect(system).not.toContain("INFORMATIONS À RECUEILLIR : plus aucune");
+  });
+
+  it("⚠️ lui interdit de décrire un bouton qu'il ne voit pas", async () => {
+    // Constaté aussi : « ou passer directement à l'étape suivante », alors
+    // qu'aucun bouton de ce nom n'existe. L'usager cherche ce qu'on lui promet.
+    const { deps, complete } = setup({});
+    await runAssistantTurn(tenant(true), "fr", await body("Et donc ?", obligatoiresFaits), deps);
+    expect(complete.mock.calls[0][0].system).toContain("NE DÉCRIS JAMAIS L'ÉCRAN");
+  });
+
+  it("⚠️ ne propose plus la démarche qu'on est EN TRAIN de remplir", async () => {
+    // Sa carte se répétait sous chaque réponse, bouton « Remplir cette démarche
+    // ici » compris — alors qu'on y était déjà. Le modèle n'a plus le catalogue
+    // sous les yeux, mais il lit l'identifiant de la démarche consultée.
+    const { deps } = setup({ procedure_ids: [PROPRETE] });
+    const outcome = await runAssistantTurn(tenant(true), "fr", await body("Et donc ?", obligatoiresFaits), deps);
+    expect(outcome.ok && outcome.reply.suggestions).toEqual([]);
+
+    // Hors recueil, la suggestion reste évidemment le cœur du métier.
+    const horsRecueil = setup({ procedure_ids: [PROPRETE] });
+    const b = await runAssistantTurn(tenant(true), "fr", await body("J'ai un dépôt sauvage", undefined), horsRecueil.deps);
+    expect(b.ok && b.reply.suggestions).toHaveLength(1);
+  });
+});

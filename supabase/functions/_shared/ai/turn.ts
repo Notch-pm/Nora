@@ -314,10 +314,18 @@ export async function runAssistantTurn(
         content: answer.reply,
         signature: await signReply(deps.secret, ticket.conversationId, answer.reply),
       },
-      suggestions: answer.procedureIds.map((id) => {
-        const demarche = catalogue.find((d) => d.id === id)!;
-        return { id: demarche.id, name: demarche.name, description: demarche.description };
-      }),
+      // ⚠️ AUCUNE suggestion pendant un recueil. La démarche est choisie, et
+      // c'est elle qu'on remplit : sa carte se répétait sous CHAQUE réponse,
+      // avec un bouton « Remplir cette démarche ici » qui ne menait nulle part
+      // puisqu'on y était déjà. Le modèle n'a plus le catalogue sous les yeux,
+      // mais il lit l'identifiant de la démarche consultée et le recopiait.
+      suggestions:
+        collection !== null
+          ? []
+          : answer.procedureIds.map((id) => {
+              const demarche = catalogue.find((d) => d.id === id)!;
+              return { id: demarche.id, name: demarche.name, description: demarche.description };
+            }),
       emergency: detectEmergency(lastSaid),
       turnsLeft: maxTurnsFor(collecting) - turn,
       collection,

@@ -1058,9 +1058,23 @@ regarde ailleurs, une conversation non.
   revalidé au catalogue publié) : c'est un bouton sous sa bulle que l'usager
   presse. Un recueil qui démarrerait seul embarquerait dans un formulaire celui
   qui voulait juste poser une question ;
-- ⚠️ **un champ FACULTATIF refusé se passe** (`skip`). Sans ce geste, il
-  resterait en attente pour toujours : le modèle le redemanderait sans fin,
-  `complete` n'arriverait jamais et le récapitulatif ne s'ouvrirait pas ;
+- ⚠️ **un champ FACULTATIF vide n'empêche RIEN.** `view.complete` vaut
+  `validateForm(...) === {}` — les obligatoires renseignés, les valeurs bien
+  formées — et rien d'autre. Il a exigé que tout champ visible soit répondu ou
+  passé, et c'était un blocage : personne ne demande « quel est votre indice de
+  répétition ? », donc un « BTQ » n'est ni répondu ni décliné, donc
+  éternellement en attente. Le modèle jugeait la demande complète et cessait de
+  demander ; l'écran n'ouvrait jamais le récapitulatif. **Conversation finie,
+  formulaire valide, aucun bouton pour l'envoyer.** Les facultatifs restants
+  apparaissent vides au récapitulatif, avec leur « Modifier » ;
+- **un champ facultatif refusé se passe quand même** (`skip`) : cela le retire
+  de ce que le modèle voit en attente, donc il cesse de le proposer. C'est une
+  commodité de conversation, plus une condition de sortie ;
+- ⚠️ **ce n'est pas le modèle qui décide que c'est complet**, mais la ligne
+  « INFORMATIONS À RECUEILLIR » du prompt, à trois états (obligatoires
+  restantes / plus que des facultatives / plus aucune). Il lui est interdit de
+  le décréter — et de **décrire l'écran** : il ne le voit pas, et il inventait
+  des boutons (« passez à l'étape suivante ») que l'usager cherchait ensuite ;
 - **l'identité du demandeur** se saisit dans sa propre carte, à la fin, et n'est
   **jamais montrée au modèle** — elle n'a aucun chemin jusqu'à lui (test).
   ⚠️ Les autres réponses, elles, **partent au modèle** depuis le 2026-09-21 : c'est

@@ -345,11 +345,15 @@ export function AssistantThread({
   const collectBusy = collect.loading || collect.session !== null;
 
   // `null` hors du remplissage des champs : la ligne d'état retombe alors sur
-  // l'attente seule. Zéro champ restant n'est pas un cas ici — `collect.step`
-  // serait déjà passé au récapitulatif.
+  // l'attente seule.
+  //
+  // ⚠️ On compte ce qui BLOQUE, pas ce qui traîne. « Encore 3 informations à
+  // préciser » alors que les trois étaient facultatives — et que le modèle
+  // venait d'annoncer que tout était là — donnait un compteur qui contredisait
+  // l'assistant sans rien dire de ce qu'il fallait faire.
   const remaining =
-    collect.session !== null && collect.step === "fields" && fieldView !== null && fieldView.remaining > 0
-      ? fieldView.remainingFields
+    collect.session !== null && collect.step === "fields" && fieldView !== null && fieldView.remainingRequired.length > 0
+      ? fieldView.remainingRequired
       : null;
 
   return (

@@ -258,7 +258,34 @@ export interface CollectionView {
    * et un test l'épingle pour qu'ils ne puissent pas diverger.
    */
   remainingFields: Field[];
-  /** Plus rien à demander ET le formulaire est valide : le récapitulatif peut s'afficher. */
+  /**
+   * Ce qu'il reste d'OBLIGATOIRE — sous-ensemble de `remainingFields`. C'est
+   * lui qui décide de `complete` ; les facultatifs, non.
+   */
+  remainingRequired: Field[];
+  /**
+   * Le formulaire peut être envoyé : le récapitulatif s'affiche.
+   *
+   * ⚠️ **Les champs FACULTATIFS laissés vides ne l'empêchent pas.** Ils l'ont
+   * empêché, et c'était un blocage : un facultatif que personne n'a jamais
+   * évoqué — « BTQ », « complément d'adresse » — n'est ni répondu ni passé, donc
+   * éternellement « en attente ». Le modèle, lui, jugeait le signalement
+   * complet et cessait de demander quoi que ce soit ; l'écran, lui, n'ouvrait
+   * jamais le récapitulatif. Résultat : une conversation finie, un formulaire
+   * rempli, et AUCUN bouton pour l'envoyer.
+   *
+   * Personne ne demande « quel est votre indice de répétition ? » : attendre un
+   * refus explicite sur chaque facultatif, c'était faire de « facultatif » un
+   * synonyme de « obligatoire à décliner ». Un facultatif vide est une réponse
+   * valide — c'est ce que `validateForm` dit déjà, et c'est ce que fait le
+   * formulaire classique.
+   *
+   * `validateForm(...) === {}` suffit donc, et couvre tout : il rend une erreur
+   * pour chaque champ obligatoire vide ET pour chaque valeur mal formée. Les
+   * facultatifs restants ne disparaissent pas pour autant — ils restent dans
+   * `remainingFields`, le modèle peut encore les proposer, et le récapitulatif
+   * les montre avec leur « Modifier ».
+   */
   complete: boolean;
 }
 
@@ -302,7 +329,8 @@ export function viewOf(schema: FormSchema, state: CollectionState, asking?: read
     assists: shown.filter((field) => isConversationField(field) && isAssistedField(field)),
     remaining: pending.length,
     remainingFields: pending,
-    complete: pending.length === 0 && Object.keys(validateForm(schema, state.values)).length === 0,
+    remainingRequired: pending.filter((field) => isFieldRequired(field, state.values)),
+    complete: Object.keys(validateForm(schema, state.values)).length === 0,
   };
 }
 

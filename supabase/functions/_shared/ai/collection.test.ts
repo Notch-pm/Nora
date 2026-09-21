@@ -66,10 +66,38 @@ describe("viewOf — quoi demander, et comment", () => {
     expect(ids(answerField(SCHEMA, empty, "f-nature", "autre"))).toContain("f-precisez");
   });
 
-  it("est complet quand il ne reste rien à demander ET que le formulaire est valide", () => {
+  it("⚠️ est complet dès que les OBLIGATOIRES sont là — un facultatif vide n'attend personne", () => {
+    // LE BLOCAGE que cette règle corrige : « BTQ », « complément d'adresse »,
+    // « photo » — personne ne demande ça, donc personne ne les décline, donc
+    // ils restaient « en attente » à jamais. Le récapitulatif ne s'ouvrait
+    // jamais et AUCUN bouton d'envoi n'apparaissait, sur un formulaire
+    // pourtant valide.
+    let state = answerField(SCHEMA, empty, "f-lieu", "12 rue de la Paix");
+    expect(viewOf(SCHEMA, state).complete).toBe(false); // « nature » est obligatoire
+    state = answerField(SCHEMA, state, "f-nature", "depot");
+
+    const view = viewOf(SCHEMA, state);
+    expect(view.complete).toBe(true);
+    // Les facultatifs ne disparaissent pas pour autant : le modèle peut encore
+    // les proposer, et le récapitulatif les montre vides avec leur « Modifier ».
+    expect(view.remainingFields.map((f) => f.id)).toEqual(["f-photo", "f-courriel"]);
+    expect(view.remainingRequired).toEqual([]);
+  });
+
+  it("un obligatoire masqué puis démasqué rend la demande à nouveau incomplète", () => {
+    // « f-precisez » n'existe que si « nature » vaut « autre » : c'est la
+    // condition qui décide, pas l'ordre du formulaire.
+    let state = answerField(SCHEMA, empty, "f-lieu", "Ici");
+    state = answerField(SCHEMA, state, "f-nature", "autre");
+    expect(viewOf(SCHEMA, state).complete).toBe(false);
+    expect(viewOf(SCHEMA, state).remainingRequired.map((f) => f.id)).toEqual(["f-precisez"]);
+    state = answerField(SCHEMA, state, "f-precisez", "Des gravats et des seringues.");
+    expect(viewOf(SCHEMA, state).complete).toBe(true);
+  });
+
+  it("tout répondu ou passé : la vue est vide de bout en bout", () => {
     let state = answerField(SCHEMA, empty, "f-lieu", "12 rue de la Paix");
     state = answerField(SCHEMA, state, "f-nature", "depot");
-    expect(viewOf(SCHEMA, state).complete).toBe(false); // photo et courriel restent à proposer
     state = skipField(SCHEMA, skipField(SCHEMA, state, "f-photo"), "f-courriel");
     expect(viewOf(SCHEMA, state)).toEqual({
       pending: null,
@@ -79,6 +107,7 @@ describe("viewOf — quoi demander, et comment", () => {
       assists: [],
       remaining: 0,
       remainingFields: [],
+      remainingRequired: [],
       complete: true,
     });
   });

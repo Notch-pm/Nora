@@ -100,7 +100,10 @@ const COLLECT_RULES = [
   "- Ne demande ni nom, ni adresse personnelle, ni téléphone, ni courriel du demandeur : une carte dédiée s'en charge à la fin. Les informations de la liste, elles, font partie du formulaire : tu peux les recevoir, et les redire pour accuser réception.",
   "- SOIS ACCOMPAGNANT. Tu aides quelqu'un à remplir un dossier administratif, pas un questionnaire : accuse réception en VALIDANT ce qu'il vient de faire (« c'est noté », « parfait, ça me suffit »), dis à quoi sert l'information que tu demandes quand ce n'est pas évident, et rassure sur la suite — rien ne part avant qu'il ait tout relu. Chaleureux et bref à la fois : 100 mots au plus, pas de flagornerie, pas de phrase creuse.",
   "- AU PREMIER MESSAGE DU RECUEIL, accueille l'usager avant de demander quoi que ce soit : dis en une phrase ce que vous allez remplir ensemble et ce que tu auras besoin de savoir en gros, puis pose la première question. N'attaque pas par une question sèche.",
-  "- QUAND PLUS RIEN N'EST EN ATTENTE, ne demande plus rien : dis que le récapitulatif s'affiche sous ton message, que l'usager peut tout relire, corriger chaque ligne, puis envoyer lui-même. `asking` vide.",
+  "- ⚠️ NE DÉCRIS JAMAIS L'ÉCRAN. Tu ne le vois pas. Ne parle ni de bouton, ni d'étape suivante, ni de ce sur quoi l'usager devrait cliquer — sauf pour annoncer un calendrier ou un dépôt de fichier, que tu viens de réclamer dans `asking`. Inventer un bouton qui n'existe pas laisse l'usager à chercher ce que tu lui as promis.",
+  "- ⚠️ NE DÉCLARE JAMAIS QUE C'EST COMPLET de ta propre autorité. C'est la ligne « INFORMATIONS À RECUEILLIR » ci-dessous qui le dit, et elle seule. Tant qu'elle ne l'a pas dit, il reste des informations obligatoires à demander, même si la demande te paraît déjà suffisante : continue de demander.",
+  "- QUAND LA LIGNE DIT QU'IL N'EN RESTE AUCUNE, ne demande plus rien : dis que le récapitulatif s'affiche sous ton message, que l'usager peut tout relire, corriger chaque ligne, puis envoyer lui-même. `asking` vide.",
+  "- QUAND ELLE DIT QU'IL NE RESTE QUE DES FACULTATIVES, la demande est déjà envoyable. Dis-le, propose UNE SEULE FOIS, en une phrase, celles qui vaudraient la peine (une photo, une précision), et redis que le récapitulatif est en dessous. S'il décline ou n'y répond pas, n'y reviens plus.",
 ].join("\n");
 
 /**
@@ -322,9 +325,19 @@ export function buildAssistantPrompt(input: AssistantPromptInput): string {
       ? ""
       : fenced("DÉMARCHE CONSULTÉE PAR L'USAGER", focusBlock(input.focus, collecting === null)),
     collecting === null ? "" : fenced("LE FORMULAIRE, DANS L'ORDRE", collectBlock(collecting)),
-    collecting !== null && collecting.every((field) => !field.pending)
-      ? "INFORMATIONS À RECUEILLIR : plus aucune. L'usager peut relire et envoyer sa demande avec le récapitulatif affiché."
-      : "",
+    // ⚠️ C'est CETTE ligne qui dit où en est le recueil, et le modèle n'a pas
+    // le droit d'en décider autrement (`COLLECT_RULES`). Trois états, parce que
+    // deux ne suffisaient pas : quand il ne restait que des facultatives, le
+    // modèle les voyait « en attente », jugeait de lui-même que la demande
+    // était complète, cessait de demander — et l'écran, lui, attendait encore.
+    // Conversation finie, formulaire rempli, aucun bouton pour l'envoyer.
+    collecting === null
+      ? ""
+      : collecting.every((field) => !field.pending)
+        ? "INFORMATIONS À RECUEILLIR : plus aucune. L'usager peut relire et envoyer sa demande avec le récapitulatif affiché."
+        : collecting.some((field) => field.pending && field.required)
+          ? ""
+          : "INFORMATIONS À RECUEILLIR : plus aucune OBLIGATOIRE. La demande est envoyable telle quelle, et le récapitulatif est affiché. Il reste des informations facultatives, marquées « facultatif » dans la liste.",
   ];
   if (input.catalogue.length === 0) {
     blocks.push("La collectivité ne propose aucune démarche en ligne pour le moment : dis-le.");

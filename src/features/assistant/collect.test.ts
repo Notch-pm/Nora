@@ -131,10 +131,21 @@ describe("stepOf — la machine d'étapes", () => {
     session = answerField(session, "f-lieu", "12 rue de la Paix");
     expect(stepOf(session)).toBe("fields");
     session = answerField(session, "f-nature", "gravats");
-    // f-precisions est facultatif : sans réponse ni « Passer », il reste en attente.
-    expect(stepOf(session)).toBe("fields");
-    session = skipField(session, "f-precisions");
+    // ⚠️ « f-precisions » est FACULTATIF : il ne retient plus le récapitulatif.
+    // Il l'a retenu, et c'était un blocage — un facultatif que personne n'évoque
+    // n'est jamais ni répondu ni passé, donc éternellement en attente, et le
+    // bouton d'envoi n'apparaissait jamais.
     expect(stepOf(session)).toBe("recap");
+  });
+
+  it("⚠️ un facultatif passé explicitement ne change rien à l'étape", () => {
+    // « Passer » reste utile — il retire le champ de ce que le modèle voit en
+    // attente, donc il cesse de le proposer — mais il n'est plus la condition
+    // d'ouverture du récapitulatif.
+    let session = startSession(demarche());
+    session = answerField(session, "f-lieu", "12 rue de la Paix");
+    session = answerField(session, "f-nature", "gravats");
+    expect(stepOf(skipField(session, "f-precisions"))).toBe("recap");
   });
 
   it("passe par « organization » avant « recap » quand il y a un choix", () => {
