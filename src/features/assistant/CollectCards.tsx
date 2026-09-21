@@ -197,6 +197,57 @@ function FieldControl({
   );
 }
 
+/**
+ * Ce qu'il reste d'obligatoire — replié, mais REMPLISSABLE.
+ *
+ * ⚠️ C'est la sortie de secours, et elle a manqué. Constaté en test : le modèle
+ * demande « code postal et ville », l'usager répond « 44000 », le serveur retient
+ * le code postal et la ville reste vide. Le modèle passe à la question suivante
+ * sans y revenir, puis annonce que tout est là. L'écran, lui, affichait « Encore
+ * une information à préciser » — et **rien pour la préciser** : la carte de champ
+ * ne se montre que pour ce qui ne se dit pas (une date, un fichier), et le
+ * récapitulatif n'ouvre pas tant qu'un obligatoire manque. Conversation sans
+ * issue.
+ *
+ * Replié par défaut : la conversation reste le chemin, ceci n'est qu'une porte.
+ * Mais elle existe désormais à tout moment, sans dépendre de ce que le modèle
+ * veut bien demander — c'est justement quand il s'égare qu'on en a besoin.
+ */
+export function RemainingRequiredFields({
+  session,
+  fields,
+  onAnswer,
+  onSkip,
+}: {
+  session: CollectSession;
+  fields: readonly Field[];
+  onAnswer: (fieldId: string, value: unknown) => void;
+  onSkip: (fieldId: string) => void;
+}) {
+  const t = useT();
+  if (fields.length === 0) return null;
+  return (
+    <details className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
+      <summary className="cursor-pointer text-[color:var(--brand-primary)]">
+        {t("assistant.collect.remainingSee")}
+      </summary>
+      <div className="mt-2 flex flex-col gap-5">
+        {fields.map((field) => (
+          <div key={field.id}>
+            <FieldControl
+              session={session}
+              field={field}
+              folded={false}
+              onAnswer={onAnswer}
+              onSkip={onSkip}
+            />
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export function PendingFieldCard({
   session,
   asking,

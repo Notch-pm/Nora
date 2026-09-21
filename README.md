@@ -1070,6 +1070,15 @@ regarde ailleurs, une conversation non.
 - **un champ facultatif refusé se passe quand même** (`skip`) : cela le retire
   de ce que le modèle voit en attente, donc il cesse de le proposer. C'est une
   commodité de conversation, plus une condition de sortie ;
+- ⚠️ **le repli « voir lesquelles » est REMPLISSABLE**, et c'est la sortie de
+  secours. Le modèle demande « code postal et ville », l'usager répond
+  « 44000 », la ville reste vide, le modèle passe à la suite et n'y revient
+  pas : l'écran annonçait « Encore une information à préciser » **sans rien
+  offrir pour la préciser** — la carte de champ ne paraît que pour ce qui ne se
+  dit pas, et le récapitulatif n'ouvre pas tant qu'un obligatoire manque.
+  Conversation sans issue. Le repli porte désormais les contrôles eux-mêmes :
+  replié par défaut, disponible à tout moment, sans dépendre de ce que le modèle
+  veut bien demander — c'est quand il s'égare qu'on en a besoin ;
 - ⚠️ **ce n'est pas le modèle qui décide que c'est complet**, mais la ligne
   « INFORMATIONS À RECUEILLIR » du prompt, à trois états (obligatoires
   restantes / plus que des facultatives / plus aucune). Il lui est interdit de

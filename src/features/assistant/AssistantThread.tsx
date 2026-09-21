@@ -27,6 +27,7 @@ import {
   OrganizationCard,
   PendingFieldCard,
   ReceiptNoteView,
+  RemainingRequiredFields,
   RecapCard,
   StartedNoteView,
 } from "./CollectCards.tsx";
@@ -443,17 +444,13 @@ export function AssistantThread({
             Hors de la région : le compte est annoncé tout seul au lecteur
             d'écran, et le détail reste atteignable d'un geste — sans qu'ouvrir
             le repli déclenche une annonce de neuf libellés. */}
-        {remaining !== null && state.status !== "sending" && (
-          <details className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
-            <summary className="cursor-pointer">{t("assistant.collect.remainingSee")}</summary>
-            <ul className="mt-1 flex flex-col gap-0.5 ps-4">
-              {remaining.map((field) => (
-                <li key={field.id} className="list-disc">
-                  {field.label}
-                </li>
-              ))}
-            </ul>
-          </details>
+        {remaining !== null && collect.session !== null && state.status !== "sending" && (
+          <RemainingRequiredFields
+            session={collect.session}
+            fields={remaining}
+            onAnswer={collect.answerField}
+            onSkip={collect.skipField}
+          />
         )}
 
         {collect.loading && (
