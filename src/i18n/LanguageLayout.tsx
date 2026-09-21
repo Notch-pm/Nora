@@ -16,6 +16,7 @@
 import * as React from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { isRtl } from "@fn/_shared/domain/languages.ts";
+import { AssistantBubble } from "@/features/assistant/AssistantBubble.tsx";
 import { useAudience } from "@/services/audience/useAudience.ts";
 import { localizedPath, PIVOT_LANGUAGE, splitLangPath } from "./localizedPath.ts";
 import { t, tn } from "./t.ts";
@@ -149,9 +150,16 @@ export function LanguageLayout() {
     [lang, go],
   );
 
+  // La bulle de l'assistant est posée ICI, pour la même raison que la mesure
+  // d'audience : ce layout est le seul point commun aux trois écrans. C'est ce
+  // qui permet à une conversation de survivre à une navigation — ouvrir une
+  // démarche, revenir, chercher autre chose, sans perdre le fil. Elle rend
+  // `children` telle quelle quand la collectivité a fermé l'assistant.
   return (
     <LanguageContext.Provider value={value}>
-      <Outlet />
+      <AssistantBubble>
+        <Outlet />
+      </AssistantBubble>
     </LanguageContext.Provider>
   );
 }
