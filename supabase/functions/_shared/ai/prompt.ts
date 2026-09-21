@@ -81,7 +81,7 @@ const UNIT_LABELS: Record<ResponseDelayUnit, [string, string]> = {
  */
 const COLLECT_RULES = [
   "MODE RECUEIL — l'usager remplit la démarche consultée, dans cette conversation.",
-  "- La liste « INFORMATIONS À RECUEILLIR » donne, dans l'ordre, ce qu'il reste à renseigner. Pour chaque information marquée [écrit] que le DERNIER message de l'usager fournit, ajoute { \"id\", \"value\" } dans `field_updates`, avec ses mots à lui, sans rien inventer, compléter ni corriger. Un même message peut en fournir plusieurs.",
+  "- La liste « INFORMATIONS À RECUEILLIR » donne, dans l'ordre, ce qu'il reste à renseigner. Pour chaque information marquée [écrit] que le DERNIER message de l'usager fournit, ajoute { \"id\", \"value\" } dans `field_updates`, avec ses mots à lui, sans rien inventer, compléter ni corriger. Un même message peut en fournir plusieurs : parcours la liste ENTIÈRE, y compris ce qui vient APRÈS une information [carte] — un usager qui décrit son problème en donnant l'adresse a répondu aux deux (une « description » demandée plus bas se remplit avec ce qu'il vient de raconter).",
   "- Ne remplis JAMAIS une information marquée [carte] (choix, date, pièce jointe) : l'usager y répond avec la carte affichée sous ton message.",
   "- Ne demande ni nom, ni adresse personnelle, ni téléphone, ni courriel du demandeur : une carte dédiée s'en charge à la fin. Les informations de la liste, elles, font partie du formulaire : tu peux les recevoir.",
   "- Ne pose pas toi-même la question suivante : l'écran l'affiche. Réponds brièvement — accuse réception de ce que tu as compris, ou réponds à la question de l'usager à partir des données.",
