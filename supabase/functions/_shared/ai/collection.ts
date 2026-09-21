@@ -234,18 +234,59 @@ export interface CollectionView {
   mode: "conversation" | "card" | null;
   /** Le contrôle du formulaire mérite d'être offert EN PLUS de la question. */
   assist: boolean;
+  /**
+   * Les contrôles que l'écran DOIT montrer : les champs demandés auxquels on
+   * ne peut pas répondre en parlant (une date, une pièce jointe).
+   */
+  controls: Field[];
+  /**
+   * Les contrôles offerts en REPLI : les champs à options demandés, pour qui
+   * préfère cliquer que décrire. La conversation reste le chemin principal.
+   */
+  assists: Field[];
   remaining: number;
   /** Plus rien à demander ET le formulaire est valide : le récapitulatif peut s'afficher. */
   complete: boolean;
 }
 
-export function viewOf(schema: FormSchema, state: CollectionState): CollectionView {
+/**
+ * Ce qu'il y a à montrer, et ce qu'il reste à faire.
+ *
+ * ⚠️ `asking` est ce que le MODÈLE dit demander dans son dernier message —
+ * c'est lui qui mène la conversation, donc lui qui décide de l'ordre. L'écran
+ * ne peut plus se contenter du premier champ en attente : si le modèle parle
+ * de la date alors que deux champs écrits la précèdent, c'est le calendrier
+ * qu'il faut afficher, pas autre chose.
+ *
+ * ⚠️ Rien n'est cru sur parole : un identifiant inventé, déjà répondu ou
+ * masqué tombe en silence, exactement comme un `field_update` rejeté. Le
+ * modèle ne peut donc jamais faire apparaître un contrôle qui n'a pas lieu
+ * d'être.
+ *
+ * ⚠️ REPLI : sans `asking` (premier tour, rechargement de page, modèle muet),
+ * on ne montre un contrôle que si le prochain champ en attente ne se dit pas.
+ * Afficher un contrôle pour un champ qui se raconte redonnerait à l'écran la
+ * parole qu'on vient de lui retirer.
+ */
+export function viewOf(schema: FormSchema, state: CollectionState, asking?: readonly string[]): CollectionView {
   const pending = pendingFields(schema, state);
   const next = pending[0] ?? null;
+
+  const wanted = asking === undefined
+    ? []
+    : pending.filter((field) => asking.includes(field.id));
+  const shown = wanted.length > 0
+    ? wanted
+    : next !== null && !isConversationField(next)
+      ? [next]
+      : [];
+
   return {
     pending: next,
     mode: next === null ? null : isConversationField(next) ? "conversation" : "card",
     assist: next !== null && isAssistedField(next),
+    controls: shown.filter((field) => !isConversationField(field)),
+    assists: shown.filter((field) => isConversationField(field) && isAssistedField(field)),
     remaining: pending.length,
     complete: pending.length === 0 && Object.keys(validateForm(schema, state.values)).length === 0,
   };
@@ -294,7 +335,17 @@ export function answerField(
 
 export interface FieldUpdate {
   id: string;
-  /** Un tableau ne vaut que pour des cases à cocher. */
+  /**
+   * L'usager a refusé ou ignoré ce champ FACULTATIF : on le passe.
+   *
+   * ⚠️ Sans cela, un facultatif décliné reste en attente pour toujours : le
+   * modèle le redemanderait, `view.complete` n'arriverait jamais, et le
+   * récapitulatif ne s'ouvrirait pas. C'est le modèle qui mène la
+   * conversation — il lui faut donc un moyen de dire « celui-là, on le passe ».
+   * `skipField` refuse déjà un champ obligatoire.
+   */
+  skip?: true;
+  /** Un tableau ne vaut que pour des cases à cocher. Absent quand `skip`. */
   value: string | string[];
   /** Ce que le modèle DIT de sa valeur. `applyUpdates` vérifie avant de le retenir. */
   origin: FieldOrigin;
@@ -331,6 +382,11 @@ export function readFieldUpdates(raw: unknown): FieldUpdate[] {
     const claimed: FieldOrigin =
       typeof origin === "string" && ORIGINS.has(origin) ? (origin as FieldOrigin) : "inferred";
     const common = { id, origin: claimed, source: note(source), reason: note(reason) };
+    // Passer un champ ne demande pas de valeur : c'est le geste inverse.
+    if ((entry as Record<string, unknown>).skip === true) {
+      updates.push({ ...common, skip: true, value: "" });
+      continue;
+    }
     if (Array.isArray(value)) {
       const items = value.map(readScalar).filter((item): item is string => item !== null);
       if (items.length > 0) updates.push({ ...common, value: items });
@@ -482,8 +538,25 @@ export function applyUpdates(
   const heard = fold(said);
   for (const update of updates) {
     const field = pendingFields(schema, current).find((f) => f.id === update.id);
-    const value = field === undefined ? null : coerceUpdate(field, update.value);
-    if (field === undefined || value === null || current.touched.includes(update.id)) {
+    if (field === undefined || current.touched.includes(update.id)) {
+      rejected.push(update.id);
+      continue;
+    }
+
+    // Passer un facultatif. `skipField` refuse un obligatoire et rend l'état
+    // inchangé : on le constate plutôt que de le redire ici.
+    if (update.skip === true) {
+      const next = skipField(schema, current, field.id);
+      if (next === current) rejected.push(update.id);
+      else {
+        current = next;
+        accepted.push(field.id);
+      }
+      continue;
+    }
+
+    const value = coerceUpdate(field, update.value);
+    if (value === null) {
       rejected.push(update.id);
       continue;
     }

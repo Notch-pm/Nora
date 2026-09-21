@@ -230,6 +230,25 @@ describe("le recueil dans la conversation", () => {
     expect(system).not.toContain("field_updates");
   });
 
+  it("ce que le modèle dit DEMANDER est refiltré sur ce qui reste vraiment à renseigner", async () => {
+    const { deps } = setup({
+      // Il demande la photo (légitime), un champ qu'il vient de remplir, et un
+      // champ inventé.
+      field_updates: [{ id: "f-lieu", value: "12 rue de la Paix" }],
+      asking: ["f-photo", "f-lieu", "f-invente"],
+    });
+    const outcome = await runAssistantTurn(tenant(true), "fr", await body("12 rue de la Paix", opening), deps);
+    // ⚠️ Filtré APRÈS `applyUpdates` : ce qu'il vient de remplir n'est plus une
+    // question, et ce qui n'existe pas n'en a jamais été une.
+    expect(outcome.ok && outcome.reply.asking).toEqual(["f-photo"]);
+  });
+
+  it("hors recueil, il ne demande rien", async () => {
+    const { deps } = setup({ asking: ["f-lieu"] });
+    const outcome = await runAssistantTurn(tenant(true), "fr", await body("Bonjour", undefined), deps);
+    expect(outcome.ok && outcome.reply.asking).toEqual([]);
+  });
+
   it("⚠️ un recueil ouvert relève la borne de tours, et le ticket s'en souvient", async () => {
     // Remplir en parlant coûte des tours : vingt ne suffisent pas, et la
     // conversation ne doit pas se fermer au milieu du remplissage.
@@ -243,6 +262,40 @@ describe("le recueil dans la conversation", () => {
     // haute au tour suivant, sans que le navigateur ait à la réclamer.
     const read = await readTicket(SECRET, outcome.reply.ticket, NANTES, NOW);
     expect(read.ok && read.ticket.collecting).toBe(true);
+  });
+
+  it("l'assistant PROPOSE de remplir — une démarche publiée, qui a un formulaire", async () => {
+    const { deps } = setup({ offer_procedure_id: PROPRETE });
+    const outcome = await runAssistantTurn(tenant(true), "fr", await body("J'ai un dépôt sauvage", undefined), deps);
+    expect(outcome.ok && outcome.reply.collectOffer).toEqual({
+      id: PROPRETE,
+      name: "Signaler un problème de propreté",
+    });
+  });
+
+  it("⚠️ une offre qui mènerait à une impasse est tue", async () => {
+    // Une démarche sans formulaire : le bouton n'ouvrirait rien.
+    const sansForm = setup({ offer_procedure_id: SANS_FORMULAIRE });
+    const a = await runAssistantTurn(tenant(true), "fr", await body("Un rendez-vous", undefined), sansForm.deps);
+    expect(a.ok && a.reply.collectOffer).toBeNull();
+
+    // Une démarche hors du catalogue publié : `parseAssistantAnswer` l'a déjà
+    // écartée, et rien ne remonte.
+    const inventee = setup({ offer_procedure_id: "99999999-9999-4999-8999-999999999999" });
+    const b = await runAssistantTurn(tenant(true), "fr", await body("Autre chose", undefined), inventee.deps);
+    expect(b.ok && b.reply.collectOffer).toBeNull();
+
+    // Le dépôt par la conversation fermé par la collectivité.
+    const ferme = setup({ offer_procedure_id: PROPRETE });
+    const c = await runAssistantTurn(tenant(false), "fr", await body("Un dépôt sauvage", undefined), ferme.deps);
+    expect(c.ok && c.reply.collectOffer).toBeNull();
+  });
+
+  it("⚠️ pendant un recueil, il ne propose plus rien : il est déjà en train de le faire", async () => {
+    const { deps, complete } = setup({ offer_procedure_id: PROPRETE });
+    const outcome = await runAssistantTurn(tenant(true), "fr", await body("Bonjour", opening), deps);
+    expect(outcome.ok && outcome.reply.collectOffer).toBeNull();
+    expect(complete.mock.calls[0][0].system).not.toContain("PROPOSER DE REMPLIR");
   });
 
   it("hors recueil, la borne reste celle de l'orientation", async () => {

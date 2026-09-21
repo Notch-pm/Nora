@@ -126,10 +126,31 @@ describe("sendAssistantTurn", () => {
       emergency: false,
       turnsLeft: 19,
       collection: { demarcheId: "d1", values: { f1: "12 rue de la Paix" }, skipped: [] },
+      asking: ["f2"],
+      collectOffer: { id: "d1", name: "Recensement" },
     };
     vi.stubGlobal("fetch", vi.fn(async () => respond(reply)));
     const result = await sendAssistantTurn(REQUEST);
     expect(result).toEqual({ ok: true, reply });
+  });
+
+  it("⚠️ une offre ou une demande mal formées ne passent pas pour telles", async () => {
+    // Le serveur les a déjà revalidées ; ici on ne lit que la FORME, et une
+    // forme douteuse vaut « rien », jamais un objet à moitié rempli.
+    const reply = {
+      ticket: "t2",
+      message: { role: "assistant", content: "Bonjour.", signature: "sig2" },
+      suggestions: [],
+      emergency: false,
+      turnsLeft: 19,
+      collection: null,
+      asking: ["f2", 42, ""],
+      collectOffer: { id: "d1" },
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => respond(reply)));
+    const result = await sendAssistantTurn(REQUEST);
+    expect(result.ok && result.reply.asking).toEqual(["f2", ""]);
+    expect(result.ok && result.reply.collectOffer).toBeNull();
   });
 
   it("un serveur d'avant le recueil n'en rend pas : `collection` vaut null, jamais un trou", async () => {

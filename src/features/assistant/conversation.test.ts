@@ -235,6 +235,8 @@ describe("reduceConversation", () => {
         emergency: false,
         turnsLeft: 19,
         collection: null,
+        asking: [],
+        collectOffer: null,
       },
     });
     expect(next.status).toBe("ready");
@@ -254,6 +256,8 @@ describe("reduceConversation", () => {
         emergency: false,
         turnsLeft: 0,
         collection: null,
+        asking: [],
+        collectOffer: null,
       },
     });
     expect(next.status).toBe("ended");
@@ -270,6 +274,8 @@ describe("reduceConversation", () => {
         emergency: false,
         turnsLeft: 18,
         collection: null,
+        asking: [],
+        collectOffer: null,
       },
     });
     expect(next.emergency).toBe(true);

@@ -115,10 +115,24 @@ export interface AssistantAnswer {
    * lu par FORME seulement. C'est `applyUpdates` qui décide ce qu'on en retient.
    */
   fieldUpdates: FieldUpdate[];
+  /**
+   * Les champs que sa question PORTE — c'est lui qui mène la conversation,
+   * donc lui qui décide de l'ordre. Lu par forme seulement : `runAssistantTurn`
+   * les refiltre contre ce qui reste réellement à demander.
+   */
+  asking: string[];
+  /**
+   * La démarche qu'il propose de remplir ici — `null` s'il n'en propose
+   * aucune. Revalidé contre le catalogue publié, comme `procedureIds` : le
+   * modèle ne peut pas désigner une démarche qui n'existe pas.
+   */
+  offerProcedureId: string | null;
 }
 
 const MAX_REPLY_CHARS = 2000;
 const MAX_SUGGESTIONS = 3;
+/** Une question qui porte sur plus de trois informations n'est plus une question. */
+const MAX_ASKING = 3;
 
 /**
  * Retire tout lien d'une réponse. La consigne l'interdit déjà ; ceci le
@@ -175,5 +189,24 @@ export function parseAssistantAnswer(raw: string, catalogueIds: ReadonlySet<stri
   const intent: AnswerIntent =
     procedureIds.length > 0 ? (declared === "clarify" ? "clarify" : "suggest")
       : declared === "suggest" ? "answer" : declared;
-  return { reply, intent, procedureIds, fieldUpdates: readFieldUpdates(source.field_updates) };
+  const asking: string[] = [];
+  for (const id of Array.isArray(source.asking) ? source.asking : []) {
+    if (typeof id !== "string" || id === "" || asking.includes(id)) continue;
+    asking.push(id);
+    if (asking.length === MAX_ASKING) break;
+  }
+
+  // ⚠️ Revalidé au catalogue PUBLIÉ, exactement comme `procedure_ids` : une
+  // offre de remplir une démarche qui n'existe pas n'existe pas non plus.
+  const offered = source.offer_procedure_id;
+  const offerProcedureId = typeof offered === "string" && catalogueIds.has(offered) ? offered : null;
+
+  return {
+    reply,
+    intent,
+    procedureIds,
+    fieldUpdates: readFieldUpdates(source.field_updates),
+    asking,
+    offerProcedureId,
+  };
 }

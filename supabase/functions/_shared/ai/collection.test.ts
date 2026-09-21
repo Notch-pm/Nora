@@ -75,6 +75,8 @@ describe("viewOf — quoi demander, et comment", () => {
       pending: null,
       mode: null,
       assist: false,
+      controls: [],
+      assists: [],
       remaining: 0,
       complete: true,
     });
@@ -84,6 +86,50 @@ describe("viewOf — quoi demander, et comment", () => {
     expect(skipField(SCHEMA, empty, "f-lieu")).toBe(empty);
     expect(skipField(SCHEMA, empty, "inconnu")).toBe(empty);
     expect(skipField(SCHEMA, empty, "f-photo").skipped).toEqual(["f-photo"]);
+  });
+});
+
+describe("viewOf(asking) — c'est le MODÈLE qui mène, donc qui décide de l'ordre", () => {
+  it("montre le contrôle d'un champ demandé qui ne se dit pas, même s'il n'est pas le premier", () => {
+    // Le modèle parle de la photo alors que trois champs écrits la précèdent :
+    // c'est le dépôt de fichier qu'il faut afficher, pas le premier en attente.
+    const view = viewOf(SCHEMA, empty, ["f-photo"]);
+    expect(view.controls.map((f) => f.id)).toEqual(["f-photo"]);
+    expect(view.pending?.id).toBe("f-lieu"); // l'ordre du formulaire ne change pas
+  });
+
+  it("offre en repli le contrôle d'un champ à options demandé", () => {
+    const view = viewOf(SCHEMA, empty, ["f-nature"]);
+    expect(view.assists.map((f) => f.id)).toEqual(["f-nature"]);
+    // Un champ à options se DIT : il n'impose pas son contrôle.
+    expect(view.controls).toEqual([]);
+  });
+
+  it("⚠️ un champ inventé, déjà répondu ou masqué tombe en silence", () => {
+    const answered = answerField(SCHEMA, empty, "f-lieu", "Ici");
+    for (const asking of [["f-invente"], ["f-lieu"], ["f-precisez"]]) {
+      const view = viewOf(SCHEMA, answered, asking);
+      // Rien de ce que le modèle a nommé n'est retenu ; on retombe sur le
+      // repli, et le prochain champ en attente se dit — donc aucun contrôle.
+      expect(view.controls).toEqual([]);
+      expect(view.assists).toEqual([]);
+    }
+  });
+
+  it("⚠️ sans `asking`, un contrôle n'apparaît que si le prochain champ NE SE DIT PAS", () => {
+    // Afficher un contrôle pour un champ qui se raconte redonnerait à l'écran
+    // la parole qu'on vient de lui retirer.
+    expect(viewOf(SCHEMA, empty).controls).toEqual([]);
+    let state = answerField(SCHEMA, empty, "f-lieu", "Ici");
+    state = answerField(SCHEMA, state, "f-nature", "depot");
+    expect(viewOf(SCHEMA, state).pending?.id).toBe("f-photo");
+    expect(viewOf(SCHEMA, state).controls.map((f) => f.id)).toEqual(["f-photo"]);
+  });
+
+  it("plusieurs champs demandés à la fois — le modèle groupe ce qui va ensemble", () => {
+    const view = viewOf(SCHEMA, empty, ["f-nature", "f-photo"]);
+    expect(view.assists.map((f) => f.id)).toEqual(["f-nature"]);
+    expect(view.controls.map((f) => f.id)).toEqual(["f-photo"]);
   });
 });
 
@@ -170,6 +216,29 @@ describe("applyUpdates — ce que le modèle dit avoir compris, et ce qu'on en r
       up("f-courriel", "a@b.fr"),
     ], said);
     expect(result.accepted).toEqual(["f-lieu", "f-courriel"]);
+  });
+});
+
+describe("passer un champ — le modèle mène, il lui faut pouvoir le dire", () => {
+  it("⚠️ un facultatif refusé se PASSE, sinon le récapitulatif ne s'ouvre jamais", () => {
+    // Sans ce geste, le champ reste en attente : le modèle le redemanderait
+    // sans fin, et `complete` n'arriverait pas.
+    const result = applyUpdates(SCHEMA, empty, [up("f-courriel", "", { skip: true })], "non merci");
+    expect(result.accepted).toEqual(["f-courriel"]);
+    expect(result.state.skipped).toEqual(["f-courriel"]);
+    expect(pendingFields(SCHEMA, result.state).map((f) => f.id)).not.toContain("f-courriel");
+  });
+
+  it("⚠️ un champ OBLIGATOIRE ne se passe pas, même si le modèle le demande", () => {
+    const result = applyUpdates(SCHEMA, empty, [up("f-lieu", "", { skip: true })], "je ne sais pas");
+    expect(result.rejected).toEqual(["f-lieu"]);
+    expect(result.state.skipped).toEqual([]);
+  });
+
+  it("passer n'écrit aucune valeur, et ne pose aucune origine", () => {
+    const result = applyUpdates(SCHEMA, empty, [up("f-courriel", "", { skip: true })], "non");
+    expect(result.state.values).toEqual({});
+    expect(result.state.origins).toEqual({});
   });
 });
 

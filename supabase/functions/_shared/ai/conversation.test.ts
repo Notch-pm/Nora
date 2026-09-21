@@ -70,7 +70,14 @@ describe("parseAssistantAnswer — le guichet garantit que ça parse, pas que ç
   const ids = new Set(["a", "b"]);
 
   it("lit une réponse conforme, clôturée ou entourée de texte", () => {
-    const expected = { reply: "Voici la démarche.", intent: "suggest", procedureIds: ["b"], fieldUpdates: [] };
+    const expected = {
+      reply: "Voici la démarche.",
+      intent: "suggest",
+      procedureIds: ["b"],
+      fieldUpdates: [],
+      asking: [],
+      offerProcedureId: null,
+    };
     const json = '{"reply":"Voici la démarche.","intent":"suggest","procedure_ids":["b"]}';
     for (const raw of [json, "```json\n" + json + "\n```", "Bien sûr : " + json + " Voilà."]) {
       expect(parseAssistantAnswer(raw, ids)).toEqual(expected);
@@ -82,19 +89,57 @@ describe("parseAssistantAnswer — le guichet garantit que ça parse, pas que ç
     expect(parseAssistantAnswer(raw, ids)?.procedureIds).toEqual(["b", "a"]);
     // Tout est tombé : ce n'est plus une proposition.
     const invented = JSON.stringify({ reply: "Voici.", intent: "suggest", procedure_ids: ["zzz"] });
-    expect(parseAssistantAnswer(invented, ids)).toEqual({ reply: "Voici.", intent: "answer", procedureIds: [], fieldUpdates: [] });
+    expect(parseAssistantAnswer(invented, ids)).toEqual({
+      reply: "Voici.",
+      intent: "answer",
+      procedureIds: [],
+      fieldUpdates: [],
+      asking: [],
+      offerProcedureId: null,
+    });
   });
 
   it("borne à trois propositions et ramène une intention inconnue à « answer »", () => {
     const many = new Set(["a", "b", "c", "d"]);
     const raw = JSON.stringify({ reply: "x", intent: "danse", procedure_ids: ["a", "b", "c", "d"] });
-    expect(parseAssistantAnswer(raw, many)).toEqual({ reply: "x", intent: "suggest", procedureIds: ["a", "b", "c"], fieldUpdates: [] });
+    expect(parseAssistantAnswer(raw, many)).toEqual({
+      reply: "x",
+      intent: "suggest",
+      procedureIds: ["a", "b", "c"],
+      fieldUpdates: [],
+      asking: [],
+      offerProcedureId: null,
+    });
   });
 
   it("rend null sur l'illisible — jamais un texte brut non vérifié à l'écran", () => {
     for (const raw of ["", "Bonjour !", "[1,2]", '{"intent":"answer"}', '{"reply":"   "}', '{"reply":42}', "{oups"]) {
       expect(parseAssistantAnswer(raw, ids)).toBeNull();
     }
+  });
+
+
+  it("lit ce que la question PORTE — borné à trois, dédoublonné, formes molles écartées", () => {
+    const raw = JSON.stringify({
+      reply: "Où, et de quelle nature ?",
+      intent: "answer",
+      procedure_ids: [],
+      asking: ["f-lieu", "f-lieu", "", 42, "f-nature", "f-jour", "f-photo"],
+    });
+    expect(parseAssistantAnswer(raw, ids)?.asking).toEqual(["f-lieu", "f-nature", "f-jour"]);
+    // Absent, ce n'est pas une erreur : l'écran a son repli.
+    expect(parseAssistantAnswer('{"reply":"x","intent":"answer"}', ids)?.asking).toEqual([]);
+  });
+
+  it("⚠️ une offre de remplir ne vaut que pour une démarche du catalogue publié", () => {
+    const offer = (id: unknown) =>
+      parseAssistantAnswer(
+        JSON.stringify({ reply: "Je peux la remplir avec vous.", intent: "answer", offer_procedure_id: id }),
+        ids,
+      )?.offerProcedureId;
+    expect(offer("a")).toBe("a");
+    // Inventée, d'une autre collectivité, ou d'une autre forme : rien.
+    for (const junk of ["zzz", "", 42, null, undefined, ["a"]]) expect(offer(junk)).toBeNull();
   });
 
   it("⚠️ retire tout lien : l'assistant ne doit pas pouvoir hameçonner sous la marque d'une collectivité", () => {

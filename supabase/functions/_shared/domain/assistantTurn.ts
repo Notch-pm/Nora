@@ -84,6 +84,24 @@ export interface AssistantTurnReply {
    * prochain champ (`viewOf`, même code des deux côtés).
    */
   collection: CollectionPayload | null;
+  /**
+   * Les champs sur lesquels porte la question que l'assistant vient de poser —
+   * revalidés par le serveur contre ce qui reste réellement à renseigner.
+   *
+   * C'est ce qui permet à l'écran d'afficher le bon contrôle quand la réponse
+   * ne peut pas se dire (un calendrier, un dépôt de fichier) : depuis que le
+   * modèle mène la conversation, le premier champ en attente n'est plus
+   * forcément celui dont il parle.
+   */
+  asking: string[];
+  /**
+   * La démarche que l'assistant propose de remplir dans la conversation —
+   * `null` le plus souvent. L'écran en fait un bouton sous sa bulle.
+   *
+   * ⚠️ Le modèle PROPOSE, il n'ouvre rien : un recueil qui démarrerait seul
+   * embarquerait dans un formulaire celui qui voulait juste poser une question.
+   */
+  collectOffer: { id: string; name: string } | null;
 }
 
 /**

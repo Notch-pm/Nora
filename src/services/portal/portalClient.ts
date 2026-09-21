@@ -753,6 +753,14 @@ export type AssistantTurnSend =
   | { ok: true; reply: AssistantTurnReply }
   | { ok: false; reason: AssistantClientFailure; retryAfterSeconds?: number };
 
+/** L'offre de remplir, telle qu'elle arrive — forme seulement. */
+function readCollectOffer(raw: unknown): { id: string; name: string } | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const { id, name } = raw as Record<string, unknown>;
+  if (typeof id !== "string" || id === "" || typeof name !== "string" || name === "") return null;
+  return { id, name };
+}
+
 function readSuggestions(raw: unknown): AssistantSuggestion[] {
   if (!Array.isArray(raw)) return [];
   const suggestions: AssistantSuggestion[] = [];
@@ -773,6 +781,8 @@ function readAssistantTurnReply(body: unknown): AssistantTurnReply | null {
     suggestions?: unknown;
     emergency?: unknown;
     turnsLeft?: unknown;
+    asking?: unknown;
+    collectOffer?: unknown;
   };
   if (typeof raw.ticket !== "string" || raw.ticket === "") return null;
   const message = raw.message;
@@ -791,6 +801,9 @@ function readAssistantTurnReply(body: unknown): AssistantTurnReply | null {
     emergency: raw.emergency === true,
     turnsLeft: typeof raw.turnsLeft === "number" && Number.isFinite(raw.turnsLeft) ? raw.turnsLeft : 0,
     collection: readCollection((body as { collection?: unknown }).collection),
+    // Revalidés côté serveur ; ici on ne vérifie que la FORME, comme partout.
+    asking: Array.isArray(raw.asking) ? raw.asking.filter((id): id is string => typeof id === "string") : [],
+    collectOffer: readCollectOffer(raw.collectOffer),
   };
 }
 

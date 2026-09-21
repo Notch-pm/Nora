@@ -231,6 +231,9 @@ export async function runAssistantTurn(
       collection === null || focus?.form == null
         ? null
         : collectableFields(focus.form, collection),
+    // Proposer de remplir n'a de sens que si la collectivité l'a ouvert et que
+    // la démarche consultée a bien un formulaire.
+    offering: tenant.assistant.depositEnabled && focus?.form != null,
   });
 
   const completion = await deps.ai.complete({
@@ -265,6 +268,34 @@ export async function runAssistantTurn(
     collection = applyUpdates(focus.form, collection, answer.fieldUpdates, lastSaid).state;
   }
 
+  // Ce que le modèle dit DEMANDER — refiltré contre ce qui reste réellement à
+  // renseigner, et APRÈS `applyUpdates` : ce qu'il vient de remplir n'est plus
+  // une question. Un identifiant inventé, déjà répondu ou masqué tombe en
+  // silence ; l'écran a son repli.
+  const asking =
+    collection !== null && focus?.form != null
+      ? pendingFields(focus.form, collection)
+          .filter((field) => answer.asking.includes(field.id))
+          .map((field) => field.id)
+      : [];
+
+  // L'offre de remplir. Elle n'existe que hors recueil (pendant, il est déjà
+  // ouvert), que si la collectivité l'a ouvert, et que pour une démarche du
+  // catalogue publié qui a vraiment un formulaire — sans quoi le bouton
+  // mènerait à une impasse.
+  const offered =
+    collection === null && tenant.assistant.depositEnabled && answer.offerProcedureId !== null
+      ? catalogue.find((d) => d.id === answer.offerProcedureId) ?? null
+      : null;
+  const offerDetail =
+    offered === null
+      ? null
+      : offered.id === focus?.id
+        ? focus
+        : await deps.loadDemarche(offered.id);
+  const collectOffer =
+    offered !== null && offerDetail?.form != null ? { id: offered.id, name: offered.name } : null;
+
   const turn = ticket.turn + 1;
   // ⚠️ Le drapeau s'inscrit sur ce que le SERVEUR a constaté : `collection`
   // n'est non nul qu'après la démarche publiée, le formulaire présent et le
@@ -287,6 +318,8 @@ export async function runAssistantTurn(
       emergency: detectEmergency(lastSaid),
       turnsLeft: maxTurnsFor(collecting) - turn,
       collection,
+      asking,
+      collectOffer,
     },
   };
 }

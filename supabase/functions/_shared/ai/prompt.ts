@@ -74,20 +74,45 @@ const UNIT_LABELS: Record<ResponseDelayUnit, [string, string]> = {
  * dans la conversation. ⚠️ Elles ne sont PAS dans `BASE_RULES` (ni dans l'agent
  * de la console) : hors recueil, l'assistant ne demande rien à l'usager.
  *
- * Le modèle n'a ici qu'un pouvoir : DIRE ce qu'il a compris. C'est le serveur
- * qui retient ou non (`applyUpdates`), et c'est l'écran qui pose la question
- * suivante, en carte — d'où « ne pose pas toi-même la question suivante » : deux
- * voix qui demandent deux choses différentes perdraient l'usager.
+ * ⚠️ **C'est le modèle qui POSE LES QUESTIONS**, depuis le 2026-09-21. L'écran
+ * les posait avant, en récitant le libellé du champ ; le remplissage avait donc
+ * le ton d'un formulaire lu à voix haute, et l'alternance des deux voix cassait
+ * le rythme. Une seule voix, désormais : la sienne.
+ *
+ * Son pouvoir n'a pas grandi pour autant. Il DIT ce qu'il a compris et ce qu'il
+ * demande ; c'est le serveur qui retient (`applyUpdates`) et qui refiltre ce
+ * qu'il prétend demander (`viewOf(…, asking)`). L'écran ne montre un contrôle
+ * que pour ce à quoi on ne peut pas répondre en parlant.
  */
 const COLLECT_RULES = [
-  "MODE RECUEIL — l'usager remplit la démarche consultée, dans cette conversation.",
-  "- La liste « LE FORMULAIRE, DANS L'ORDRE » donne tout le formulaire : ce qui reste à renseigner, ce qui est « déjà renseigné » et ce qui a été « passé par l'usager ». Pour chaque information marquée [écrit] que le DERNIER message de l'usager fournit, ajoute { \"id\", \"value\" } dans `field_updates`. Un même message peut en fournir plusieurs : parcours la liste ENTIÈRE — un usager qui décrit son problème en donnant l'adresse a répondu aux deux (une « description » demandée plus bas se remplit avec ce qu'il vient de raconter).",
+  "MODE RECUEIL — l'usager remplit la démarche consultée EN TE PARLANT. Ces règles complètent les règles générales et l'emportent sur elles.",
+  "- C'EST TOI QUI MÈNES. Demande toi-même la suite, dans tes mots, sans réciter le libellé du formulaire. GROUPE deux ou trois informations qui vont ensemble en UNE question courte (« Où exactement, et de quelle nature ? ») — jamais plus de trois. Suis l'ordre de la liste, sauf quand regrouper rend la question plus naturelle.",
+  "- DIS CE QUE TU DEMANDES : mets dans `asking` les id des informations que ta question porte, et rien d'autre. C'est ce qui fait apparaître le calendrier ou le dépôt de fichier sous ton message.",
+  "- La liste « LE FORMULAIRE, DANS L'ORDRE » donne tout le formulaire : ce qui reste à renseigner, ce qui est « déjà renseigné » et ce qui a été « passé par l'usager ». Ne demande QUE des informations de cette liste, et n'en invente aucune.",
+  "- Pour chaque information marquée [écrit] que le DERNIER message de l'usager fournit, ajoute { \"id\", \"value\" } dans `field_updates`. Un même message peut en fournir plusieurs : parcours la liste ENTIÈRE — un usager qui décrit son problème en donnant l'adresse a répondu aux deux (une « description » demandée plus bas se remplit avec ce qu'il vient de raconter).",
   "- La forme de `value` dépend de l'information : si des « valeurs : » sont listées, rends EXACTEMENT l'une d'elles, entre guillemets dans la liste, et aucune autre — plusieurs se rendent en tableau ; un oui/non se rend `true` ou `false` ; tout le reste se rend avec les mots de l'usager, sans rien inventer, compléter ni corriger.",
   "- DIS TOUJOURS D'OÙ VIENT TA VALEUR, avec `origin` : « extracted » si tu reprends les mots de l'usager tels quels — recopie-les alors dans `source`, mot pour mot, sans rien changer ; « inferred » si tu interprètes, rapproches ou complètes — explique en une phrase courte dans `reason` ; « generated » si tu rédiges un texte à partir de plusieurs de ses messages (texte long seulement). Dans le doute, « inferred » : une valeur relue coûte un coup d'œil, une valeur fausse signée par l'usager coûte bien plus.",
-  "- Ne remplis JAMAIS une information marquée [carte] : c'est une DATE ou une pièce à joindre. Une date ne se devine pas — « jeudi », « demain », « la semaine dernière » supposent de savoir quel jour on est, et tu ne le sais pas. L'usager la choisit au calendrier affiché sous ton message ; dis-le-lui plutôt que d'en proposer une.",
-  "- Ne redemande pas une information « déjà renseigné » ou « passé », et ne la corrige pas de toi-même. Si l'usager veut revenir dessus, dis-lui qu'il pourra la modifier sur le récapitulatif, avant l'envoi.",
+  "- Ne remplis JAMAIS une information marquée [carte] : c'est une DATE ou une pièce à joindre. Une date ne se devine pas — « jeudi », « demain », « la semaine dernière » supposent de savoir quel jour on est, et tu ne le sais pas. ANNONCE-LA (« je vous affiche le calendrier juste en dessous », « déposez le fichier ci-dessous ») et mets son id dans `asking` : c'est l'usager qui la renseigne avec le contrôle affiché.",
+  "- Une information FACULTATIVE que l'usager refuse ou dit ne pas avoir SE PASSE : { \"id\": …, \"skip\": true } dans `field_updates`. Ne la repose plus. Sans ce geste, la question reviendrait sans fin et l'usager ne pourrait jamais envoyer sa demande.",
+  "- Ne redemande pas une information « déjà renseigné » ou « passé par l'usager », et ne la corrige pas de toi-même. Si l'usager veut revenir dessus, dis-lui qu'il pourra la modifier sur le récapitulatif, avant l'envoi.",
   "- Ne demande ni nom, ni adresse personnelle, ni téléphone, ni courriel du demandeur : une carte dédiée s'en charge à la fin. Les informations de la liste, elles, font partie du formulaire : tu peux les recevoir, et les redire pour accuser réception.",
-  "- Ne pose pas toi-même la question suivante : l'écran l'affiche. Réponds brièvement — accuse réception de ce que tu as compris, ou réponds à la question de l'usager à partir des données.",
+  "- Accuse réception en UNE phrase de ce que tu viens de comprendre, puis pose la question suivante. Rien de plus : 80 mots au plus.",
+  "- QUAND PLUS RIEN N'EST EN ATTENTE, ne demande plus rien : dis que le récapitulatif s'affiche sous ton message, que l'usager peut tout relire, corriger chaque ligne, puis envoyer lui-même. `asking` vide.",
+].join("\n");
+
+/**
+ * Les règles de l'OFFRE — envoyées hors recueil, quand la collectivité a ouvert
+ * le dépôt par la conversation et que la démarche consultée a un formulaire.
+ *
+ * ⚠️ Le modèle PROPOSE, il n'ouvre rien : c'est un bouton sous sa bulle que
+ * l'usager presse. Un recueil qui démarrerait tout seul embarquerait dans un
+ * formulaire celui qui voulait juste poser une question.
+ */
+const OFFER_RULES = [
+  "PROPOSER DE REMPLIR — la collectivité autorise l'usager à remplir cette démarche en te parlant.",
+  "- Quand une démarche est clairement la bonne et qu'elle a un formulaire, termine ta réponse par une phrase simple : « Je peux la remplir avec vous ici, ça vous va ? », et mets son identifiant dans `offer_procedure_id`.",
+  "- N'ouvre rien toi-même : c'est l'usager qui accepte, d'un bouton sous ton message. Ne propose pas deux fois ; s'il décline ou n'y répond pas, n'y reviens pas.",
+  "- `offer_procedure_id` : \"\" partout ailleurs.",
 ].join("\n");
 
 /** Un champ à recueillir, tel que le modèle le voit : de quoi le reconnaître et y répondre. */
@@ -139,12 +164,14 @@ function collectBlock(fields: CollectableField[]): string {
 }
 
 /** Le format de sortie. ⚠️ Le mot « json » DOIT y figurer : le guichet le vérifie avant toute dépense. */
-function outputContract(lang: string, collecting: boolean): string {
+function outputContract(lang: string, collecting: boolean, offering: boolean): string {
   return [
     "FORMAT DE RÉPONSE — un objet json, et rien d'autre :",
     collecting
-      ? '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[], "field_updates": { "id": string, "value": string | string[], "origin": "extracted" | "inferred" | "generated", "source"?: string, "reason"?: string }[] }'
-      : '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[] }',
+      ? '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[], "field_updates": { "id": string, "value"?: string | string[], "skip"?: true, "origin": "extracted" | "inferred" | "generated", "source"?: string, "reason"?: string }[], "asking": string[] }'
+      : offering
+        ? '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[], "offer_procedure_id": string }'
+        : '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[] }',
     `- "reply" : ton message à l'usager, rédigé dans la langue de code « ${lang} » (les textes de la collectivité restent cités dans leur langue).`,
     '- "intent" : "suggest" si tu proposes une ou plusieurs démarches, "clarify" si tu poses une question pour choisir, "answer" si tu renseignes, "unknown" si l\'information n\'est pas dans les données, "off_topic" si la demande ne concerne pas les démarches de la collectivité.',
     '- "procedure_ids" : les identifiants (champ id) des démarches que tu proposes, pris dans le catalogue ci-dessous et nulle part ailleurs ; [] sinon.',
@@ -152,8 +179,12 @@ function outputContract(lang: string, collecting: boolean): string {
       ? [
           '- "field_updates" : ce que le dernier message de l\'usager renseigne parmi les informations [écrit] restant à recueillir (champ id de la liste), dans la forme que cette information impose ; [] sinon.',
           '- "origin" est OBLIGATOIRE sur chaque entrée : « extracted » (+ "source", la citation exacte), « inferred » (+ "reason", une phrase courte), ou « generated ».',
+          '- "skip": true remplace "value" pour une information FACULTATIVE que l\'usager refuse.',
+          '- "asking" : les id des informations que TA question porte, trois au plus ; [] quand tu ne demandes rien.',
         ]
-      : []),
+      : offering
+        ? ['- "offer_procedure_id" : l\'identifiant de la démarche que tu proposes de remplir ici ; "" si tu n\'en proposes aucune.']
+        : []),
   ].join("\n");
 }
 
@@ -233,14 +264,23 @@ export interface AssistantPromptInput {
    * ailleurs, et ne passe pas par ici) et le contenu d'une PIÈCE JOINTE.
    */
   collecting?: CollectableField[] | null;
+  /**
+   * La collectivité autorise le remplissage par la conversation, et la démarche
+   * consultée a un formulaire : le modèle peut proposer de la remplir. Sans
+   * objet en recueil — il est déjà en train de le faire.
+   */
+  offering?: boolean;
 }
 
 export function buildAssistantPrompt(input: AssistantPromptInput): string {
   const collecting = input.collecting ?? null;
+  // Une offre n'a de sens qu'AVANT le recueil : pendant, il est déjà ouvert.
+  const offering = collecting === null && input.offering === true;
   const blocks = [
     BASE_RULES,
     collecting === null ? "" : COLLECT_RULES,
-    outputContract(input.lang, collecting !== null),
+    offering ? OFFER_RULES : "",
+    outputContract(input.lang, collecting !== null, offering),
     fenced("COLLECTIVITÉ", input.tenantName),
     fenced(
       "CATALOGUE — toutes les démarches en ligne de la collectivité",
