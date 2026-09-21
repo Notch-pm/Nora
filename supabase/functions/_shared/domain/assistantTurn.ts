@@ -86,11 +86,23 @@ export interface AssistantTurnReply {
   collection: CollectionPayload | null;
 }
 
-/** L'état d'un recueil, tel qu'il voyage — voir `CollectionState` dans `ai/collection.ts`. */
+/**
+ * L'état d'un recueil, tel qu'il voyage — voir `CollectionState` dans
+ * `ai/collection.ts`.
+ *
+ * ⚠️ `origins` et `touched` sont FACULTATIFS : un onglet ouvert avant le
+ * 2026-09-21 n'en porte pas, et il ne doit pas perdre son recueil pour autant.
+ * `sanitizeState` lit leur absence comme « rien de connu » — ce qui est
+ * exactement la vérité : les badges retombent, les valeurs restent.
+ */
 export interface CollectionPayload {
   demarcheId: string;
   values: Record<string, unknown>;
   skipped: string[];
+  /** L'origine des valeurs posées par l'assistant, par `id` de champ. */
+  origins?: Record<string, { origin: string; source?: string; reason?: string }>;
+  /** Les champs que l'usager a renseignés lui-même — l'assistant n'y revient pas. */
+  touched?: string[];
 }
 
 /**

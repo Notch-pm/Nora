@@ -29,9 +29,11 @@ import {
   applyUpdates,
   type CollectionState,
   isConversationField,
+  isModelWritable,
   pendingFields,
   sanitizeState,
 } from "./collection.ts";
+import type { CollectableField } from "./prompt.ts";
 import {
   detectEmergency,
   parseAssistantAnswer,
@@ -182,13 +184,24 @@ export async function runAssistantTurn(
     collecting:
       collection === null || focus?.form == null
         ? null
-        : pendingFields(focus.form, collection).map((field) => ({
-            id: field.id,
-            label: field.label,
-            help: field.help ?? null,
-            required: isFieldRequired(field, collection!.values),
-            written: isConversationField(field),
-          })),
+        : pendingFields(focus.form, collection).map((field): CollectableField => {
+            const mode = isConversationField(field)
+              ? "written"
+              : isModelWritable(field)
+                ? "choice"
+                : "card";
+            return {
+              id: field.id,
+              label: field.label,
+              help: field.help ?? null,
+              required: isFieldRequired(field, collection!.values),
+              mode,
+              // ⚠️ Les LIBELLÉS seuls : le modèle ne voit jamais un code machine.
+              ...(mode === "choice" && "options" in field
+                ? { options: field.options.map((option) => option.label) }
+                : {}),
+            };
+          }),
   });
 
   const completion = await deps.ai.complete({
@@ -214,9 +227,14 @@ export async function runAssistantTurn(
   if (answer === null) return fail("assistant_unavailable");
 
   // Ce que le modèle dit avoir compris n'entre que par `applyUpdates` : champ
-  // en attente, auquel on répond en écrivant, valeur valide. Le reste tombe.
+  // en attente, qui n'est pas déjà celui de l'usager, où le modèle a le droit
+  // d'écrire, valeur valide. Le reste tombe.
+  //
+  // ⚠️ `said` n'est pas décoratif ici : c'est contre les mots RÉELS de l'usager
+  // que l'origine « repris » se vérifie. Sans lui, le modèle pourrait se
+  // décerner le badge vert sur une valeur qu'il a inventée.
   if (collection !== null && focus?.form != null) {
-    collection = applyUpdates(focus.form, collection, answer.fieldUpdates).state;
+    collection = applyUpdates(focus.form, collection, answer.fieldUpdates, said).state;
   }
 
   const turn = ticket.turn + 1;

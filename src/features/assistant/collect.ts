@@ -80,7 +80,7 @@ export function needsIdentity(demarche: CollectDemarche): boolean {
 export function startSession(demarche: CollectDemarche): CollectSession {
   return {
     demarche,
-    collection: { demarcheId: demarche.id, values: {}, skipped: [] },
+    collection: { demarcheId: demarche.id, values: {}, skipped: [], origins: {}, touched: [] },
     organizationId: demarche.organizations.length === 1 ? demarche.organizations[0].id : null,
     organizationConfirmed: !needsOrganizationChoice(demarche),
     audience: enabledAudiences(demarche.requester)[0] ?? null,
@@ -177,6 +177,12 @@ export function reopenField(
   const next = sanitizeState(session.demarche.form, session.demarche.id, {
     values: rest,
     skipped: before.skipped.filter((id) => id !== fieldId),
+    origins: before.origins,
+    // ⚠️ Le champ rouvert DEVIENT celui de l'usager. Sans cette marque, le
+    // modèle se précipiterait pour le remplir au tour suivant — précisément ce
+    // que le geste « corriger » voulait empêcher. Son origine, elle, tombe
+    // toute seule : `sanitizeState` ne garde que celles qui portent une valeur.
+    touched: [...before.touched, fieldId],
   });
   const purgedCount = Object.keys(before.values).filter(
     (id) => id !== fieldId && !(id in next.values),
@@ -190,12 +196,21 @@ export function effectiveOrganizationId(session: CollectSession): string | null 
   return session.demarche.organizations.length === 1 ? session.demarche.organizations[0].id : null;
 }
 
-/** Ce qui part au tour suivant, tant qu'un recueil est en cours — jamais l'identité. */
+/**
+ * Ce qui part au tour suivant, tant qu'un recueil est en cours — jamais
+ * l'identité.
+ *
+ * ⚠️ `origins` et `touched` voyagent, parce que le serveur n'a pas de mémoire :
+ * sans eux il ne saurait pas quels champs appartiennent déjà à l'usager, et le
+ * premier garde-fou ne tiendrait qu'un seul tour.
+ */
 export function collectionPayload(session: CollectSession): CollectionPayload {
   return {
     demarcheId: session.collection.demarcheId,
     values: session.collection.values,
     skipped: session.collection.skipped,
+    origins: session.collection.origins,
+    touched: session.collection.touched,
   };
 }
 

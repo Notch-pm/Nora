@@ -81,31 +81,62 @@ const UNIT_LABELS: Record<ResponseDelayUnit, [string, string]> = {
  */
 const COLLECT_RULES = [
   "MODE RECUEIL — l'usager remplit la démarche consultée, dans cette conversation.",
-  "- La liste « INFORMATIONS À RECUEILLIR » donne, dans l'ordre, ce qu'il reste à renseigner. Pour chaque information marquée [écrit] que le DERNIER message de l'usager fournit, ajoute { \"id\", \"value\" } dans `field_updates`, avec ses mots à lui, sans rien inventer, compléter ni corriger. Un même message peut en fournir plusieurs : parcours la liste ENTIÈRE, y compris ce qui vient APRÈS une information [carte] — un usager qui décrit son problème en donnant l'adresse a répondu aux deux (une « description » demandée plus bas se remplit avec ce qu'il vient de raconter).",
-  "- Ne remplis JAMAIS une information marquée [carte] (choix, date, pièce jointe) : l'usager y répond avec la carte affichée sous ton message.",
+  "- La liste « INFORMATIONS À RECUEILLIR » donne, dans l'ordre, ce qu'il reste à renseigner. Pour chaque information marquée [écrit] ou [liste] que le DERNIER message de l'usager permet de renseigner, ajoute une entrée dans `field_updates`. Un même message peut en fournir plusieurs : parcours la liste ENTIÈRE, y compris ce qui vient APRÈS une information [carte] — un usager qui décrit son problème en donnant l'adresse a répondu aux deux (une « description » demandée plus bas se remplit avec ce qu'il vient de raconter).",
+  "- DIS TOUJOURS D'OÙ VIENT TA VALEUR, avec `origin` : « extracted » si tu reprends les mots de l'usager tels quels — recopie-les alors dans `source`, mot pour mot, sans rien changer ; « inferred » si tu interprètes, complètes ou rapproches — explique en une phrase courte dans `reason` ; « generated » si tu rédiges un texte à partir de plusieurs de ses messages (texte long seulement). Dans le doute, « inferred » : une valeur relue coûte un coup d'œil, une valeur fausse signée par l'usager coûte bien plus.",
+  "- Une information [liste] se renseigne en choisissant PARMI LES OPTIONS données avec elle, et en recopiant le LIBELLÉ de l'option exactement tel qu'il est écrit. N'invente jamais une option, ne la reformule pas, n'en propose pas deux. Si aucune ne convient vraiment, n'en mets aucune : l'écran posera la question.",
+  "- Ne remplis JAMAIS une information marquée [carte] (cases à cocher, oui/non, date, pièce jointe) : l'usager y répond avec la carte affichée sous ton message.",
+  "- Ne reviens jamais sur une information déjà renseignée : elle ne figure plus dans la liste. Si l'usager veut la corriger, dis-lui qu'il peut le faire directement sur le formulaire ou sur le récapitulatif, avant l'envoi.",
   "- Ne demande ni nom, ni adresse personnelle, ni téléphone, ni courriel du demandeur : une carte dédiée s'en charge à la fin. Les informations de la liste, elles, font partie du formulaire : tu peux les recevoir.",
   "- Ne pose pas toi-même la question suivante : l'écran l'affiche. Réponds brièvement — accuse réception de ce que tu as compris, ou réponds à la question de l'usager à partir des données.",
-  "- Si l'usager veut corriger une réponse déjà donnée, dis-lui qu'il pourra la modifier sur le récapitulatif, avant l'envoi.",
 ].join("\n");
 
-/** Un champ à recueillir, tel que le modèle le voit : de quoi le reconnaître, rien de plus. */
+/**
+ * Un champ à recueillir, tel que le modèle le voit : de quoi le reconnaître,
+ * rien de plus.
+ *
+ * ⚠️ **Des libellés, jamais des réponses** — la règle qui tient tout ce fichier
+ * vaut ici aussi : `collecting` ne porte que ce qu'il RESTE à demander. Ce que
+ * l'usager a déjà répondu ne remonte jamais au modèle.
+ *
+ * ⚠️ **`options` ne porte que des LIBELLÉS**, jamais les codes machine du Socle.
+ * Le modèle répond par un libellé, le serveur le résout (`resolveOption`) : il
+ * ne peut donc pas fabriquer un code d'allure crédible. Ce sont des valeurs
+ * publiques — l'usager voit déjà cette liste déroulante à l'écran.
+ */
 export interface CollectableField {
   id: string;
   label: string;
   help: string | null;
   required: boolean;
-  /** `true` : on y répond en écrivant ; `false` : une carte s'en charge. */
-  written: boolean;
+  /**
+   * `written` : on y répond en écrivant. `choice` : une liste d'options, que le
+   * modèle peut déduire. `card` : une carte s'en charge, le modèle n'y touche pas.
+   */
+  mode: "written" | "choice" | "card";
+  /** Les libellés des options — `choice` seulement. */
+  options?: string[];
 }
+
+/** Au-delà, une liste déroulante ne se lit plus : l'écran la montre mieux que le prompt. */
+const MAX_OPTIONS = 30;
+
+const MODE_MARKS: Record<CollectableField["mode"], string> = {
+  written: "[écrit]",
+  choice: "[liste]",
+  card: "[carte]",
+};
 
 function collectBlock(fields: CollectableField[]): string {
   return fields
     .slice(0, 40)
-    .map(
-      (f) =>
+    .map((f) => {
+      const head =
         `- id: ${f.id} | ${clip(f.label, 120)}${f.help ? ` (${clip(f.help, 160)})` : ""} | ` +
-        `${f.required ? "obligatoire" : "facultatif"} | ${f.written ? "[écrit]" : "[carte]"}`,
-    )
+        `${f.required ? "obligatoire" : "facultatif"} | ${MODE_MARKS[f.mode]}`;
+      if (f.mode !== "choice" || f.options === undefined || f.options.length === 0) return head;
+      const options = f.options.slice(0, MAX_OPTIONS).map((label) => clip(label, 80));
+      return `${head}\n    options : ${options.join(" ; ")}`;
+    })
     .join("\n");
 }
 
@@ -114,13 +145,16 @@ function outputContract(lang: string, collecting: boolean): string {
   return [
     "FORMAT DE RÉPONSE — un objet json, et rien d'autre :",
     collecting
-      ? '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[], "field_updates": { "id": string, "value": string }[] }'
+      ? '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[], "field_updates": { "id": string, "value": string, "origin": "extracted" | "inferred" | "generated", "source"?: string, "reason"?: string }[] }'
       : '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[] }',
     `- "reply" : ton message à l'usager, rédigé dans la langue de code « ${lang} » (les textes de la collectivité restent cités dans leur langue).`,
     '- "intent" : "suggest" si tu proposes une ou plusieurs démarches, "clarify" si tu poses une question pour choisir, "answer" si tu renseignes, "unknown" si l\'information n\'est pas dans les données, "off_topic" si la demande ne concerne pas les démarches de la collectivité.',
     '- "procedure_ids" : les identifiants (champ id) des démarches que tu proposes, pris dans le catalogue ci-dessous et nulle part ailleurs ; [] sinon.',
     ...(collecting
-      ? ['- "field_updates" : ce que le dernier message de l\'usager renseigne parmi les informations [écrit] à recueillir (champ id de la liste) ; [] sinon.']
+      ? [
+          '- "field_updates" : ce que le dernier message de l\'usager renseigne parmi les informations [écrit] et [liste] à recueillir (champ id de la liste) ; [] sinon. Pour une [liste], "value" est le LIBELLÉ d\'une option, recopié tel quel.',
+          '- "origin" : obligatoire sur chaque entrée — "extracted" (les mots de l\'usager, recopiés dans "source"), "inferred" (tu as interprété : dis pourquoi dans "reason"), "generated" (tu as rédigé un texte long).',
+        ]
       : []),
   ].join("\n");
 }

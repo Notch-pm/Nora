@@ -961,24 +961,51 @@ dépose jamais** — le dépôt est un geste de l'usager, par le chemin de toujo
 
 - **ce qui se dit** passe par la conversation — texte, nombre, courriel,
   téléphone. Le modèle DIT ce qu'il a compris (`field_updates`) ; le serveur n'en
-  retient que ce qui vise un champ **en attente**, **qui s'écrit**, et **passe la
-  validation du formulaire** (`applyUpdates`). ⚠️ Il ne réécrit jamais une réponse
-  déjà donnée : corriger est un geste de l'usager, sur le récapitulatif ;
-- **ce qui se choisit ou se joint** passe par une **carte** insérée dans le fil,
-  faite des contrôles du formulaire : listes, cases, dates, pièces jointes. Une
-  valeur hors options n'existe pas, un fichier ne transite pas par un modèle — et
-  une carte ne coûte aucun appel au guichet IA ;
+  retient que ce qui vise un champ **en attente**, où le modèle a **le droit
+  d'écrire**, et qui **passe la validation du formulaire** (`applyUpdates`). ⚠️ Il
+  ne réécrit jamais une réponse déjà donnée : corriger est un geste de l'usager ;
+- **ce qui se choisit UNE FOIS** — `select`, `radio` — peut aussi être **déduit**
+  (2026-09-21). Les **libellés** des options voyagent au modèle, qui répond par un
+  libellé, jamais par un code machine ; le serveur le résout (`resolveOption`), et
+  `plausible` reste le dernier verrou — une option inventée n'entre pas. ⚠️ Ce qui
+  part en plus est de la **structure publique** (l'usager voit déjà cette liste
+  déroulante), jamais de la donnée usager ;
+- **ce qui se coche, se date ou se joint** reste une **carte** insérée dans le
+  fil, faite des contrôles du formulaire : cases multiples, oui/non, dates, pièces
+  jointes. Une case se tape plus vite qu'elle ne se devine, une date demande une
+  horloge que le modèle n'a pas, un fichier ne transite pas par un modèle — et une
+  carte ne coûte aucun appel au guichet IA ;
 - **l'identité du demandeur** se saisit dans sa propre carte, à la fin, et n'est
   **jamais montrée au modèle**. ⚠️ Les réponses déjà données non plus : le prompt
   ne porte que les LIBELLÉS de ce qu'il reste à demander (test). Formulation
   honnête à tenir devant l'usager : « aucun champ d'identité n'est envoyé au
   prestataire » — pas « aucune donnée personnelle », puisqu'un lieu d'intervention
   est une adresse.
+- ⚠️ **Toute valeur posée par l'assistant porte son ORIGINE** (`FieldOrigin`,
+  2026-09-21), et l'écran en fait un badge : *repris* (les mots de l'usager,
+  citation à l'appui), *déduit, à confirmer* (une interprétation, sa raison à
+  l'appui), *rédigé pour vous* (une prose composée, texte long seulement). La
+  distinction « ce que vous avez dit » / « ce que j'en ai déduit » est ce qui rend
+  la relecture possible sans tout relire — elle voyage donc avec la valeur, elle
+  n'est pas décorative.
+  - ⚠️ **« Repris » se MÉRITE** : le serveur vérifie que la citation figure
+    vraiment dans ce que l'usager a écrit, sinon elle retombe en « déduit ». Et
+    un choix n'est « repris » que si l'usager a prononcé le **libellé** lui-même :
+    « gravats » → « Dépôt sauvage » est un rapprochement, donc un badge jaune,
+    même quand le modèle jure le contraire.
+  - ⚠️ **« Déduit » au doute** : une origine absente, inconnue ou abîmée ne vaut
+    jamais « repris ». Une valeur relue coûte un coup d'œil ; une valeur inventée
+    et signée par l'usager coûte bien plus.
+- ⚠️ **Un champ renseigné à la main n'est plus jamais réécrit** (`touched`) — et
+  il le reste **même vidé** : « corriger » rouvre le champ, et sans cette mémoire
+  le modèle se précipiterait pour le remplir au tour suivant, précisément ce que
+  le geste voulait empêcher.
 - ⚠️ **L'état du recueil vit dans le navigateur et n'est pas signé** : il n'en a
   pas besoin. Il ne contient que ce que l'usager pourrait taper dans le
   formulaire, `sanitizeState` le nettoie avant de servir, et le dépôt refiltre
   tout contre la démarche publiée. Un champ masqué n'existe pas : changer une
-  réponse purge ce qu'elle vient de masquer.
+  réponse purge ce qu'elle vient de masquer — et les origines et champs touchés
+  qui s'y rattachaient tombent avec.
 
 **La porte anti-robot du dépôt** (`_shared/ai/depositGate.ts`, 2026-09-20) :
 `POST /v1/demandes` n'avait aucun frein, ni ici ni chez Iris — tolérable tant

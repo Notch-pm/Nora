@@ -82,12 +82,12 @@ const body = async (said: string, collection: unknown) => ({
 const opening = { demarcheId: PROPRETE, values: {}, skipped: [] };
 
 describe("le recueil dans la conversation", () => {
-  it("« c'est devant le 12 rue de la Paix » → la réponse est retenue, le choix reste à la carte", async () => {
+  it("« c'est devant le 12 rue de la Paix, des gravats » → le texte est repris, le choix est résolu", async () => {
     const { deps, complete } = setup({
       field_updates: [
-        { id: "f-lieu", value: "devant le 12 rue de la Paix" },
-        // Le modèle tente aussi le CHOIX : ce n'est pas à lui de le faire.
-        { id: "f-nature", value: "gravats" },
+        { id: "f-lieu", value: "devant le 12 rue de la Paix", origin: "extracted", source: "devant le 12 rue de la Paix" },
+        // ⚠️ Le modèle répond par le LIBELLÉ de l'option, jamais par son code.
+        { id: "f-nature", value: "Gravats", origin: "inferred", reason: "vous parlez de gravats" },
       ],
     });
     const outcome = await runAssistantTurn(tenant(true), "fr", await body("C'est devant le 12 rue de la Paix, des gravats.", opening), deps);
@@ -96,19 +96,47 @@ describe("le recueil dans la conversation", () => {
     if (!outcome.ok) return;
     expect(outcome.reply.collection).toEqual({
       demarcheId: PROPRETE,
-      values: { "f-lieu": "devant le 12 rue de la Paix" },
+      // C'est la VALEUR de l'option qui est écrite, jamais le libellé reçu.
+      values: { "f-lieu": "devant le 12 rue de la Paix", "f-nature": "gravats" },
       skipped: [],
+      origins: {
+        "f-lieu": { origin: "extracted", source: "devant le 12 rue de la Paix" },
+        // ⚠️ L'usager a PRONONCÉ « gravats » : le serveur reclasse en « repris »,
+        // contre l'avis du modèle. C'est lui qui tranche l'origine, sur les mots réels.
+        "f-nature": { origin: "extracted", source: "Gravats" },
+      },
+      touched: [],
     });
 
-    // Ce que le modèle a lu : les règles du recueil, et des LIBELLÉS — qui se dit, qui se choisit.
+    // Ce que le modèle a lu : les règles du recueil, et des LIBELLÉS — qui se
+    // dit, qui se déduit, qui se choisit à la carte.
     const system = complete.mock.calls[0][0].system;
     expect(system).toContain("MODE RECUEIL");
     expect(system).toContain("field_updates");
     expect(system).toContain("id: f-lieu | Lieu du dépôt (Adresse ou repère) | obligatoire | [écrit]");
-    expect(system).toContain("id: f-nature | Nature | obligatoire | [carte]");
+    expect(system).toContain("id: f-nature | Nature | obligatoire | [liste]");
+    expect(system).toContain("options : Gravats ; Autre");
     expect(system).toContain("id: f-precisions | Précisions | facultatif | [écrit]");
     // C'est la démarche remplie qui est décrite, et journalisée au Socle.
     expect(complete.mock.calls[0][0].procedureId).toBe(PROPRETE);
+  });
+
+  it("⚠️ une option que le modèle invente n'entre pas — le champ reste à demander", async () => {
+    const { deps } = setup({
+      field_updates: [{ id: "f-nature", value: "Tag sur un mur", origin: "inferred", reason: "au jugé" }],
+    });
+    const outcome = await runAssistantTurn(tenant(true), "fr", await body("Il y a un tag.", opening), deps);
+    expect(outcome.ok && outcome.reply.collection?.values).toEqual({});
+  });
+
+  it("⚠️ un champ que l'usager a renseigné lui-même n'est pas réécrit, même vidé", async () => {
+    const { deps } = setup({
+      field_updates: [{ id: "f-lieu", value: "Ailleurs", origin: "extracted", source: "Ailleurs" }],
+    });
+    const mine = { demarcheId: PROPRETE, values: {}, skipped: [], touched: ["f-lieu"] };
+    const outcome = await runAssistantTurn(tenant(true), "fr", await body("Ailleurs", mine), deps);
+    expect(outcome.ok && outcome.reply.collection?.values).toEqual({});
+    expect(outcome.ok && outcome.reply.collection?.touched).toEqual(["f-lieu"]);
   });
 
   it("⚠️ les réponses déjà données ne sont PAS montrées au modèle — seulement ce qu'il reste à demander", async () => {
@@ -149,12 +177,21 @@ describe("le recueil dans la conversation", () => {
       demarcheId: PROPRETE,
       values: { "f-nature": "valeur-hors-options", "f-invente": "x", "f-lieu": "Ici" },
       skipped: ["f-lieu", "f-precisions"],
+      origins: {
+        "f-lieu": { origin: "extracted", source: "Ici" },
+        // Sans valeur retenue, une origine n'a plus rien à qualifier.
+        "f-nature": { origin: "inferred", reason: "au jugé" },
+        "f-invente": { origin: "extracted" },
+      },
+      touched: ["f-precisions", "f-invente"],
     };
     const outcome = await runAssistantTurn(tenant(true), "fr", await body("Bonjour", forged), deps);
     expect(outcome.ok && outcome.reply.collection).toEqual({
       demarcheId: PROPRETE,
       values: { "f-lieu": "Ici" },
       skipped: ["f-precisions"], // `f-lieu` est obligatoire : il ne se passe pas.
+      origins: { "f-lieu": { origin: "extracted", source: "Ici" } },
+      touched: ["f-precisions"], // `f-invente` n'est pas un champ de ce formulaire.
     });
   });
 

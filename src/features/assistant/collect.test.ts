@@ -78,7 +78,7 @@ const CITOYEN_OUVERT = parseRequesterConfig({
 describe("startSession", () => {
   it("ouvre sans réponse, sans appel au modèle", () => {
     const session = startSession(demarche());
-    expect(session.collection).toEqual({ demarcheId: "d1", values: {}, skipped: [] });
+    expect(session.collection).toEqual({ demarcheId: "d1", values: {}, skipped: [], origins: {}, touched: [] });
     expect(stepOf(session)).toBe("fields");
   });
 
@@ -270,7 +270,16 @@ describe("collectionPayload — jamais l'identité ni l'organisme", () => {
     session = answerField(session, "f-lieu", "Ici");
     session = setAudience(session, "citoyen");
     session = setRequesterValue(session, "courriel", "a@b.fr");
-    expect(collectionPayload(session)).toEqual({ demarcheId: "d1", values: { "f-lieu": "Ici" }, skipped: [] });
+    expect(collectionPayload(session)).toEqual({
+      demarcheId: "d1",
+      values: { "f-lieu": "Ici" },
+      skipped: [],
+      origins: {},
+      // ⚠️ `touched` voyage : le serveur n'a pas de mémoire, et sans lui le
+      // garde-fou « l'assistant ne réécrit pas ce que j'ai saisi » ne tiendrait
+      // qu'un seul tour.
+      touched: ["f-lieu"],
+    });
   });
 });
 
