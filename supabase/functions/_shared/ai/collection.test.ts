@@ -10,6 +10,7 @@ import {
   skipField,
   viewOf,
   type CollectionState,
+  type FieldUpdate,
 } from "./collection.ts";
 
 /** Un signalement : où, quoi (choix), précision si « autre », photo facultative, courriel de suivi. */
@@ -41,7 +42,7 @@ const SCHEMA: FormSchema = {
   ],
 };
 
-const empty: CollectionState = { demarcheId: "d1", values: {}, skipped: [] };
+const empty: CollectionState = { demarcheId: "d1", values: {}, skipped: [], origins: {}, touched: [] };
 const ids = (state: CollectionState) => pendingFields(SCHEMA, state).map((f) => f.id);
 
 describe("viewOf — quoi demander, et comment", () => {
@@ -106,49 +107,134 @@ describe("answerField — une carte répond sans modèle", () => {
   });
 });
 
+/** Une proposition du modèle. `inferred` par défaut : c'est le cas courant. */
+const up = (id: string, value: string | string[], extra: Partial<FieldUpdate> = {}): FieldUpdate => ({
+  id,
+  value,
+  origin: "inferred",
+  ...extra,
+});
+
 describe("applyUpdates — ce que le modèle dit avoir compris, et ce qu'on en retient", () => {
   it("retient une réponse écrite à un champ en attente", () => {
-    const result = applyUpdates(SCHEMA, empty, [{ id: "f-lieu", value: "12 rue de la Paix" }]);
+    const said = "c'est au 12 rue de la Paix";
+    const result = applyUpdates(SCHEMA, empty, [up("f-lieu", "12 rue de la Paix")], said);
     expect(result.accepted).toEqual(["f-lieu"]);
     expect(result.state.values).toEqual({ "f-lieu": "12 rue de la Paix" });
   });
 
   it("⚠️ le modèle ne remplit JAMAIS une pièce jointe — même avec une valeur qui en a l'air", () => {
-    const result = applyUpdates(SCHEMA, empty, [{ id: "f-photo", value: "photo.jpg" }]);
+    const result = applyUpdates(SCHEMA, empty, [up("f-photo", "photo.jpg")], "voici la photo");
     expect(result.rejected).toEqual(["f-photo"]);
     expect(result.state.values).toEqual({});
   });
 
   it("retient un choix DIT en toutes lettres, ramené à la valeur du schéma publié", () => {
-    const result = applyUpdates(SCHEMA, empty, [{ id: "f-nature", value: "Dépôt sauvage" }]);
+    const result = applyUpdates(SCHEMA, empty, [up("f-nature", "Dépôt sauvage")], "un dépôt sauvage");
     expect(result.accepted).toEqual(["f-nature"]);
     expect(result.state.values).toEqual({ "f-nature": "depot" });
   });
 
   it("⚠️ il ne réécrit pas une réponse déjà donnée : corriger est un geste de l'usager", () => {
     const state = answerField(SCHEMA, empty, "f-lieu", "12 rue de la Paix");
-    const result = applyUpdates(SCHEMA, state, [{ id: "f-lieu", value: "Ailleurs" }]);
+    const result = applyUpdates(SCHEMA, state, [up("f-lieu", "Ailleurs")], "ailleurs");
     expect(result.rejected).toEqual(["f-lieu"]);
     expect(result.state.values["f-lieu"]).toBe("12 rue de la Paix");
   });
 
+  it("⚠️ un champ que l'usager a renseigné LUI-MÊME n'est plus jamais réécrit, même vidé", () => {
+    // `touched` survit à la purge de la valeur : sans cette mémoire, le modèle
+    // se précipiterait pour remplir à nouveau ce que l'usager vient d'effacer.
+    const mine = answerField(SCHEMA, empty, "f-courriel", "moi@exemple.fr");
+    const emptied = answerField(SCHEMA, mine, "f-courriel", "");
+    expect(emptied.touched).toEqual(["f-courriel"]);
+    const result = applyUpdates(SCHEMA, emptied, [up("f-courriel", "autre@exemple.fr")], "autre@exemple.fr");
+    expect(result.rejected).toEqual(["f-courriel"]);
+  });
+
   it("écarte ce qui ne passe pas la validation du formulaire, un champ inventé, un champ masqué", () => {
     const result = applyUpdates(SCHEMA, empty, [
-      { id: "f-courriel", value: "pas un courriel" },
-      { id: "f-lieu", value: "x".repeat(81) },
-      { id: "f-invente", value: "coucou" },
-      { id: "f-precisez", value: "champ masqué" },
-    ]);
+      up("f-courriel", "pas un courriel"),
+      up("f-lieu", "x".repeat(81)),
+      up("f-invente", "coucou"),
+      up("f-precisez", "champ masqué"),
+    ], "peu importe");
     expect(result.accepted).toEqual([]);
     expect(result.rejected).toEqual(["f-courriel", "f-lieu", "f-invente", "f-precisez"]);
   });
 
   it("plusieurs champs d'un même message — « c'est au 12 rue…, mon courriel est… »", () => {
+    const said = "c'est au 12 rue de la Paix, mon courriel est a@b.fr";
     const result = applyUpdates(SCHEMA, empty, [
-      { id: "f-lieu", value: "12 rue de la Paix" },
-      { id: "f-courriel", value: "a@b.fr" },
-    ]);
+      up("f-lieu", "12 rue de la Paix"),
+      up("f-courriel", "a@b.fr"),
+    ], said);
     expect(result.accepted).toEqual(["f-lieu", "f-courriel"]);
+  });
+});
+
+describe("l'origine d'une valeur — tranchée par le SERVEUR, sur les mots réels", () => {
+  it("« repris » se mérite : la citation doit figurer dans ce que l'usager a écrit", () => {
+    const said = "c'est au 12 rue de la Paix";
+    const result = applyUpdates(
+      SCHEMA,
+      empty,
+      [up("f-lieu", "12 rue de la Paix", { origin: "extracted", source: "12 rue de la Paix" })],
+      said,
+    );
+    expect(result.state.origins["f-lieu"]).toEqual({ origin: "extracted", source: "12 rue de la Paix" });
+  });
+
+  it("⚠️ une citation que l'usager n'a jamais prononcée retombe en « déduit »", () => {
+    // Le modèle jure « repris » ; le serveur ne l'en croit pas. Se tromper vers
+    // le badge jaune fait relire une valeur juste ; vers le vert, signer une
+    // valeur inventée.
+    const result = applyUpdates(
+      SCHEMA,
+      empty,
+      [up("f-lieu", "12 rue de la Paix", { origin: "extracted", source: "12 rue de la Paix", reason: "au jugé" })],
+      "je ne sais plus où exactement",
+    );
+    expect(result.state.origins["f-lieu"]).toEqual({ origin: "inferred", reason: "au jugé" });
+  });
+
+  it("⚠️ un choix RAPPROCHÉ des mots de l'usager est une déduction, pas une reprise", () => {
+    // « des gravats » → « Dépôt sauvage » : l'usager n'a pas prononcé le
+    // libellé, c'est un rapprochement avec notre liste. Badge « à confirmer ».
+    const rapproche = applyUpdates(
+      SCHEMA,
+      empty,
+      [up("f-nature", "Dépôt sauvage", { origin: "extracted", reason: "vous parlez de gravats" })],
+      "il y a des gravats",
+    );
+    expect(rapproche.state.origins["f-nature"]).toEqual({
+      origin: "inferred",
+      reason: "vous parlez de gravats",
+    });
+
+    // Prononcé tel quel, en revanche, c'est bien une reprise.
+    const dit = applyUpdates(SCHEMA, empty, [up("f-nature", "Dépôt sauvage")], "c'est un dépôt sauvage");
+    expect(dit.state.origins["f-nature"]).toEqual({ origin: "extracted", source: "Dépôt sauvage" });
+  });
+
+  it("« rédigé pour vous » ne vaut que pour un texte long", () => {
+    const state = answerField(SCHEMA, empty, "f-nature", "autre");
+    const result = applyUpdates(
+      SCHEMA,
+      state,
+      [up("f-precisez", "Un lampadaire penche depuis l'orage.", { origin: "generated" })],
+      "le lampadaire penche depuis l'orage de samedi",
+    );
+    expect(result.state.origins["f-precisez"]).toEqual({ origin: "generated" });
+  });
+
+  it("une valeur reprise par l'USAGER perd son badge et devient sienne", () => {
+    const said = "c'est au 12 rue de la Paix";
+    const posed = applyUpdates(SCHEMA, empty, [up("f-lieu", "12 rue de la Paix")], said).state;
+    expect(posed.origins["f-lieu"]).toBeDefined();
+    const corrected = answerField(SCHEMA, posed, "f-lieu", "14 rue de la Paix");
+    expect(corrected.origins["f-lieu"]).toBeUndefined();
+    expect(corrected.touched).toEqual(["f-lieu"]);
   });
 });
 
@@ -168,10 +254,11 @@ describe("readFieldUpdates — la forme de ce que rend le modèle", () => {
         null,
       ]),
     ).toEqual([
-      { id: "a", value: "oui" },
-      { id: "b", value: "3" },
-      { id: "e", value: "true" },
-      { id: "f", value: ["un", "deux"] },
+      // ⚠️ `inferred` au doute : une origine absente ne vaut jamais « repris ».
+      { id: "a", value: "oui", origin: "inferred", source: undefined, reason: undefined },
+      { id: "b", value: "3", origin: "inferred", source: undefined, reason: undefined },
+      { id: "e", value: "true", origin: "inferred", source: undefined, reason: undefined },
+      { id: "f", value: ["un", "deux"], origin: "inferred", source: undefined, reason: undefined },
     ]);
     expect(readFieldUpdates("rien")).toEqual([]);
     expect(readFieldUpdates(Array.from({ length: 50 }, (_, i) => ({ id: "f" + i, value: "x" })))).toHaveLength(20);
@@ -254,8 +341,8 @@ describe("coerceUpdate — la valeur rendue par le modèle, ramenée au schéma 
   it("⚠️ « non » à une question facultative est une RÉPONSE : le champ est passé, pas reposé", () => {
     // `isBlank(false)` étant vrai, ranger `false` laisserait le champ en
     // attente — et l'assistant reposerait la question sans fin.
-    const vide: CollectionState = { demarcheId: "d1", values: {}, skipped: [] };
-    const result = applyUpdates(TYPES, vide, [{ id: "f-accord", value: "non" }]);
+    const vide: CollectionState = { demarcheId: "d1", values: {}, skipped: [], origins: {}, touched: [] };
+    const result = applyUpdates(TYPES, vide, [up("f-accord", "non")], "non merci");
     expect(result.accepted).toEqual(["f-accord"]);
     expect(result.state.skipped).toEqual(["f-accord"]);
     expect(pendingFields(TYPES, result.state).map((f) => f.id)).not.toContain("f-accord");

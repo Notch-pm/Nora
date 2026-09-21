@@ -86,11 +86,24 @@ export interface AssistantTurnReply {
   collection: CollectionPayload | null;
 }
 
-/** L'état d'un recueil, tel qu'il voyage — voir `CollectionState` dans `ai/collection.ts`. */
+/**
+ * L'état d'un recueil, tel qu'il voyage — voir `CollectionState` dans
+ * `ai/collection.ts`.
+ *
+ * ⚠️ `origins` et `touched` font l'aller-retour parce que **le serveur n'a pas
+ * de mémoire** : sans eux, chaque tour oublierait d'où viennent les valeurs
+ * (tous les badges tomberaient) et quels champs l'usager s'est appropriés (le
+ * modèle se remettrait à les réécrire). `sanitizeState` les renettoie à chaque
+ * arrivée, comme le reste.
+ *
+ * ⚠️ Toujours AUCUN champ d'identité ici : voir `collectionPayload`.
+ */
 export interface CollectionPayload {
   demarcheId: string;
   values: Record<string, unknown>;
   skipped: string[];
+  origins?: Record<string, { origin: string; source?: string; reason?: string }>;
+  touched?: string[];
 }
 
 /**

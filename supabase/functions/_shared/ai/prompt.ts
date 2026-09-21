@@ -82,8 +82,9 @@ const UNIT_LABELS: Record<ResponseDelayUnit, [string, string]> = {
 const COLLECT_RULES = [
   "MODE RECUEIL — l'usager remplit la démarche consultée, dans cette conversation.",
   "- La liste « LE FORMULAIRE, DANS L'ORDRE » donne tout le formulaire : ce qui reste à renseigner, ce qui est « déjà renseigné » et ce qui a été « passé par l'usager ». Pour chaque information marquée [écrit] que le DERNIER message de l'usager fournit, ajoute { \"id\", \"value\" } dans `field_updates`. Un même message peut en fournir plusieurs : parcours la liste ENTIÈRE — un usager qui décrit son problème en donnant l'adresse a répondu aux deux (une « description » demandée plus bas se remplit avec ce qu'il vient de raconter).",
-  "- La forme de `value` dépend de l'information : si des « valeurs : » sont listées, rends EXACTEMENT l'une d'elles, entre guillemets dans la liste, et aucune autre — plusieurs se rendent en tableau ; une date se rend en AAAA-MM-JJ, jamais autrement et jamais approximée (« jeudi », « demain » ne sont pas des dates : n'en rends aucune) ; un oui/non se rend `true` ou `false` ; tout le reste se rend avec les mots de l'usager, sans rien inventer, compléter ni corriger.",
-  "- Ne remplis JAMAIS une information marquée [carte] : c'est une pièce à joindre, l'usager la dépose avec la carte affichée sous ton message.",
+  "- La forme de `value` dépend de l'information : si des « valeurs : » sont listées, rends EXACTEMENT l'une d'elles, entre guillemets dans la liste, et aucune autre — plusieurs se rendent en tableau ; un oui/non se rend `true` ou `false` ; tout le reste se rend avec les mots de l'usager, sans rien inventer, compléter ni corriger.",
+  "- DIS TOUJOURS D'OÙ VIENT TA VALEUR, avec `origin` : « extracted » si tu reprends les mots de l'usager tels quels — recopie-les alors dans `source`, mot pour mot, sans rien changer ; « inferred » si tu interprètes, rapproches ou complètes — explique en une phrase courte dans `reason` ; « generated » si tu rédiges un texte à partir de plusieurs de ses messages (texte long seulement). Dans le doute, « inferred » : une valeur relue coûte un coup d'œil, une valeur fausse signée par l'usager coûte bien plus.",
+  "- Ne remplis JAMAIS une information marquée [carte] : c'est une DATE ou une pièce à joindre. Une date ne se devine pas — « jeudi », « demain », « la semaine dernière » supposent de savoir quel jour on est, et tu ne le sais pas. L'usager la choisit au calendrier affiché sous ton message ; dis-le-lui plutôt que d'en proposer une.",
   "- Ne redemande pas une information « déjà renseigné » ou « passé », et ne la corrige pas de toi-même. Si l'usager veut revenir dessus, dis-lui qu'il pourra la modifier sur le récapitulatif, avant l'envoi.",
   "- Ne demande ni nom, ni adresse personnelle, ni téléphone, ni courriel du demandeur : une carte dédiée s'en charge à la fin. Les informations de la liste, elles, font partie du formulaire : tu peux les recevoir, et les redire pour accuser réception.",
   "- Ne pose pas toi-même la question suivante : l'écran l'affiche. Réponds brièvement — accuse réception de ce que tu as compris, ou réponds à la question de l'usager à partir des données.",
@@ -142,13 +143,16 @@ function outputContract(lang: string, collecting: boolean): string {
   return [
     "FORMAT DE RÉPONSE — un objet json, et rien d'autre :",
     collecting
-      ? '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[], "field_updates": { "id": string, "value": string | string[] }[] }'
+      ? '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[], "field_updates": { "id": string, "value": string | string[], "origin": "extracted" | "inferred" | "generated", "source"?: string, "reason"?: string }[] }'
       : '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[] }',
     `- "reply" : ton message à l'usager, rédigé dans la langue de code « ${lang} » (les textes de la collectivité restent cités dans leur langue).`,
     '- "intent" : "suggest" si tu proposes une ou plusieurs démarches, "clarify" si tu poses une question pour choisir, "answer" si tu renseignes, "unknown" si l\'information n\'est pas dans les données, "off_topic" si la demande ne concerne pas les démarches de la collectivité.',
     '- "procedure_ids" : les identifiants (champ id) des démarches que tu proposes, pris dans le catalogue ci-dessous et nulle part ailleurs ; [] sinon.',
     ...(collecting
-      ? ['- "field_updates" : ce que le dernier message de l\'usager renseigne parmi les informations [écrit] restant à recueillir (champ id de la liste), dans la forme que cette information impose ; [] sinon.']
+      ? [
+          '- "field_updates" : ce que le dernier message de l\'usager renseigne parmi les informations [écrit] restant à recueillir (champ id de la liste), dans la forme que cette information impose ; [] sinon.',
+          '- "origin" est OBLIGATOIRE sur chaque entrée : « extracted » (+ "source", la citation exacte), « inferred » (+ "reason", une phrase courte), ou « generated ».',
+        ]
       : []),
   ].join("\n");
 }

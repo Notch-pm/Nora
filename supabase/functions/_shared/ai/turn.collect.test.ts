@@ -86,8 +86,10 @@ describe("le recueil dans la conversation", () => {
   it("« devant le 12 rue de la Paix, des gravats » → les DEUX réponses sont retenues, le choix compris", async () => {
     const { deps, complete } = setup({
       field_updates: [
-        { id: "f-lieu", value: "devant le 12 rue de la Paix" },
-        { id: "f-nature", value: "Gravats" },
+        { id: "f-lieu", value: "devant le 12 rue de la Paix", origin: "extracted", source: "devant le 12 rue de la Paix" },
+        // Le modèle n'ose que « déduit » sur le choix — le serveur le corrigera
+        // vers « repris », parce que l'usager a bel et bien dit « gravats ».
+        { id: "f-nature", value: "Gravats", origin: "inferred", reason: "vous parlez de gravats" },
       ],
     });
     const outcome = await runAssistantTurn(tenant(true), "fr", await body("C'est devant le 12 rue de la Paix, des gravats.", opening), deps);
@@ -95,10 +97,16 @@ describe("le recueil dans la conversation", () => {
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     // Le libellé dit par l'usager ressort en VALEUR du schéma publié.
-    expect(outcome.reply.collection).toEqual({
+    expect(outcome.reply.collection).toMatchObject({
       demarcheId: PROPRETE,
       values: { "f-lieu": "devant le 12 rue de la Paix", "f-nature": "gravats" },
       skipped: [],
+    });
+    // ⚠️ L'usager a PRONONCÉ « gravats » : le serveur reclasse en « repris »,
+    // contre l'avis du modèle. C'est lui qui tranche, sur les mots réels.
+    expect(outcome.reply.collection?.origins).toEqual({
+      "f-lieu": { origin: "extracted", source: "devant le 12 rue de la Paix" },
+      "f-nature": { origin: "extracted", source: "Gravats" },
     });
 
     const system = complete.mock.calls[0][0].system;
@@ -143,6 +151,8 @@ describe("le recueil dans la conversation", () => {
       demarcheId: PROPRETE,
       values: { "f-lieu": "12 rue de la Paix" },
       skipped: [],
+      origins: {},
+      touched: [],
     });
   });
 
@@ -193,6 +203,8 @@ describe("le recueil dans la conversation", () => {
       demarcheId: PROPRETE,
       values: { "f-lieu": "Ici" },
       skipped: ["f-precisions"], // `f-lieu` est obligatoire : il ne se passe pas.
+      origins: {},
+      touched: [],
     });
   });
 

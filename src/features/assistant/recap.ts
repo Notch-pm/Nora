@@ -9,6 +9,7 @@
  * simplement du récapitulatif serait indiscernable d'un champ qu'on aurait
  * oublié d'afficher.
  */
+import type { FieldOriginRecord } from "@fn/_shared/ai/collection.ts";
 import type { Field } from "@fn/_shared/domain/formSchema.ts";
 import { isSection } from "@fn/_shared/domain/formSchema.ts";
 import { piecesOf, visibleNodes } from "@fn/_shared/domain/formulaire.ts";
@@ -25,6 +26,16 @@ export interface RecapRow {
   fieldId: string;
   label: string;
   value: string;
+  /**
+   * D'où vient la valeur, quand c'est l'ASSISTANT qui l'a posée — `undefined`
+   * quand l'usager l'a saisie lui-même.
+   *
+   * ⚠️ C'est ici que l'origine sert vraiment : le récapitulatif est le dernier
+   * écran avant l'envoi, celui où l'usager signe. Distinguer « ce que vous avez
+   * dit » de « ce que j'en ai déduit » est ce qui lui permet de relire sans
+   * tout relire. Jamais dans l'identité : elle ne passe pas par le modèle.
+   */
+  origin?: FieldOriginRecord;
 }
 
 export interface RecapSection {
@@ -94,13 +105,21 @@ export function buildRecap(lang: string, session: CollectSession): RecapSummary 
           fieldId: field.id,
           label: field.label,
           value: formatFieldValue(lang, field, collection.values[field.id]),
+          origin: collection.origins[field.id],
         })),
       });
     } else {
       sections.push({
         id: node.id,
         title: null,
-        rows: [{ fieldId: node.id, label: node.label, value: formatFieldValue(lang, node, collection.values[node.id]) }],
+        rows: [
+          {
+            fieldId: node.id,
+            label: node.label,
+            value: formatFieldValue(lang, node, collection.values[node.id]),
+            origin: collection.origins[node.id],
+          },
+        ],
       });
     }
   }

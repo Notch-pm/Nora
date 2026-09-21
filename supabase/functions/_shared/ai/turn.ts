@@ -247,8 +247,12 @@ export async function runAssistantTurn(
 
   // Ce que le modèle dit avoir compris n'entre que par `applyUpdates` : champ
   // en attente, auquel on répond en écrivant, valeur valide. Le reste tombe.
+  //
+  // ⚠️ `lastSaid` sert à TRANCHER L'ORIGINE : « repris » n'est retenu que si la
+  // citation figure vraiment dans le dernier message. C'est le serveur qui en
+  // décide, jamais le modèle — sur les mots réels, pas sur ce qu'il en dit.
   if (collection !== null && focus?.form != null) {
-    collection = applyUpdates(focus.form, collection, answer.fieldUpdates).state;
+    collection = applyUpdates(focus.form, collection, answer.fieldUpdates, lastSaid).state;
   }
 
   const turn = ticket.turn + 1;

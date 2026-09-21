@@ -974,16 +974,31 @@ regarde ailleurs, une conversation non.
 **Le recueil** (`_shared/ai/collection.ts`, pur, même code côté serveur et côté
 écran) partage les rôles :
 
-- **tout se dit, sauf les pièces jointes.** Le modèle DIT ce qu'il a compris
-  (`field_updates`) ; le serveur le ramène au schéma **publié** (`coerceUpdate`)
-  et n'en retient que ce qui vise un champ **en attente** et **passe la
-  validation du formulaire** (`applyUpdates`). Un choix rendu par son libellé
-  ressort en `option.value` ; une date n'entre qu'en `AAAA-MM-JJ` et si le jour
-  existe ; un oui/non ne connaît que oui et non. ⚠️ `coerceUpdate` est la **seule**
-  barrière pour un choix et pour une date — `validateForm` ne vérifie ni les
-  options ni le format d'un jour. Le modèle ne peut donc pas inventer une option.
-  ⚠️ Il ne réécrit jamais une réponse déjà donnée : corriger est un geste de
-  l'usager, sur le récapitulatif ;
+- **tout se dit, sauf une pièce jointe et sauf une DATE.** Le modèle DIT ce
+  qu'il a compris (`field_updates`) ; le serveur le ramène au schéma **publié**
+  (`coerceUpdate`) et n'en retient que ce qui vise un champ **en attente** et
+  **passe la validation du formulaire** (`applyUpdates`). Un choix rendu par son
+  libellé ressort en `option.value` ; un oui/non ne connaît que oui et non.
+  ⚠️ `coerceUpdate` est la **seule** barrière pour un choix — `validateForm` ne
+  vérifie pas les options. Le modèle ne peut donc pas inventer une option.
+  ⚠️ **Une date demande une horloge que le modèle n'a pas** : « jeudi » ne se
+  résout pas sans savoir quel jour on est, et une date devinée se trompe d'une
+  semaine sans que rien ne le signale. Le calendrier du formulaire, lui, sait —
+  c'est le seul type où le contrôle est plus SÛR que la conversation, pas
+  seulement plus rapide.
+  ⚠️ Le modèle ne réécrit jamais une réponse déjà donnée, ni un champ que
+  l'usager s'est approprié (`touched`, qui survit même à un champ vidé) :
+  corriger est un geste de l'usager, sur le récapitulatif ;
+- **toute valeur posée par l'assistant porte son ORIGINE** (`FieldOrigin`), et
+  le récapitulatif en fait un badge : « d'après votre message » / « déduit, à
+  confirmer » / « rédigé pour vous ». C'est ce qui rend un formulaire prérempli
+  relisable **sans tout relire** — sans quoi l'usager relit tout, ou ne relit
+  rien et signe. ⚠️ C'est le **serveur** qui tranche l'origine (`originOf`), sur
+  les mots réellement écrits, jamais le modèle sur parole : « repris » se mérite,
+  la citation doit figurer dans le dernier message. Un choix seulement *rapproché*
+  des mots de l'usager (« des gravats » → « Dépôt sauvage ») reste une déduction.
+  Au doute, « déduit » : se tromper vers ce badge fait relire une valeur juste,
+  se tromper vers l'autre fait signer une valeur inventée ;
 - **le contrôle du formulaire reste offert en repli** sous chaque question
   (« Répondre avec le formulaire »), replié : pour qui préfère cliquer une date
   que la décrire. Déplié d'office, il redeviendrait le geste principal, et l'on
@@ -1056,8 +1071,8 @@ la porte n'existe pas et le portail dépose comme avant.
   l'usager : il est gardé en `sessionStorage` (jamais `localStorage`) pour survivre
   à un rechargement et à une navigation, et s'efface avec l'onglet ou par
   « Nouvelle conversation ». Trois clés, et elles seules : `nora.assistant` (le
-  fil), `nora.assistant.collect` (le recueil), `nora.assistant.ui` (la bulle est-elle
-  ouverte — au doute, fermée). ⚠️ C'est le SEUL stockage que le portail écrit sur le
+  fil, qui porte aussi l'ORIGINE de chaque valeur), `nora.assistant.collect` (le
+  recueil), `nora.assistant.ui` (la bulle est-elle ouverte — au doute, fermée). ⚠️ C'est le SEUL stockage que le portail écrit sur le
   poste du visiteur ; il est strictement fonctionnel, ne sert à aucune mesure et ne
   part nulle part — la mesure d'audience, elle, reste sans aucun stockage, la bulle
   n'est comptée nulle part, et `/assistant` n'est pas une page comptée. L'urgence (112, 15, 17, 18) est décidée sur **ses mots**, par une règle

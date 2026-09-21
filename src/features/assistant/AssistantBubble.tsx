@@ -96,6 +96,17 @@ function tabStorage(): Storage | null {
   }
 }
 
+/** L'état d'ouverture gardé par l'onglet — fermé si rien, ou si c'est illisible. */
+function readStoredUi(): BubbleUi {
+  const raw = tabStorage()?.getItem(bubbleUiKey());
+  if (raw === null || raw === undefined) return CLOSED;
+  try {
+    return readBubbleUi(JSON.parse(raw));
+  } catch {
+    return CLOSED;
+  }
+}
+
 /**
  * Le panneau flotte-t-il, ou prend-il tout l'écran ?
  *
@@ -130,21 +141,17 @@ export function AssistantBubble({ children }: { children: ReactNode }) {
   const { state } = usePortal(lang);
   const floats = useFloats();
 
-  const [ui, setUi] = useState<BubbleUi>(CLOSED);
+  // ⚠️ RELU AU PREMIER RENDU, pas dans un effet. Lire dans un effet laissait
+  // l'effet d'écriture partir le premier, avec l'état initial « fermé » : il
+  // écrasait le stockage avant que la lecture ne s'applique, et la bulle se
+  // rouvrait toujours fermée. En `StrictMode` (dev), où les effets sont joués
+  // deux fois, la seconde lecture relisait ce que la première écriture venait
+  // d'effacer. Un initialiseur paresseux n'a pas d'ordre à respecter.
+  const [ui, setUi] = useState<BubbleUi>(readStoredUi);
   const [step, setStep] = useState<CollectStep | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
-
-  useEffect(() => {
-    const raw = tabStorage()?.getItem(bubbleUiKey());
-    if (raw === null || raw === undefined) return;
-    try {
-      setUi(readBubbleUi(JSON.parse(raw)));
-    } catch {
-      // Une entrée illisible vaut « fermé » : `readBubbleUi` dit la même chose.
-    }
-  }, []);
 
   useEffect(() => {
     try {

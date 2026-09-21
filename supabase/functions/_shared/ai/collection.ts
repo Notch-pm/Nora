@@ -4,17 +4,23 @@
  *
  * Le partage des rôles, revu le 2026-09-21 :
  *
- *  • **Tout se dit**, sauf les pièces jointes. L'usager écrit « c'est devant le
- *    12 rue de la Paix, des gravats, jeudi » et le modèle en tire les champs
- *    qu'il reconnaît — y compris un choix, une date, un oui/non. Le serveur
+ *  • **Tout se dit**, sauf une pièce jointe et sauf une DATE. L'usager écrit
+ *    « c'est devant le 12 rue de la Paix, des gravats » et le modèle en tire
+ *    les champs qu'il reconnaît — y compris un choix, un oui/non. Le serveur
  *    n'en croit rien : `coerceUpdate` ramène ce qu'il rend à une valeur du
  *    schéma PUBLIÉ, et `applyUpdates` la soumet encore à la validation.
- *  • **Une pièce jointe** reste une CARTE, faite des contrôles du formulaire :
- *    un fichier ne transite pas par un modèle de langage. Les champs à options
- *    et les dates gardent leur contrôle en repli (`assist`), pour l'usager qui
- *    préfère choisir que décrire — et une carte ne coûte aucun appel au guichet.
+ *  • **Une pièce jointe et une date** restent des CARTES, faites des contrôles
+ *    du formulaire. Un fichier ne transite pas par un modèle de langage ; et
+ *    une date demande une horloge que le modèle n'a pas — « jeudi » ne se
+ *    résout pas sans savoir quel jour on est. Les champs à options gardent
+ *    leur contrôle en repli (`assist`), pour qui préfère choisir que décrire,
+ *    et une carte ne coûte aucun appel au guichet.
  *  • **L'identité du demandeur** n'est PAS ici : elle se saisit dans sa propre
  *    carte, à la fin, et n'est jamais montrée au modèle.
+ *  • **Toute valeur posée par l'assistant porte son ORIGINE** (`FieldOrigin`) :
+ *    « ce que vous avez dit » / « ce que j'en ai déduit ». C'est ce qui rend le
+ *    récapitulatif relisable sans tout relire — et c'est le SERVEUR qui tranche,
+ *    sur les mots réellement prononcés, jamais le modèle sur parole.
  *
  * ⚠️ **L'état du recueil vit dans le navigateur** (le serveur n'a pas de
  * mémoire) et n'est pas signé : il n'en a pas besoin. Il ne contient que ce que
@@ -31,6 +37,28 @@ import type { ChoiceField, Field, FormSchema } from "../domain/formSchema.ts";
 import { allFields } from "../domain/formSchema.ts";
 import { isBlank, isFieldRequired, piecesOf, validateForm, visibleFields } from "../domain/formulaire.ts";
 
+/**
+ * D'où vient une valeur posée par l'ASSISTANT.
+ *
+ * ⚠️ **C'est ce qui rend un récapitulatif relisable.** Sans la différence entre
+ * « ce que vous avez dit » et « ce que j'en ai déduit », l'usager doit tout
+ * relire — ou ne relit rien, et signe. L'origine n'est donc pas décorative :
+ * elle voyage avec la valeur.
+ *
+ * ⚠️ Une valeur saisie par l'USAGER n'a pas d'origine : l'absence d'entrée EST
+ * l'information. C'est ce qui fait qu'un champ corrigé à la main perd son badge
+ * sans qu'on ait à l'effacer nulle part.
+ */
+export type FieldOrigin = "extracted" | "inferred" | "generated";
+
+export interface FieldOriginRecord {
+  origin: FieldOrigin;
+  /** La citation de l'usager, vérifiée — `extracted` seulement. */
+  source?: string;
+  /** La justification de la déduction — `inferred` seulement. */
+  reason?: string;
+}
+
 /** Ce que le navigateur tient, et renvoie à chaque tour. */
 export interface CollectionState {
   demarcheId: string;
@@ -38,23 +66,43 @@ export interface CollectionState {
   values: FormValues;
   /** Champs FACULTATIFS que l'usager a choisi de passer. */
   skipped: string[];
-}
-
-/** On répond en écrivant à tout, sauf à une pièce jointe. */
-export function isConversationField(field: Field): boolean {
-  return field.type !== "attachment";
+  /** L'origine des valeurs posées par l'ASSISTANT. Celles de l'usager n'y sont pas. */
+  origins: Record<string, FieldOriginRecord>;
+  /**
+   * Les champs que l'usager a renseignés ou corrigés LUI-MÊME — l'assistant ne
+   * les réécrit plus jamais.
+   *
+   * ⚠️ Un champ reste `touched` même VIDÉ : « corriger » le rouvre, et sans
+   * cette mémoire le modèle se précipiterait pour le remplir à nouveau au tour
+   * suivant — exactement ce que le geste de correction voulait empêcher.
+   */
+  touched: string[];
 }
 
 /**
- * Les types dont le CONTRÔLE aide, sans être imposé : choisir dans une liste ou
- * cliquer une date reste plus sûr que de les décrire. L'écran les offre en
- * repli sous la question, jamais à sa place.
+ * On répond en écrivant à tout, sauf à une pièce jointe et sauf à une DATE.
+ *
+ * ⚠️ **Une date demande une horloge que le modèle n'a pas.** « Jeudi »,
+ * « demain », « la semaine dernière » ne se résolvent pas sans savoir quel jour
+ * on est — et un modèle qui devine une date se trompe d'une semaine sans que
+ * rien ne le signale. Le calendrier du formulaire, lui, sait. C'est le seul
+ * type où le contrôle est plus SÛR que la conversation, pas seulement plus
+ * rapide.
+ */
+export function isConversationField(field: Field): boolean {
+  return field.type !== "attachment" && field.type !== "date";
+}
+
+/**
+ * Les types dont le CONTRÔLE aide, sans être imposé : choisir dans une liste se
+ * clique plus vite que ça ne se décrit. L'écran les offre en repli sous la
+ * question, jamais à sa place. (Une date n'est pas ici : elle n'est pas un
+ * repli, elle est le seul chemin — voir `isConversationField`.)
  */
 const ASSISTED_TYPES: ReadonlySet<Field["type"]> = new Set([
   "select",
   "radio",
   "checkboxes",
-  "date",
   "boolean",
 ]);
 
@@ -122,7 +170,54 @@ export function sanitizeState(schema: FormSchema, demarcheId: string, raw: unkno
   const skipped = Array.isArray(source.skipped)
     ? [...new Set(source.skipped.filter((id): id is string => typeof id === "string" && optional.has(id)))]
     : [];
-  return { demarcheId, values, skipped };
+
+  // Une origine ne survit pas à la valeur qu'elle explique : un champ purgé,
+  // ou repris par l'usager, perd son badge du même coup.
+  const known = new Set(Object.keys(values));
+  const rawOrigins =
+    typeof source.origins === "object" && source.origins !== null && !Array.isArray(source.origins)
+      ? (source.origins as Record<string, unknown>)
+      : {};
+  const origins: Record<string, FieldOriginRecord> = {};
+  for (const [id, entry] of Object.entries(rawOrigins)) {
+    if (!known.has(id)) continue;
+    const record = readOriginRecord(entry);
+    if (record !== null) origins[id] = record;
+  }
+
+  // `touched` survit à la purge d'une valeur : c'est tout son intérêt (un champ
+  // vidé à la main ne doit pas être rerempli par le modèle au tour suivant).
+  const ids = new Set(fields.map((f) => f.id));
+  const touched = Array.isArray(source.touched)
+    ? [...new Set(source.touched.filter((id): id is string => typeof id === "string" && ids.has(id)))]
+    : [];
+
+  return { demarcheId, values, skipped, origins, touched };
+}
+
+const ORIGINS: ReadonlySet<string> = new Set(["extracted", "inferred", "generated"]);
+
+/** Une origine sans clé vide : `{origin, source: undefined}` n'aide personne à relire. */
+function record(origin: FieldOrigin, source?: string, reason?: string): FieldOriginRecord {
+  const made: FieldOriginRecord = { origin };
+  if (source !== undefined) made.source = source;
+  if (reason !== undefined) made.reason = reason;
+  return made;
+}
+
+/** Une note du modèle, bornée — ou rien. */
+function note(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const clean = raw.trim();
+  return clean === "" ? undefined : clean.slice(0, 300);
+}
+
+/** Une origine venue du navigateur — `inferred` au doute, jamais `extracted`. */
+function readOriginRecord(raw: unknown): FieldOriginRecord | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const { origin, source, reason } = raw as Record<string, unknown>;
+  if (typeof origin !== "string" || !ORIGINS.has(origin)) return null;
+  return record(origin as FieldOrigin, note(source), note(reason));
 }
 
 /** Ce qu'il reste à demander, dans l'ordre du formulaire. */
@@ -165,16 +260,35 @@ export function skipField(schema: FormSchema, state: CollectionState, fieldId: s
   return { ...state, skipped: [...state.skipped, fieldId] };
 }
 
-/** Une réponse donnée par une CARTE (ou corrigée au récapitulatif) — sans modèle. */
+/**
+ * Une réponse posée sur un champ.
+ *
+ * Sans `origin`, elle vient de l'USAGER — carte, repli du formulaire, ou
+ * correction au récapitulatif : le champ perd son badge et devient `touched`,
+ * et l'assistant n'y reviendra plus. Avec `origin`, elle vient de l'assistant.
+ */
 export function answerField(
   schema: FormSchema,
   state: CollectionState,
   fieldId: string,
   value: unknown,
+  origin?: FieldOriginRecord,
 ): CollectionState {
   const merged = { ...state.values, [fieldId]: value };
+  const origins = { ...state.origins };
+  if (origin === undefined) delete origins[fieldId];
+  else origins[fieldId] = origin;
+  const touched =
+    origin === undefined && !state.touched.includes(fieldId)
+      ? [...state.touched, fieldId]
+      : state.touched;
   // Repasser par `sanitizeState` purge ce qu'une nouvelle réponse vient de masquer.
-  const next = sanitizeState(schema, state.demarcheId, { values: merged, skipped: state.skipped });
+  const next = sanitizeState(schema, state.demarcheId, {
+    values: merged,
+    skipped: state.skipped,
+    origins,
+    touched,
+  });
   return { ...next, skipped: next.skipped.filter((id) => id !== fieldId) };
 }
 
@@ -182,6 +296,10 @@ export interface FieldUpdate {
   id: string;
   /** Un tableau ne vaut que pour des cases à cocher. */
   value: string | string[];
+  /** Ce que le modèle DIT de sa valeur. `applyUpdates` vérifie avant de le retenir. */
+  origin: FieldOrigin;
+  source?: string;
+  reason?: string;
 }
 
 /** Une valeur simple rendue par le modèle, ramenée à du texte non vide. */
@@ -195,21 +313,31 @@ function readScalar(value: unknown): string | null {
   return text.trim();
 }
 
-/** Les `field_updates` d'une réponse du modèle — forme seulement. */
+/**
+ * Les `field_updates` d'une réponse du modèle — forme seulement.
+ *
+ * ⚠️ **`inferred` au doute.** Une origine absente, mal écrite ou inconnue ne
+ * vaut pas « repris » : elle vaut « à confirmer ». Se tromper vers le badge
+ * jaune fait relire une valeur juste ; se tromper vers le vert fait signer une
+ * valeur inventée.
+ */
 export function readFieldUpdates(raw: unknown): FieldUpdate[] {
   if (!Array.isArray(raw)) return [];
   const updates: FieldUpdate[] = [];
   for (const entry of raw.slice(0, MAX_UPDATES)) {
     if (typeof entry !== "object" || entry === null) continue;
-    const { id, value } = entry as Record<string, unknown>;
+    const { id, value, origin, source, reason } = entry as Record<string, unknown>;
     if (typeof id !== "string") continue;
+    const claimed: FieldOrigin =
+      typeof origin === "string" && ORIGINS.has(origin) ? (origin as FieldOrigin) : "inferred";
+    const common = { id, origin: claimed, source: note(source), reason: note(reason) };
     if (Array.isArray(value)) {
       const items = value.map(readScalar).filter((item): item is string => item !== null);
-      if (items.length > 0) updates.push({ id, value: items });
+      if (items.length > 0) updates.push({ ...common, value: items });
       continue;
     }
     const scalar = readScalar(value);
-    if (scalar !== null) updates.push({ id, value: scalar });
+    if (scalar !== null) updates.push({ ...common, value: scalar });
   }
   return updates;
 }
@@ -286,28 +414,76 @@ export function coerceUpdate(field: Field, raw: string | string[]): unknown | nu
   }
 }
 
+/** Ce que la valeur retenue donne à LIRE, pour vérifier une citation. */
+function spoken(field: Field, value: unknown): string {
+  if ("options" in field) {
+    const chosen = Array.isArray(value) ? value : [value];
+    return chosen
+      .map((v) => field.options.find((option) => option.value === v)?.label ?? String(v))
+      .join(" ");
+  }
+  return typeof value === "boolean" ? "" : String(value);
+}
+
+/**
+ * L'origine RETENUE — qui n'est pas forcément celle que le modèle annonce.
+ *
+ * « Repris » se MÉRITE : la citation doit figurer dans ce que l'usager a
+ * réellement écrit. « Rédigé pour vous » ne vaut que pour un texte long. Tout
+ * le reste retombe en « déduit », le seul état qui demande un regard.
+ *
+ * ⚠️ Un CHOIX n'est « repris » que si l'usager a prononcé le libellé lui-même.
+ * Sinon c'est un rapprochement entre ses mots et notre liste — donc une
+ * déduction, même quand le modèle jure le contraire. C'est tout le cas
+ * « des gravats » → « Dépôt sauvage » : le badge « à confirmer » est exactement
+ * ce qu'il faut.
+ *
+ * ⚠️ Un OUI/NON n'est jamais « repris » : la valeur retenue est un booléen, il
+ * n'y a pas de mots de l'usager à citer. Toujours une lecture, donc une déduction.
+ */
+function originOf(field: Field, update: FieldUpdate, heard: string, value: unknown): FieldOriginRecord {
+  const quoted = spoken(field, value);
+  if ("options" in field) {
+    return quoted !== "" && heard.includes(fold(quoted))
+      ? record("extracted", quoted)
+      : record("inferred", undefined, update.reason);
+  }
+  if (field.type === "boolean") return record("inferred", undefined, update.reason);
+  if (update.origin === "extracted") {
+    const quote = update.source;
+    if (quote !== undefined && heard.includes(fold(quote))) return record("extracted", quote);
+    return record("inferred", undefined, update.reason);
+  }
+  if (update.origin === "generated" && field.type === "textarea") return record("generated");
+  return record("inferred", undefined, update.reason);
+}
+
 /**
  * Ce que le modèle dit avoir compris — et ce qu'on en retient.
  *
- * ⚠️ Une valeur n'entre que si : le champ est EN ATTENTE (le modèle ne réécrit
- * pas une réponse déjà donnée — une correction est un geste de l'usager, sur le
- * récapitulatif) ; `coerceUpdate` la reconnaît comme une valeur de CE champ
- * (jamais une pièce jointe) ; et elle passe la validation du formulaire. Le
- * reste tombe en silence dans `rejected`, et le champ reste simplement à
- * demander — l'usager a toujours son contrôle en repli sous la question.
+ * ⚠️ Une valeur n'entre que si TOUT est vrai : le champ est EN ATTENTE (le
+ * modèle ne réécrit pas une réponse déjà donnée — une correction est un geste
+ * de l'usager, sur le récapitulatif) ; il n'appartient pas déjà à l'usager
+ * (`touched`) ; `coerceUpdate` la reconnaît comme une valeur de CE champ
+ * (jamais une pièce jointe, jamais une date) ; et elle passe la validation du
+ * formulaire. Le reste tombe en silence dans `rejected`, et le champ reste
+ * simplement à demander — l'usager a toujours son contrôle en repli.
  */
 export function applyUpdates(
   schema: FormSchema,
   state: CollectionState,
   updates: FieldUpdate[],
+  /** Ce que l'usager a réellement écrit — c'est là que « repris » se vérifie. */
+  said: string,
 ): { state: CollectionState; accepted: string[]; rejected: string[] } {
   let current = state;
   const accepted: string[] = [];
   const rejected: string[] = [];
+  const heard = fold(said);
   for (const update of updates) {
     const field = pendingFields(schema, current).find((f) => f.id === update.id);
     const value = field === undefined ? null : coerceUpdate(field, update.value);
-    if (field === undefined || value === null) {
+    if (field === undefined || value === null || current.touched.includes(update.id)) {
       rejected.push(update.id);
       continue;
     }
@@ -322,7 +498,7 @@ export function applyUpdates(
     // question obligatoire, `validateForm` l'a déjà écartée plus haut.
     current = value === false
       ? skipField(schema, current, field.id)
-      : answerField(schema, current, field.id, value);
+      : answerField(schema, current, field.id, value, originOf(field, update, heard, value));
     accepted.push(field.id);
   }
   return { state: current, accepted, rejected };

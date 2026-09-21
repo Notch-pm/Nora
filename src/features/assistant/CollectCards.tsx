@@ -20,6 +20,7 @@ import { errorText } from "@/i18n/t.ts";
 import { localizedPath } from "@/i18n/localizedPath.ts";
 import { BUTTON_CLASS, CARD_CLASS, EYEBROW_CLASS, SECONDARY_BUTTON_CLASS } from "./cardStyles.ts";
 import type { CollectNote, CollectSession } from "./collect.ts";
+import { OriginBadge, OriginNote } from "./FieldOrigin.tsx";
 import { buildRecap } from "./recap.ts";
 import { buildPrefill, writePrefill, type PrefillStorage } from "./prefill.ts";
 
@@ -97,11 +98,10 @@ export function ReceiptNoteView({ receipt, demarcheName }: { receipt: DemandeRec
 }
 
 /**
- * Le champ EN ATTENTE — `card` ou `conversation`, la même carte pour les
- * deux : un contrôle du formulaire, « Valider », « Passer » s'il est
- * facultatif. Sur un champ « conversation », une phrase rappelle qu'on peut
- * aussi répondre dans le message ci-dessous — le modèle, lui, ne voit jamais
- * ce contrôle.
+ * Le champ EN ATTENTE — la même carte pour les deux modes, mais pas la même
+ * place donnée au contrôle : replié quand la question se DIT, ouvert quand
+ * elle ne se dit pas (une date, une pièce jointe). Le modèle, lui, ne voit
+ * jamais ce contrôle.
  */
 export function PendingFieldCard({
   session,
@@ -151,12 +151,13 @@ export function PendingFieldCard({
         {field.label}
       </p>
 
-      {/* ⚠️ Depuis que TOUT se dit, le contrôle n'est plus la question : c'est
-          un REPLI, pour qui préfère choisir une date ou cocher une option
-          plutôt que de la décrire. Déplié d'office, il redeviendrait le geste
-          principal — et l'on retrouverait l'alternance conversation/carte que
-          cette refonte supprime. Une pièce jointe, elle, n'a pas d'autre
-          chemin : son contrôle reste ouvert. */}
+      {/* ⚠️ Depuis que tout se dit, le contrôle n'est plus la question : c'est
+          un REPLI, pour qui préfère cocher une option plutôt que de la décrire.
+          Déplié d'office, il redeviendrait le geste principal — et l'on
+          retrouverait l'alternance conversation/carte que cette refonte
+          supprime. Une DATE et une PIÈCE JOINTE n'ont pas d'autre chemin (un
+          modèle n'a pas d'horloge, et un fichier ne lui transite pas) : leur
+          contrôle reste ouvert. */}
       {conversationMode ? (
         <details className="mt-2">
           <summary className="cursor-pointer text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)]">
@@ -359,8 +360,19 @@ export function RecapCard({
               {section.rows.map((row) => (
                 <div key={row.fieldId} className="flex items-start justify-between gap-3 py-2">
                   <div className="min-w-0">
-                    <dt className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">{row.label}</dt>
+                    <dt className="flex flex-wrap items-center gap-2 text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
+                      {row.label}
+                      {/* Le badge n'apparaît QUE sur ce que l'assistant a posé :
+                          une valeur saisie par l'usager n'a pas d'origine à
+                          justifier, et un badge partout ne distinguerait rien. */}
+                      {row.origin !== undefined && <OriginBadge origin={row.origin.origin} />}
+                    </dt>
                     <dd className="text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">{row.value}</dd>
+                    {row.origin !== undefined && (
+                      <p className="mt-0.5 text-[length:var(--pt-small)] italic text-[color:var(--pt-muted)]">
+                        <OriginNote record={row.origin} />
+                      </p>
+                    )}
                   </div>
                   <button
                     type="button"

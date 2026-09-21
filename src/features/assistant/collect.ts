@@ -80,7 +80,7 @@ export function needsIdentity(demarche: CollectDemarche): boolean {
 export function startSession(demarche: CollectDemarche): CollectSession {
   return {
     demarche,
-    collection: { demarcheId: demarche.id, values: {}, skipped: [] },
+    collection: { demarcheId: demarche.id, values: {}, skipped: [], origins: {}, touched: [] },
     organizationId: demarche.organizations.length === 1 ? demarche.organizations[0].id : null,
     organizationConfirmed: !needsOrganizationChoice(demarche),
     audience: enabledAudiences(demarche.requester)[0] ?? null,
@@ -196,6 +196,11 @@ export function collectionPayload(session: CollectSession): CollectionPayload {
     demarcheId: session.collection.demarcheId,
     values: session.collection.values,
     skipped: session.collection.skipped,
+    // Le serveur n'a pas de mémoire : sans l'aller-retour, les badges
+    // tomberaient à chaque tour et le modèle réécrirait ce que l'usager s'est
+    // approprié. Toujours aucun champ d'identité, en revanche.
+    origins: session.collection.origins,
+    touched: session.collection.touched,
   };
 }
 
