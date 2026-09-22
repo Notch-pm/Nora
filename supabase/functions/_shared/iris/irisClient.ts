@@ -49,8 +49,24 @@ export interface IrisClient {
 export interface IrisClientConfig {
   /** Racine de l'API d'ingestion d'Iris. Barre finale tolérée. */
   baseUrl: string;
-  /** Clé serveur-à-serveur (`irs_…`). Ne doit jamais atteindre un navigateur. */
+  /**
+   * Clé serveur-à-serveur (`irs_…`). Ne doit jamais atteindre un navigateur.
+   *
+   * ⚠️ C'est une clé PLATEFORME (contrat Iris 2.3.0) : une seule pour toutes
+   * les collectivités, comme la clé du Socle. Elle authentifie le portail ; la
+   * collectivité pour laquelle il agit est nommée à chaque appel par
+   * `socleRootOrganizationId`. Une clé par collectivité a été essayée (le
+   * 2026-09-22, une journée) : il fallait reposer toutes les clés ensemble dans
+   * un secret que personne ne peut relire — intenable dès la troisième.
+   */
   apiKey: string;
+  /**
+   * L'identifiant Socle de la collectivité racine du domaine visité — envoyé
+   * en `X-Socle-Root-Organization-Id`. Iris exige qu'elle ait une source
+   * `portail-citoyen` active : c'est là que le dépôt s'ouvre ou se ferme par
+   * collectivité, sans toucher à aucun secret.
+   */
+  socleRootOrganizationId: string;
   /**
    * Un dépôt est une écriture : on lui laisse plus de temps qu'à une lecture,
    * sans pour autant faire tourner l'onglet d'un usager indéfiniment.
@@ -80,7 +96,11 @@ export function createIrisClient(config: IrisClientConfig): IrisClient {
     try {
       response = await fetch(baseUrl + path, {
         ...init,
-        headers: { ...(init.headers as Record<string, string>), Authorization: "Bearer " + config.apiKey },
+        headers: {
+          ...(init.headers as Record<string, string>),
+          Authorization: "Bearer " + config.apiKey,
+          "X-Socle-Root-Organization-Id": config.socleRootOrganizationId,
+        },
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch {

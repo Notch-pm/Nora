@@ -474,23 +474,75 @@ vérité, qui divergerait au premier champ ajouté.
 
 Iris n'a **aucune logique propre à un émetteur** : le portail y est une *source enregistrée*, au
 même titre qu'un connecteur courrier. Le raccordement est donc du **provisioning**, pas du code —
-rien à déployer, quatre étapes en base et deux secrets.
+rien à déployer.
+
+Le portail parle à Iris avec une **clé plateforme** (contrat Iris 2.3.0) : une seule clé, comme
+pour le Socle, posée une fois pour toutes. Elle authentifie le portail ; la collectivité pour
+laquelle il agit est nommée à chaque appel par l'en-tête `X-Socle-Root-Organization-Id` — l'UUID
+Socle de la racine du domaine visité. Iris exige alors que cette collectivité ait une source
+`portail-citoyen` **active** : c'est l'interrupteur par collectivité, et le journal d'Iris reste
+tenu par collectivité.
 
 Le principe tient en une phrase : **la clé n'existe en clair qu'à un seul endroit**, les secrets de
 `portal-api`. Iris n'en garde que l'empreinte SHA-256 et rehache ce qu'il reçoit à chaque appel.
-D'où l'ordre des étapes — générer, poser l'empreinte, poser le clair.
 
 | Où | Quoi |
 | --- | --- |
-| Iris — `integration_credentials.key_hash` | l'empreinte SHA-256, 64 caractères hexadécimaux |
+| Iris — `integration_sources` sans organisation, code `portail-citoyen` | la source plateforme |
+| Iris — `integration_credentials.key_hash` sur cette source | l'empreinte SHA-256, 64 caractères hexadécimaux |
 | Nora — secret `IRIS_API_KEY` | la clé en clair |
+| Iris — `integration_sources` de CHAQUE collectivité, code `portail-citoyen`, **sans clé** | l'ouverture du dépôt pour elle |
 
-### 0. Vérifier que la collectivité existe dans Iris
+### A. Une fois pour toutes : la clé plateforme
 
-**À ne pas sauter.** Iris travaille sur son propre miroir du référentiel, alimenté par
-`sync-socle-referentiel`. Si la racine n'y figure pas, les deux `insert … select` de l'étape 2
-n'insèrent **rien et ne lèvent aucune erreur** — un `INSERT 0` silencieux. L'échec ne se manifeste
-qu'au premier dépôt, sous la forme d'un « clé inconnue » qui désigne une tout autre cause.
+**1. Générer la clé**, hors de tout dépôt et de toute conversation — la sortie contient un secret :
+
+```bash
+node -e "const c=require('crypto');const k='irs_'+c.randomBytes(24).toString('hex');console.log('clé      :',k);console.log('préfixe  :',k.slice(0,12));console.log('sha256   :',c.createHash('sha256').update(k).digest('hex'))"
+```
+
+Trois sorties, trois destinations : le **sha256** et le **préfixe** vont en base (2), la **clé** va
+dans les secrets (3). ⚠️ Ne pas les intervertir : le préfixe commence par `irs_`, l'empreinte fait
+64 caractères hexadécimaux.
+
+**2. Déclarer la source plateforme et son empreinte dans Iris** (projet Iris, pas le Socle) :
+
+```sql
+insert into integration_sources (organization_id, code, name, status)
+values (null, 'portail-citoyen', 'Portail usagers (Nora) — plateforme', 'active')
+on conflict do nothing;
+
+insert into integration_credentials
+  (integration_source_id, name, key_prefix, key_hash, scopes, expires_at)
+select s.id, 'Nora — plateforme', '<12 premiers caractères>', '<sha256 hexadécimal>',
+       array['requests:write'], now() + interval '12 months'
+from integration_sources s
+where s.code = 'portail-citoyen' and s.organization_id is null;
+```
+
+⚠️ **Remplacer réellement les `<…>`.** Rien ici n'est validé : une empreinte valant littéralement
+`<sha256 hexadécimal>` s'insère sans broncher, et se paie d'un « clé inconnue » au premier dépôt.
+
+**3. Poser les secrets sur `portal-api`**, par le tableau de bord (*Edge Functions → Secrets*) ou
+par la CLI, depuis le dépôt Nora :
+
+```bash
+supabase secrets set \
+  IRIS_API_URL=https://<ref-iris>.supabase.co/functions/v1/requests-api \
+  IRIS_API_KEY=<la clé irs_…>
+```
+
+Pas de redéploiement nécessaire : `portal-api` lit `Deno.env` à chaque requête, le changement prend
+effet au prochain démarrage du worker.
+
+### B. Par collectivité : ouvrir le dépôt
+
+Aucun secret à toucher. Deux vérifications et une ligne.
+
+**0. La collectivité existe dans Iris.** Iris travaille sur son propre miroir du référentiel,
+alimenté par `sync-socle-referentiel`. Si la racine n'y figure pas, l'`insert … select` ci-dessous
+n'insère **rien et ne lève aucune erreur** — un `INSERT 0` silencieux — et Iris répondra 403
+« Collectivité inconnue » au premier dépôt.
 
 ```sql
 select id, name, socle_org_id
@@ -500,69 +552,38 @@ where socle_org_id = '<uuid racine Socle>';
 
 Zéro ligne → lancer `sync-socle-referentiel` avant toute chose.
 
-### 1. Générer la clé
-
-Hors de tout dépôt et de toute conversation — la sortie contient un secret :
-
-```bash
-node -e "const c=require('crypto');const k='irs_'+c.randomBytes(24).toString('hex');console.log('clé      :',k);console.log('préfixe  :',k.slice(0,12));console.log('sha256   :',c.createHash('sha256').update(k).digest('hex'))"
-```
-
-Trois sorties, trois destinations : le **sha256** et le **préfixe** vont en base (étape 2), la
-**clé** va dans les secrets (étape 3). Le préfixe ne sert qu'à repérer une clé dans une liste, il
-n'ouvre rien — c'est un champ d'affichage.
-
-### 2. Déclarer la source et la clé dans Iris
-
-⚠️ **Remplacer réellement les `<…>`.** Rien ici n'est validé : une empreinte valant littéralement
-`<sha256>` s'insère sans broncher, et se paie d'un « clé inconnue » à la première demande.
+**1. Déclarer la source de la collectivité**, sans clé :
 
 ```sql
 insert into integration_sources (organization_id, code, name, status)
 select id, 'portail-citoyen', 'Portail usagers (Nora)', 'active'
 from organizations where socle_org_id = '<uuid racine Socle>'
 on conflict (organization_id, code) do nothing;
-
-insert into integration_credentials
-  (integration_source_id, name, key_prefix, key_hash, scopes, expires_at)
-select s.id, 'Nora — production', '<12 premiers caractères>', '<sha256 hexadécimal>',
-       array['requests:write'], now() + interval '12 months'
-from integration_sources s
-join organizations o on o.id = s.organization_id
-where s.code = 'portail-citoyen'
-  and o.socle_org_id = '<uuid racine Socle>';
 ```
 
-Les deux doivent répondre `INSERT 0 1`. Un `INSERT 0 0` renvoie à l'étape 0.
+Doit répondre `INSERT 0 1`. Passer `status` à `suspended` ferme le dépôt pour cette seule
+collectivité, sans rien toucher d'autre.
 
 ⚠️ Le code **`portail-citoyen`** n'est pas décoratif : `portal-api` l'envoie comme `source_system`,
 et Iris refuse en **403** si les deux diffèrent. `IRIS_SOURCE_SYSTEM` permet d'en changer — à
-condition de changer les deux.
+condition de changer les deux, et la source plateforme avec.
 
-### 3. Poser les secrets sur `portal-api`
+### Révoquer, regénérer
 
-Par le tableau de bord Supabase (*Edge Functions → Secrets*) ou par la CLI, depuis le dépôt Nora :
+**Révoquer une clé** se fait dans Iris, jamais par suppression : `requests-api` refuse en 401 une
+clé dont `revoked_at` est posé, dès l'appel suivant, et le journal `integration_api_logs` garde ce
+qu'elle a déposé.
 
-```bash
-supabase secrets set \
-  IRIS_API_URL=https://<ref-iris>.supabase.co/functions/v1/requests-api \
-  IRIS_API_KEYS='{"<id Socle de la collectivité>":"<sa clé irs_…>","<autre id>":"<autre clé>"}'
+```sql
+update integration_credentials
+set revoked_at = now()
+where key_prefix = '<préfixe de la clé>' and revoked_at is null;
 ```
 
-**Une clé PAR collectivité**, rangées dans un seul secret JSON (`irisKeys.ts`) : `portal-api`
-choisit celle de la collectivité du domaine visité. Ajouter une collectivité, c'est refaire les
-étapes 0 à 2 pour elle, puis reposer `IRIS_API_KEYS` avec une entrée de plus — le secret se
-remplace en entier, il ne se complète pas. ⚠️ Une fois ce secret posé il fait foi SEUL : une
-collectivité qui n'y figure pas ne peut pas déposer (`iris_misconfigured`, et le journal la
-nomme), on ne retombe pas sur la clé d'une autre. L'ancien `IRIS_API_KEY` ne sert que tant que
-`IRIS_API_KEYS` n'existe pas ; il peut ensuite être retiré.
-
-Pas de redéploiement nécessaire : `portal-api` lit `Deno.env` à chaque requête, le changement prend
-effet au prochain démarrage du worker.
-
-⚠️ **Regénérer une clé, c'est deux gestes** — mettre à jour `key_hash` en base *et* reposer
-`IRIS_API_KEYS`. N'en faire qu'un laisse le portail avec une clé qu'Iris ne connaît plus, et le
-symptôme est le même que si rien n'avait été fait.
+⚠️ **Regénérer la clé, c'est deux gestes** — insérer la nouvelle empreinte en base *et* reposer
+`IRIS_API_KEY`. N'en faire qu'un laisse le portail avec une clé qu'Iris ne connaît plus, et le
+symptôme est le même que si rien n'avait été fait. Plusieurs clés actives coexistent sur la source
+plateforme : poser la nouvelle, basculer le secret, révoquer l'ancienne — sans coupure.
 
 Sans les deux secrets `IRIS_*`, tout le portail fonctionne **sauf** le dépôt, qui répond
 « portail non configuré » : la consultation ne dépend pas du système de traitement.
@@ -620,35 +641,36 @@ traite à l'instruction. Un Socle muet ne doit jamais faire perdre une demande.
 
 ## Une instance, plusieurs collectivités — en dépôt aussi
 
-La question a été ouverte longtemps ; elle est **tranchée depuis le 2026-09-21** : une seule
-instance sert toutes les collectivités, en lecture comme en dépôt.
+La question a été ouverte longtemps ; elle est **tranchée le 2026-09-22** : une seule instance sert
+toutes les collectivités, en lecture comme en dépôt, avec **une clé plateforme de chaque côté**.
 
 | | Comment |
 | --- | --- |
 | Lire — accueil, démarches, formulaire | la collectivité vient du domaine visité, et la clé Socle est une clé *plateforme* : elle résout tous les domaines |
-| Déposer — `POST /v1/demandes`, `/v1/demandes/pieces` | la clé Iris est liée à UNE source, donc à UNE collectivité (Iris rejette en 403 toute enveloppe dont la racine diffère) : `portal-api` choisit la clé de la collectivité qu'il vient de résoudre, dans le registre `IRIS_API_KEYS` (`irisKeys.ts`) |
+| Déposer — `POST /v1/demandes`, `/v1/demandes/pieces` | même modèle : une clé Iris *plateforme* (contrat 2.3.0), et `portal-api` nomme la collectivité à chaque appel (`X-Socle-Root-Organization-Id`). Iris exige qu'elle ait une source `portail-citoyen` active |
 
-Ce qui a été écarté, et pourquoi :
+Ce qui a été essayé et écarté, dans l'ordre :
 
 - **un déploiement par collectivité** : N déploiements à tenir à jour, et tout ce qui fait le
   cœur de l'architecture — résolution par `Origin`, cache par hostname — devenait du code mort ;
-- **une clé Iris « plateforme »** couvrant toutes les collectivités : une fuite ouvrirait le dépôt
-  chez toutes à la fois, et la révoquer les couperait toutes. Une clé par collectivité se révoque
-  seule, et le journal d'Iris dit qui a déposé quoi sans rien avoir à croiser.
+- **une clé Iris par collectivité**, rangées dans un secret JSON (`IRIS_API_KEYS`) — vécu une
+  journée, le 2026-09-22. Une clé Iris est liée à une source, donc à une collectivité ; la
+  troisième collectivité a montré le défaut : le secret se remplace en entier, Iris ne garde que
+  les empreintes, personne ne garde les clairs — donc toutes les clés à régénérer à chaque
+  ajout. Le rayon de fuite plus petit ne valait pas ce prix : Nora n'est pas un connecteur tiers
+  opéré par la collectivité, c'est le portail d'Edilumen, et il parle déjà au Socle avec une clé
+  plateforme.
 
-Le registre est un **secret JSON unique** parce que les secrets d'edge function sont plats. Il
-tient sans peine quelques dizaines de collectivités. Au-delà, ou le jour où l'ouverture d'une
-collectivité doit se faire sans passer par un secret (libre-service depuis le Socle), sa place est
-une table chiffrée côté Socle, servie au portail par sa clé plateforme — `resolveIrisKey` est le
-seul endroit à changer.
+Ce qui reste par collectivité, et c'est voulu : la **source** `portail-citoyen` d'Iris, sans clé —
+l'interrupteur du dépôt, et le journal. Ajouter une collectivité, c'est une ligne dans le Socle
+(son domaine) et une ligne dans Iris (sa source) ; aucun secret ne bouge.
 
 ⚠️ Ce qui reste vrai : un dépôt depuis un domaine porté par une **sous-organisation** s'envoie
-sous la racine de la collectivité, avec la clé de cette racine.
+sous la racine de la collectivité.
 
-Constaté le 2026-09-21 sur test2 (Rosny-sous-Bois), avant ce registre : formulaire rempli dans la
+Constaté le 2026-09-21 sur test2 (Rosny-sous-Bois), avant tout cela : formulaire rempli dans la
 conversation, identité saisie, envoi refusé — la seule clé posée était celle d'une autre
-collectivité. Les demandes de démonstration visibles dans Iris pour d'autres collectivités
-venaient de chargements par script, pas du portail.
+collectivité.
 
 ## Sécurité
 
@@ -683,7 +705,7 @@ supabase secrets set \
   SOCLE_API_URL=https://<ref-socle>.supabase.co/functions/v1/public-api \
   SOCLE_API_KEY=<clé plateforme, scope read> \
   IRIS_API_URL=https://<ref-iris>.supabase.co/functions/v1/requests-api \
-  IRIS_API_KEY=<clé d'intégration irs_…, scope requests:write>
+  IRIS_API_KEY=<clé d'intégration PLATEFORME irs_…, scope requests:write>
 supabase functions deploy portal-api
 ```
 
