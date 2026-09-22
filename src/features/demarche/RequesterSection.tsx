@@ -14,6 +14,7 @@
 import type { Audience, RequesterField } from "@fn/_shared/domain/requesterConfig.ts";
 import { AUDIENCES } from "@fn/_shared/domain/requesterConfig.ts";
 import type { FieldErrors } from "@fn/_shared/domain/formulaire.ts";
+import { AddressInput } from "./AddressInput.tsx";
 import { autocompleteFor } from "./autocomplete.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { errorText } from "@/i18n/t.ts";
@@ -50,11 +51,13 @@ function RequesterInput({
   value,
   onChange,
   error,
+  dense,
 }: {
   field: RequesterField;
   value: string;
   onChange: (value: string) => void;
   error: string | null;
+  dense: boolean;
 }) {
   const t = useT();
   const inputId = "requerant-" + field.key;
@@ -90,15 +93,17 @@ function RequesterInput({
           ))}
         </select>
       ) : field.key === "adresse" ? (
-        <textarea
+        // Une ligne qui propose les adresses du référentiel pendant la frappe
+        // — et qui accepte tout ce que l'usager tape (voir `AddressInput`).
+        <AddressInput
           id={inputId}
-          rows={2}
           className={className}
           value={value}
           autoComplete={autocompleteFor(field.key)}
-          aria-invalid={error !== null}
-          aria-describedby={describedBy}
-          onChange={(event) => onChange(event.target.value)}
+          invalid={error !== null}
+          describedBy={describedBy}
+          inline={dense}
+          onChange={onChange}
         />
       ) : (
         <input
@@ -218,6 +223,7 @@ export function RequesterSection({
                 value={values[field.key] ?? ""}
                 onChange={(value) => onChange(field.key, value)}
                 error={errorText(lang, errors[field.key])}
+                dense={dense}
               />
             ))}
           </div>

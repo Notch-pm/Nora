@@ -12,6 +12,8 @@ interface ImportMetaEnv {
   readonly VITE_PORTAL_API_URL?: string;
   /** Durée du cache mémoire de l'onglet, en secondes. `0` le désactive. */
   readonly VITE_PORTAL_CACHE_TTL_SECONDS?: string;
+  /** Le géocodeur qui complète l'adresse de l'usager. Facultative — la Géoplateforme (IGN) par défaut. */
+  readonly VITE_GEOCODE_URL?: string;
 }
 
 interface ImportMeta {

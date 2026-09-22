@@ -470,6 +470,25 @@ que le Socle les nomme : Iris les lit ainsi (`_shared/identity/declared.ts`) pou
 l'usager du référentiel, ou créer sa fiche. Écrire une correspondance ici en ferait une troisième
 vérité, qui divergerait au premier champ ajouté.
 
+**L'adresse de l'usager se tape sur une ligne, complétée par la Base Adresse Nationale**
+(`AddressInput.tsx`, porté du champ d'Iris ; logique pure dans `src/services/adresse/ban.ts`).
+Dès trois caractères, le portail propose cinq adresses du référentiel ; retenir l'une d'elles écrit
+son libellé entier (« 10 Avenue de Frémeur 44000 Nantes ») dans la clé `adresse` — c'est ce
+qu'Iris fait sur ce même champ, et le contrat ne bouge pas. Retenir une proposition est
+**facultatif** : ce que l'usager tape est conservé tel quel (la BAN ignore les adresses neuves et
+tout ce qui n'est pas en France), et le service muet ne change rien à la saisie. Le clavier fait
+tout (↑ ↓, Entrée choisit sans soumettre, Échap ferme), la liste est un `combobox` / `listbox` ARIA
+et le nombre de propositions est annoncé aux lecteurs d'écran.
+
+⚠️ **C'est le seul appel de l'écran hors de `portal-api`**, et il part **du navigateur de
+l'usager** vers `data.geopf.fr` (Géoplateforme, IGN — API publique de l'État, sans clé ; décision
+du 2026-09-22). Ce qui transite : le fragment d'adresse tapé, et l'adresse IP du visiteur, comme
+pour tout site qui interroge ce service. Ni nom, ni démarche, ni collectivité. Rien de la réponse
+n'est gardé — ni coordonnées, ni identifiant BAN : seule la ligne choisie ou tapée part avec la
+demande. Le service se substitue par `VITE_GEOCODE_URL` (voir `.env.example`). Les blocs d'adresse
+des formulaires de démarche (`intervention_*`) ne sont pas concernés : ils restent des champs
+séparés.
+
 ## Raccordement à Iris
 
 Iris n'a **aucune logique propre à un émetteur** : le portail y est une *source enregistrée*, au

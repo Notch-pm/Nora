@@ -9,10 +9,10 @@
  * donc rien, elle ne fait qu'associer à chacune le jeton `autocomplete` que le
  * standard HTML lui connaît.
  *
- * ⚠️ `adresse` EST UN SEUL CHAMP ICI (une zone de texte), donc `street-address`
- * — la subdivision (`address-line1` / `postal-code` / `address-level2` /
- * `country-name`) ne s'applique qu'à des champs séparés, qui n'existent pas
- * dans ce paramétrage. `date_naissance` n'existe pas non plus aujourd'hui
+ * ⚠️ `adresse` EST UN SEUL CHAMP ICI (une ligne, complétée par la Base Adresse
+ * Nationale — `AddressInput.tsx`), donc `street-address` — la subdivision
+ * (`address-line1` / `postal-code` / `address-level2` / `country-name`) ne
+ * s'applique qu'à des champs séparés, qui n'existent pas dans ce paramétrage. `date_naissance` n'existe pas non plus aujourd'hui
  * (aucun public n'a ce champ) : l'entrée est posée par avance, sans risque —
  * une clé absente du paramétrage ne rend simplement rien.
  *
