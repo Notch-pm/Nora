@@ -1324,9 +1324,9 @@ export const STRINGS = {
   // ⚠️ `consent.traitement` et `consent.partage` sont les phrases que l'usager
   // ACCEPTE : en français, elles sont MOT POUR MOT celles qu'Iris consigne
   // (`_shared/consents/catalog.ts`, `consentStatement`), épinglées par
-  // `consents.test.ts`. Les autres langues sont ce que lit un usager non
-  // francophone ; la trace, elle, reste composée en français par Iris (voir le
-  // README, « Les consentements RGPD »). `{organisme}` = la collectivité.
+  // `consents.test.ts`. Les autres langues sont des TRADUCTIONS de cette
+  // phrase-là, pour l'usager qui la lit ; la trace consignée reste française,
+  // par décision (les agents lisent le français). `{organisme}` = la collectivité.
   "consent.heading": {
     fr: "Vos consentements",
     en: "Your consent",

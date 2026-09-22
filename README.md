@@ -505,13 +505,13 @@ d'ingestion 2.2.0). Ils remplacent « accepte les mails / accepte les SMS », et
   Socle), le même qu'Iris interpole avec la clé plateforme (`auth.organismName`). Sur une page
   d'organisme (`/mairie-d-arles/...`), la phrase nomme donc la collectivité, pas la mairie :
   c'est ce qui sera archivé. `src/i18n/consents.test.ts` épingle le français sur celui d'Iris.
-- ⚠️ **Question ouverte : la langue de la preuve.** Un usager qui lit le portail en anglais
-  accepte la phrase anglaise, mais Iris consigne la française (il n'accepte ni `statement`, ni
-  langue). Le Socle, lui, dit que la phrase « vient de l'application qui a affiché la case :
-  elle seule connaît sa langue ». Pour que la trace soit fidèle en langue étrangère, il faudra
-  un ajout au contrat d'ingestion d'Iris (une `lang`, ou un `statement` accepté quand la source
-  est de confiance). À trancher côté Iris ; d'ici là, la trace d'un dépôt non francophone est
-  la phrase française, ce que le dictionnaire signale en commentaire.
+- **La preuve est en français, par décision (2026-09-22).** Un usager qui lit le portail en
+  anglais coche la phrase anglaise du dictionnaire ; Iris consigne la française, et c'est voulu :
+  les agents qui instruisent lisent le français, et une trace dans onze langues ne se relirait
+  pas. Ce que le dictionnaire traduit est donc une **traduction de la phrase consignée**, jamais
+  une autre phrase — les onze versions doivent dire la même chose que le français, et se
+  relisent comme telles. Iris n'accepte d'ailleurs ni `statement` ni langue : rien à ajouter
+  au contrat.
 - **Deux gardes, la même règle.** L'écran refuse d'envoyer sans le consentement au traitement
   (`validateConsents`, erreur reliée à sa case, comptée dans le récapitulatif d'erreurs) ; et
   `portal-api` refuse (400) un corps sans `consents`, un `kind` hors catalogue, un doublon, une
