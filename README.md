@@ -617,11 +617,15 @@ domaine de la collectivité. Il répond `not_configured` sans secrets, une erreu
 
 | Réponse d'Iris | Cause |
 | --- | --- |
-| 401 « Clé d'intégration inconnue » | `key_hash` ne correspond pas à la clé posée sur Nora |
+| 401 « Clé d'intégration inconnue » | `key_hash` ne correspond pas à la clé posée sur Nora — souvent un gabarit `<sha256>` laissé tel quel, ou préfixe et empreinte intervertis |
 | 401 « expirée » / « révoquée » | `expires_at` dépassé, ou `revoked_at` renseigné |
-| 403 « Intégration suspendue » | `integration_sources.status` ≠ `'active'` |
+| 403 « Intégration suspendue » | la source PLATEFORME est suspendue : tout le portail est coupé |
+| 400 « X-Socle-Root-Organization-Id requis » | `portal-api` déployée d'avant la clé plateforme (elle n'envoie pas l'en-tête) |
+| 403 « Collectivité inconnue d'Iris » | la racine du domaine visité n'est pas dans le miroir d'Iris — lancer `sync-socle-referentiel` (étape B.0) |
+| 403 « Source … non déclarée pour cette collectivité » | pas de ligne `integration_sources` `portail-citoyen` pour elle (étape B.1) |
+| 403 « Intégration suspendue pour cette collectivité » | sa source est `suspended` : le dépôt est fermé pour elle seule, c'est voulu |
 | 403 « source_system ne correspond pas » | le `code` de la source ≠ `IRIS_SOURCE_SYSTEM` |
-| 403 sur la racine | la collectivité du domaine visité n'est pas celle de la clé — voir « Plusieurs portails » |
+| 400 « démarche non activée pour cet organisme » | l'organisme envoyé n'active pas la démarche dans le miroir d'Iris — voir « Le dépôt », la vitrine et le guichet |
 
 ⚠️ Le portail traduit **tous** ces cas en `iris_misconfigured`, dont le message invite l'usager à
 « réessayer dans quelques instants ». C'est trompeur pour une panne de paramétrage, qui ne se
