@@ -45,8 +45,13 @@ import {
 import {
   type CityHint,
   cityReason,
+  type CommuneEntry,
+  matchCommune,
+  type PostalHint,
   postalCityPairs,
   postalCodeIn,
+  postalReason,
+  readCityName,
   readPostalCode,
 } from "./postalCity.ts";
 import { buildAssistantPrompt, type CollectableField } from "./prompt.ts";
@@ -79,6 +84,12 @@ export interface TurnDeps {
    * ⚠️ Seul le code postal sort d'ici : ni le message, ni l'adresse.
    */
   lookupCommunes?(postalCode: string): Promise<string[] | null>;
+  /**
+   * Le sens inverse : les codes postaux d'une commune, par son nom — `null`
+   * si le référentiel ne répond pas. ⚠️ Seul un nom de commune sort d'ici,
+   * sans le moindre chiffre (`readCityName`) : jamais une adresse.
+   */
+  lookupPostalCodes?(city: string): Promise<CommuneEntry[] | null>;
 }
 
 export type TurnOutcome =
@@ -175,7 +186,7 @@ function collectionDemarcheId(tenant: Tenant, raw: unknown): string | null {
 async function findCityHint(
   schema: FormSchema,
   state: CollectionState,
-  lastSaid: string,
+  heard: string,
   deps: TurnDeps,
 ): Promise<CityHint | null> {
   if (deps.lookupCommunes === undefined) return null;
@@ -183,7 +194,7 @@ async function findCityHint(
   for (const { postal, city } of postalCityPairs(schema)) {
     if (!pending.has(city.id) || state.touched.includes(city.id)) continue;
     const postalCode = pending.has(postal.id)
-      ? postalCodeIn(lastSaid)
+      ? postalCodeIn(heard)
       : readPostalCode(state.values[postal.id]);
     if (postalCode === null) continue;
     const communes = await deps.lookupCommunes(postalCode);
@@ -216,6 +227,65 @@ function fillCity(
   return answerField(schema, state, pair.city.id, hint.communes[0], {
     origin: "inferred",
     reason: cityReason(lang, hint.postalCode),
+  });
+}
+
+/**
+ * Le sens inverse : la commune dont le code postal manque encore — pour la
+ * première adresse dont la ville est retenue et le code postal en attente.
+ * `null` s'il n'y a rien à chercher, ou rien d'envoyable (`readCityName`).
+ */
+function cityToLookup(schema: FormSchema, state: CollectionState): { city: string; postalFieldId: string } | null {
+  const pending = new Set(pendingFields(schema, state).map((field) => field.id));
+  for (const { postal, city } of postalCityPairs(schema)) {
+    if (!pending.has(postal.id) || pending.has(city.id) || state.touched.includes(postal.id)) continue;
+    const name = readCityName(state.values[city.id]);
+    if (name !== null) return { city: name, postalFieldId: postal.id };
+  }
+  return null;
+}
+
+/**
+ * Les codes postaux de la commune retenue — cherchés au référentiel, par son
+ * nom. Rien n'est deviné : sans commune de ce nom exact, ou avec deux
+ * homonymes, `null` ; le code postal se demande.
+ */
+async function findPostalHint(
+  schema: FormSchema,
+  state: CollectionState,
+  deps: TurnDeps,
+): Promise<PostalHint | null> {
+  if (deps.lookupPostalCodes === undefined) return null;
+  const wanted = cityToLookup(schema, state);
+  if (wanted === null) return null;
+  const entries = await deps.lookupPostalCodes(wanted.city);
+  if (entries === null) return null;
+  const commune = matchCommune(entries, wanted.city);
+  if (commune === null) return null;
+  return { commune: commune.nom, postalFieldId: wanted.postalFieldId, codes: commune.codesPostaux };
+}
+
+/**
+ * Renseigner le code postal, quand la commune n'en a qu'UN — pour la ville
+ * RETENUE, revérifiée contre le nom que le référentiel a rendu. Même badge
+ * « déduit », même raison lisible, même « Modifier » au récapitulatif.
+ */
+function fillPostal(
+  schema: FormSchema,
+  state: CollectionState,
+  hint: PostalHint | null,
+  lang: string,
+): CollectionState {
+  if (hint === null || hint.codes.length !== 1) return state;
+  const pair = postalCityPairs(schema).find(({ postal }) => postal.id === hint.postalFieldId);
+  if (pair === undefined) return state;
+  const stillPending = pendingFields(schema, state).some((field) => field.id === pair.postal.id);
+  if (!stillPending || state.touched.includes(pair.postal.id)) return state;
+  const city = readCityName(state.values[pair.city.id]);
+  if (city === null || matchCommune([{ nom: hint.commune, codesPostaux: hint.codes }], city) === null) return state;
+  return answerField(schema, state, pair.postal.id, hint.codes[0], {
+    origin: "inferred",
+    reason: postalReason(lang, hint.commune),
   });
 }
 
@@ -294,16 +364,35 @@ export async function runAssistantTurn(
 
   const said = messages.filter((m) => m.role === "user").slice(-3).map((m) => m.content).join(" ");
   const lastSaid = messages[messages.length - 1].content;
+  // ⚠️ TOUT ce que l'usager a écrit dans la fenêtre envoyée au modèle — pas
+  // seulement son dernier message. Constaté en test : « il y a des dépôts
+  // d'ordure rue de la République », puis le recueil s'ouvre sur « Je voudrais
+  // remplir … avec vous » — et l'assistant demande la rue, puis le type de
+  // problème (« je l'ai déjà dit ! »). Une citation vérifiée contre le seul
+  // dernier message rejetait tout ce qui avait été dit avant l'ouverture, et
+  // un code postal donné deux messages plus tôt n'était jamais cherché.
+  const history = windowHistory(messages);
+  const heard = history.filter((m) => m.role === "user").map((m) => m.content).join(" ");
 
   // La ville que le code postal désigne. Si le code postal était DÉJÀ retenu
   // (tour précédent, ou saisi dans son contrôle), elle se renseigne tout de
   // suite : le modèle la lira « déjà renseigné » et ne la demandera pas.
   const cityHint =
     collection !== null && focus?.form != null
-      ? await findCityHint(focus.form, collection, lastSaid, deps)
+      ? await findCityHint(focus.form, collection, heard, deps)
       : null;
   if (collection !== null && focus?.form != null) {
     collection = fillCity(focus.form, collection, cityHint, lang);
+  }
+  // Et le sens inverse : la ville est retenue, le code postal manque. Une
+  // commune à un seul code postal se renseigne avant le modèle ; à plusieurs,
+  // le modèle les reçoit et demande lequel.
+  const postalHint =
+    collection !== null && focus?.form != null
+      ? await findPostalHint(focus.form, collection, deps)
+      : null;
+  if (collection !== null && focus?.form != null) {
+    collection = fillPostal(focus.form, collection, postalHint, lang);
   }
 
   // Restait-il de l'obligatoire AVANT ce tour ? C'est ce qui dit, plus bas, si
@@ -331,12 +420,13 @@ export async function runAssistantTurn(
     // la démarche consultée a bien un formulaire.
     offering: tenant.assistant.depositEnabled && focus?.form != null,
     cityHint,
+    postalHint,
   });
 
   const completion = await deps.ai.complete({
     organizationId: tenant.id,
     system,
-    messages: windowHistory(messages).map(({ role, content }) => ({ role, content })),
+    messages: history.map(({ role, content }) => ({ role, content })),
     actorId: ticket.conversationId,
     procedureId: focus?.id ?? null,
   });
@@ -358,13 +448,21 @@ export async function runAssistantTurn(
   // Ce que le modèle dit avoir compris n'entre que par `applyUpdates` : champ
   // en attente, auquel on répond en écrivant, valeur valide. Le reste tombe.
   //
-  // ⚠️ `lastSaid` sert à TRANCHER L'ORIGINE : « repris » n'est retenu que si la
-  // citation figure vraiment dans le dernier message. C'est le serveur qui en
-  // décide, jamais le modèle — sur les mots réels, pas sur ce qu'il en dit.
+  // ⚠️ `heard` sert à TRANCHER L'ORIGINE : « repris » n'est retenu que si la
+  // citation figure vraiment dans ce que l'usager a écrit — dans ce message ou
+  // plus haut. C'est le serveur qui en décide, jamais le modèle — sur les mots
+  // réels, pas sur ce qu'il en dit.
   if (collection !== null && focus?.form != null) {
-    collection = applyUpdates(focus.form, collection, answer.fieldUpdates, lastSaid).state;
+    const cityKnownBefore = cityToLookup(focus.form, collection) !== null;
+    collection = applyUpdates(focus.form, collection, answer.fieldUpdates, heard).state;
     // Le modèle vient de retenir le code postal : la ville suit.
     collection = fillCity(focus.form, collection, cityHint, lang);
+    // Ou la ville : le code postal suit, sans attendre le tour d'après — le
+    // compteur de l'écran et le récapitulatif le montrent tout de suite. Un
+    // seul appel de plus, et seulement quand la ville vient d'arriver.
+    if (!cityKnownBefore && cityToLookup(focus.form, collection) !== null) {
+      collection = fillPostal(focus.form, collection, await findPostalHint(focus.form, collection, deps), lang);
+    }
   }
 
   // --- LE FILET. Le modèle ne demande rien, alors qu'il reste de l'obligatoire :
@@ -421,7 +519,7 @@ export async function runAssistantTurn(
           ? parseAssistantAnswer(second.answer, new Set(catalogue.map((d) => d.id)))
           : null;
       if (retried !== null) {
-        const next = applyUpdates(form, collection, retried.fieldUpdates, lastSaid).state;
+        const next = applyUpdates(form, collection, retried.fieldUpdates, heard).state;
         if (strayed(next, retried.asking, retried.reply) === null) {
           collection = next;
           reply = retried.reply;

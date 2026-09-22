@@ -12,7 +12,7 @@ import { defaultTheme } from "../domain/theme.ts";
 import { emptyUserCommunication } from "../domain/userCommunication.ts";
 import { MAX_TURNS, MAX_TURNS_COLLECT } from "../domain/assistantTurn.ts";
 import { issueChallenge, solveChallenge } from "./challenge.ts";
-import { readTicket } from "./signing.ts";
+import { issueTicket, readTicket, signReply } from "./signing.ts";
 import type { CompletionInput, CompletionResult } from "./socleAi.ts";
 import { runAssistantTurn, type TurnDeps } from "./turn.ts";
 
@@ -83,6 +83,50 @@ const body = async (said: string, collection: unknown) => ({
   collection,
 });
 const opening = { demarcheId: PROPRETE, values: {}, skipped: [] };
+
+describe("ce que l'usager a dit AVANT d'ouvrir le recueil compte", () => {
+  // Le fil réel du 2026-09-22 : l'usager décrit son problème, l'assistant
+  // oriente, le bouton ouvre le recueil — et le dernier message ne dit plus
+  // rien du lieu. L'assistant demandait alors la rue, puis le type de problème.
+  it("« des dépôts d'ordure rue de la République » deux messages plus tôt → retenu, et « repris » : la citation se vérifie sur TOUT le fil", async () => {
+    const { deps, complete } = setup({
+      reply: "J'ai noté la rue de la République et un dépôt d'ordures. Qu'avez-vous constaté exactement ?",
+      field_updates: [
+        { id: "f-lieu", value: "rue de la République", origin: "extracted", source: "rue de la République" },
+        { id: "f-nature", value: "Autre", origin: "inferred", reason: "des ordures ne sont pas des gravats" },
+      ],
+      asking: ["f-precisions"],
+    });
+    const conversationId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const oriented = "Vous pouvez signaler ce dépôt avec la démarche dédiée.";
+    const outcome = await runAssistantTurn(
+      tenant(true),
+      "fr",
+      {
+        ticket: await issueTicket(SECRET, { conversationId, tenantId: NANTES, issuedAt: NOW, turn: 1, collecting: false }),
+        messages: [
+          { role: "user", content: "il y a des dépôts d'ordure rue de la République" },
+          { role: "assistant", content: oriented, signature: await signReply(SECRET, conversationId, oriented) },
+          { role: "user", content: "Je voudrais remplir « Signaler un problème de propreté » avec vous." },
+        ],
+        collection: opening,
+      },
+      deps,
+    );
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.reply.collection?.values).toEqual({ "f-lieu": "rue de la République", "f-nature": "autre" });
+    // ⚠️ La citation est dans le PREMIER message, pas dans le dernier : « repris » quand même.
+    expect(outcome.reply.collection?.origins?.["f-lieu"]).toEqual({ origin: "extracted", source: "rue de la République" });
+    // Et la consigne le dit en toutes lettres.
+    const system = complete.mock.calls[0][0].system;
+    expect(system).toContain("PLUS HAUT dans la conversation");
+    expect(system).toContain("AVANT d'ouvrir le recueil");
+    // Le modèle a bien reçu les trois messages, pas seulement le dernier.
+    expect(complete.mock.calls[0][0].messages.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
+  });
+});
 
 describe("le recueil dans la conversation", () => {
   it("« devant le 12 rue de la Paix, des gravats » → les DEUX réponses sont retenues, le choix compris", async () => {

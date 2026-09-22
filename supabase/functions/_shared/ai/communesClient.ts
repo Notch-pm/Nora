@@ -9,10 +9,37 @@
  * Un référentiel lent ne doit rien coûter de visible — on rend `null`, et la
  * ville se demande comme avant.
  */
-import { readCommunes } from "./postalCity.ts";
+import { type CommuneEntry, readCityName, readCommuneEntries, readCommunes } from "./postalCity.ts";
 
 const GEO_API_URL = "https://geo.api.gouv.fr/communes";
 const TIMEOUT_MS = 1500;
+
+/**
+ * Le sens inverse : les codes postaux d'une commune, cherchée par son NOM.
+ *
+ * ⚠️ Seul un nom de commune sort d'ici — lettres, espaces, traits d'union,
+ * revérifié juste avant l'appel (`readCityName`) : jamais un chiffre, donc
+ * jamais une adresse. Le référentiel cherche en approchant (« Rosny sous
+ * bois » rend Rosny-sous-Bois, puis Rosny-sur-Seine) ; c'est `matchCommune`
+ * qui exige ensuite le nom exact.
+ */
+export async function lookupPostalCodes(
+  city: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<CommuneEntry[] | null> {
+  const name = readCityName(city);
+  if (name === null) return null;
+  try {
+    const response = await fetchImpl(
+      `${GEO_API_URL}?nom=${encodeURIComponent(name)}&fields=nom,codesPostaux&format=json&boost=population&limit=10`,
+      { signal: AbortSignal.timeout(TIMEOUT_MS) },
+    );
+    if (!response.ok) return null;
+    return readCommuneEntries(await response.json());
+  } catch {
+    return null;
+  }
+}
 
 export async function lookupCommunes(
   postalCode: string,

@@ -104,3 +104,91 @@ const REASONS: Record<string, (code: string) => string> = {
 export function cityReason(lang: string, postalCode: string): string {
   return (REASONS[lang.slice(0, 2).toLowerCase()] ?? REASONS.fr)(postalCode);
 }
+
+// ── Le sens inverse : le CODE POSTAL se déduit de la VILLE ──────────────────
+//
+// Constaté en test (2026-09-22) : « au 1 rue de la République à Rosny sous
+// bois » — le modèle retient la rue, puis demande le code postal. L'usager
+// répond « Rosny sous bois ! », excédé : il l'a déjà dit. Et le modèle écrit
+// alors « 93110 » de sa propre autorité — juste ici, faux ailleurs. Même
+// règle que pour la ville : c'est le référentiel qui répond, jamais le modèle.
+
+/**
+ * Le nom d'une commune tel qu'on accepte de l'ENVOYER au référentiel : des
+ * lettres, des espaces, des traits d'union, des apostrophes — jamais un chiffre.
+ * ⚠️ C'est la barrière qui garantit qu'une adresse entière rangée par erreur
+ * dans le champ ville (« 12 rue X, Rosny ») ne sort pas d'ici.
+ */
+const CITY_NAME = /^\p{L}[\p{L}\s'’.-]{0,59}$/u;
+
+export function readCityName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const clean = value.trim().replace(/\s+/g, " ");
+  return CITY_NAME.test(clean) ? clean : null;
+}
+
+const MAX_CODES = 20;
+
+export interface CommuneEntry {
+  nom: string;
+  codesPostaux: string[];
+}
+
+/** La réponse de `geo.api.gouv.fr/communes?nom=…&fields=nom,codesPostaux`, ramenée à l'essentiel. */
+export function readCommuneEntries(raw: unknown): CommuneEntry[] | null {
+  if (!Array.isArray(raw)) return null;
+  const entries: CommuneEntry[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const { nom, codesPostaux } = entry as Record<string, unknown>;
+    if (typeof nom !== "string" || !Array.isArray(codesPostaux)) continue;
+    const name = nom.trim().slice(0, 80);
+    const codes = [...new Set(codesPostaux.map(readPostalCode).filter((c): c is string => c !== null))];
+    if (name !== "" && codes.length > 0) entries.push({ nom: name, codesPostaux: codes.slice(0, MAX_CODES) });
+  }
+  return entries.slice(0, MAX_COMMUNES);
+}
+
+/** « Rosny sous bois », « ROSNY-SOUS-BOIS », « St-Denis » et « Saint-Denis » : la même graphie. */
+function foldName(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\bst\b/g, "saint")
+    .replace(/\bste\b/g, "sainte")
+    .trim();
+}
+
+/**
+ * LA commune qui porte ce nom — exactement, sinon rien. « Rosny » seul ne
+ * désigne aucune des communes rendues par la recherche, et deux communes
+ * homonymes (Saint-Denis, 93 et 974) ne se départagent pas ici : on s'abstient,
+ * et le code postal se demande.
+ */
+export function matchCommune(entries: CommuneEntry[], city: string): CommuneEntry | null {
+  const wanted = foldName(city);
+  const matches = entries.filter((entry) => foldName(entry.nom) === wanted);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/** Ce que le prompt dit au modèle de ce que le référentiel a répondu pour une commune. */
+export interface PostalHint {
+  /** La commune telle que le référentiel la nomme. */
+  commune: string;
+  /** Le champ « code postal » concerné. */
+  postalFieldId: string;
+  codes: string[];
+}
+
+const POSTAL_REASONS: Record<string, (commune: string) => string> = {
+  fr: (commune) => `D'après la commune ${commune}.`,
+  en: (commune) => `From the commune ${commune}.`,
+  es: (commune) => `Según el municipio ${commune}.`,
+  de: (commune) => `Anhand der Gemeinde ${commune}.`,
+};
+
+export function postalReason(lang: string, commune: string): string {
+  return (POSTAL_REASONS[lang.slice(0, 2).toLowerCase()] ?? POSTAL_REASONS.fr)(commune);
+}

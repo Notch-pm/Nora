@@ -14,8 +14,16 @@ import type { Tenant } from "../domain/tenant.ts";
 import { defaultTheme } from "../domain/theme.ts";
 import { emptyUserCommunication } from "../domain/userCommunication.ts";
 import { issueChallenge, solveChallenge } from "./challenge.ts";
-import { lookupCommunes } from "./communesClient.ts";
-import { postalCityPairs, postalCodeIn, readCommunes } from "./postalCity.ts";
+import { lookupCommunes, lookupPostalCodes } from "./communesClient.ts";
+import {
+  type CommuneEntry,
+  matchCommune,
+  postalCityPairs,
+  postalCodeIn,
+  readCityName,
+  readCommuneEntries,
+  readCommunes,
+} from "./postalCity.ts";
 import type { CompletionInput, CompletionResult } from "./socleAi.ts";
 import { runAssistantTurn, type TurnDeps } from "./turn.ts";
 
@@ -65,7 +73,11 @@ const detail: DemarcheDetail = {
 type Answer = Record<string, unknown>;
 
 /** Un guichet qui rend ses réponses DANS L'ORDRE — la dernière se répète. */
-function setup(answers: Answer[], communes: Record<string, string[] | null> = {}) {
+function setup(
+  answers: Answer[],
+  communes: Record<string, string[] | null> = {},
+  postalCodes: Record<string, CommuneEntry[] | null> = {},
+) {
   let call = 0;
   const complete = vi.fn(async (_input: CompletionInput): Promise<CompletionResult> => ({
     kind: "ok",
@@ -75,6 +87,7 @@ function setup(answers: Answer[], communes: Record<string, string[] | null> = {}
     }),
   }));
   const lookup = vi.fn(async (code: string) => communes[code] ?? null);
+  const lookupByName = vi.fn(async (city: string) => postalCodes[city] ?? null);
   const deps: TurnDeps = {
     secret: SECRET,
     ai: { complete },
@@ -83,8 +96,9 @@ function setup(answers: Answer[], communes: Record<string, string[] | null> = {}
     nowSeconds: () => NOW,
     newConversationId: () => "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     lookupCommunes: lookup,
+    lookupPostalCodes: lookupByName,
   };
-  return { deps, complete, lookup };
+  return { deps, complete, lookup, lookupByName };
 }
 
 const body = async (said: string, values: Record<string, unknown>) => ({
@@ -158,6 +172,96 @@ describe("la ville se déduit du code postal", () => {
     const { deps } = setup([{ field_updates: [cp], asking: ["f-ville"] }], {});
     const outcome = await runAssistantTurn(tenant, "fr", await body("44000", {}), deps);
     expect(outcome.ok && outcome.reply.collection?.values).toEqual({ "f-cp": "44000" });
+  });
+});
+
+describe("le code postal se déduit de la ville", () => {
+  // Ce que le référentiel rend à « Rosny sous bois » : la bonne, puis une voisine de nom.
+  const rosny: CommuneEntry[] = [
+    { nom: "Rosny-sous-Bois", codesPostaux: ["93110"] },
+    { nom: "Rosny-sur-Seine", codesPostaux: ["78710"] },
+  ];
+  const voie = { id: "f-voie", value: "1 rue de la République", origin: "extracted", source: "1 rue de la République" };
+  const ville = { id: "f-ville", value: "Rosny sous bois", origin: "extracted", source: "Rosny sous bois" };
+
+  it("« au 1 rue de la République à Rosny sous bois » → le code postal est renseigné par le SERVEUR, dans le même tour", async () => {
+    const { deps, complete, lookupByName } = setup(
+      [{ reply: "C'est noté. Que constatez-vous ?", field_updates: [voie, ville], asking: ["f-description"] }],
+      {},
+      { "Rosny sous bois": rosny },
+    );
+    const outcome = await runAssistantTurn(tenant, "fr", await body("au 1 rue de la République à Rosny sous bois", {}), deps);
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.reply.collection?.values).toMatchObject({ "f-ville": "Rosny sous bois", "f-cp": "93110" });
+    expect(outcome.reply.collection?.origins?.["f-cp"]).toEqual({
+      origin: "inferred",
+      reason: "D'après la commune Rosny-sous-Bois.",
+    });
+    // ⚠️ Seul le nom de la commune est sorti — jamais la rue, jamais le message.
+    expect(lookupByName.mock.calls).toEqual([["Rosny sous bois"]]);
+    // Le modèle demandait la description, qui reste à obtenir : un seul appel.
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it("la ville était déjà là → le code postal suit AVANT le modèle, qui le lit « déjà renseigné »", async () => {
+    const { deps, complete } = setup([{ asking: ["f-description"] }], {}, { "Rosny-sous-Bois": rosny });
+    const outcome = await runAssistantTurn(tenant, "fr", await body("Et ensuite ?", { "f-ville": "Rosny-sous-Bois" }), deps);
+    expect(outcome.ok && outcome.reply.collection?.values).toMatchObject({ "f-cp": "93110" });
+    const system = complete.mock.calls[0][0].system;
+    expect(system).toContain("déjà renseigné : « 93110 »");
+    // Un seul code : pas de bloc à trancher (la consigne, elle, nomme toujours le bloc).
+    expect(system).not.toContain("CODES POSTAUX DE LA COMMUNE Rosny-sous-Bois (information id:");
+  });
+
+  it("⚠️ plusieurs codes postaux → rien n'est deviné : le modèle reçoit les codes, et demande lequel", async () => {
+    const nantes: CommuneEntry[] = [{ nom: "Nantes", codesPostaux: ["44000", "44100", "44200", "44300"] }];
+    const { deps, complete } = setup([{ asking: ["f-cp"] }], {}, { Nantes: nantes });
+    const outcome = await runAssistantTurn(tenant, "fr", await body("Et ensuite ?", { "f-ville": "Nantes" }), deps);
+    expect(outcome.ok && outcome.reply.collection?.values).toEqual({ "f-ville": "Nantes" });
+    expect(outcome.ok && outcome.reply.asking).toEqual(["f-cp"]);
+    const system = complete.mock.calls[0][0].system;
+    expect(system).toContain("CODES POSTAUX DE LA COMMUNE Nantes (information id: f-cp)");
+    expect(system).toContain("44000\n44100\n44200\n44300");
+  });
+
+  it("⚠️ « Rosny » seul, ou deux homonymes → rien : le nom doit être exact, et unique", async () => {
+    const { deps } = setup([{ asking: ["f-cp"] }], {}, {
+      Rosny: rosny,
+      "Saint-Denis": [
+        { nom: "Saint-Denis", codesPostaux: ["93200"] },
+        { nom: "Saint-Denis", codesPostaux: ["97400"] },
+      ],
+    });
+    const short = await runAssistantTurn(tenant, "fr", await body("Et ensuite ?", { "f-ville": "Rosny" }), deps);
+    expect(short.ok && short.reply.collection?.values).toEqual({ "f-ville": "Rosny" });
+    const twins = await runAssistantTurn(tenant, "fr", await body("Et ensuite ?", { "f-ville": "Saint-Denis" }), deps);
+    expect(twins.ok && twins.reply.collection?.values).toEqual({ "f-ville": "Saint-Denis" });
+  });
+
+  it("⚠️ une « ville » qui contient un chiffre ne sort JAMAIS : c'est peut-être une adresse", async () => {
+    const { deps, lookupByName } = setup([{ asking: ["f-cp"] }]);
+    await runAssistantTurn(tenant, "fr", await body("Et ensuite ?", { "f-ville": "12 rue X, Rosny" }), deps);
+    expect(lookupByName).not.toHaveBeenCalled();
+  });
+
+  it("un code postal que l'usager a VIDÉ lui-même n'est pas re-rempli", async () => {
+    const { deps, lookupByName } = setup([{ asking: ["f-cp"] }], {}, { "Rosny-sous-Bois": rosny });
+    const request = await body("Non", { "f-ville": "Rosny-sous-Bois" });
+    const outcome = await runAssistantTurn(
+      tenant, "fr", { ...request, collection: { ...request.collection, touched: ["f-cp"] } }, deps,
+    );
+    expect(outcome.ok && outcome.reply.collection?.values).toEqual({ "f-ville": "Rosny-sous-Bois" });
+    expect(lookupByName).not.toHaveBeenCalled();
+  });
+
+  it("la consigne interdit au modèle de demander, ou d'inventer, un code postal quand la ville est dite", async () => {
+    const { deps, complete } = setup([{ asking: ["f-voie"] }]);
+    await runAssistantTurn(tenant, "fr", await body("Bonjour", {}), deps);
+    const system = complete.mock.calls[0][0].system;
+    expect(system).toContain("NE DEMANDE PAS le code postal");
+    expect(system).toContain("N'écris JAMAIS de toi-même un code postal");
   });
 });
 
@@ -292,5 +396,45 @@ describe("reconnaître le code postal et sa ville", () => {
     expect(fetched).toEqual(["https://geo.api.gouv.fr/communes?codePostal=44000&fields=nom&format=json"]);
     const down = (async () => { throw new Error("réseau"); }) as unknown as typeof fetch;
     expect(await lookupCommunes("44000", down)).toBeNull();
+  });
+
+  it("le nom d'une commune se reconnaît malgré la graphie — jamais par un bout de nom", () => {
+    const entries = readCommuneEntries([
+      { nom: "Rosny-sous-Bois", codesPostaux: ["93110"] },
+      { nom: "Saint-Martin-de-Crau", codesPostaux: ["13310", "1331", "13310"] },
+      { nom: "Sans code", codesPostaux: [] },
+      { nom: "x" },
+    ]);
+    expect(entries).toEqual([
+      { nom: "Rosny-sous-Bois", codesPostaux: ["93110"] },
+      { nom: "Saint-Martin-de-Crau", codesPostaux: ["13310"] },
+    ]);
+    expect(matchCommune(entries!, "ROSNY SOUS BOIS")?.nom).toBe("Rosny-sous-Bois");
+    expect(matchCommune(entries!, "St Martin de Crau")?.nom).toBe("Saint-Martin-de-Crau");
+    expect(matchCommune(entries!, "Rosny")).toBeNull();
+    expect(readCommuneEntries({ erreur: true })).toBeNull();
+  });
+
+  it("⚠️ le nom envoyé au référentiel ne contient jamais de chiffre", () => {
+    expect(readCityName("  Rosny   sous bois ")).toBe("Rosny sous bois");
+    expect(readCityName("L'Haÿ-les-Roses")).toBe("L'Haÿ-les-Roses");
+    expect(readCityName("12 rue de la Paix, Rosny")).toBeNull();
+    expect(readCityName("")).toBeNull();
+    expect(readCityName(42)).toBeNull();
+  });
+
+  it("⚠️ le client par nom n'envoie que le nom, encodé, et une panne rend null", async () => {
+    const fetched: string[] = [];
+    const ok = (async (url: string) => {
+      fetched.push(url);
+      return new Response(JSON.stringify([{ nom: "Rosny-sous-Bois", codesPostaux: ["93110"] }]), { status: 200 });
+    }) as unknown as typeof fetch;
+    expect(await lookupPostalCodes("Rosny sous bois", ok)).toEqual([{ nom: "Rosny-sous-Bois", codesPostaux: ["93110"] }]);
+    expect(await lookupPostalCodes("12 rue X", ok)).toBeNull();
+    expect(fetched).toEqual([
+      "https://geo.api.gouv.fr/communes?nom=Rosny%20sous%20bois&fields=nom,codesPostaux&format=json&boost=population&limit=10",
+    ]);
+    const down = (async () => { throw new Error("réseau"); }) as unknown as typeof fetch;
+    expect(await lookupPostalCodes("Nantes", down)).toBeNull();
   });
 });
