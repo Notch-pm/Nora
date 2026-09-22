@@ -31,6 +31,10 @@ const INPUT: SubmitDemandeInput = {
     requester: { contact_type: "personne", courriel: "a@b.fr" },
     submissionId: "dep-1",
     attachments: [],
+    consents: [
+      { kind: "traitement", granted: true },
+      { kind: "partage", granted: false },
+    ],
   },
 };
 
@@ -54,8 +58,27 @@ describe("submitDemande — l'enveloppe d'ingestion", () => {
       subject: "Signaler un problème de voirie",
       requester: { contact_type: "personne", courriel: "a@b.fr" },
       form_data: { motif: "voirie" },
+      consents: [
+        { kind: "traitement", granted: true },
+        { kind: "partage", granted: false },
+      ],
       context: { channel: "portail" },
     });
+  });
+
+  it("n'envoie des consentements que la réponse — jamais un libellé, qu'Iris refuserait", async () => {
+    const iris = fakeIris();
+    await submitDemande(
+      {
+        ...INPUT,
+        submission: {
+          ...INPUT.submission,
+          consents: [{ kind: "traitement", granted: true, statement: "J'accepte…" } as never],
+        },
+      },
+      iris.client,
+    );
+    expect(iris.calls[0].body.consents).toEqual([{ kind: "traitement", granted: true }]);
   });
 
   it("référence les pièces déjà déposées par upload_id, et rien de plus", async () => {

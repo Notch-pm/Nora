@@ -4,17 +4,24 @@
  *
  * Le portail n'invente aucune question : les publics proposés et les champs
  * affichés viennent tous de `requester_config`, paramétré au Socle. Quand la
- * collectivité n'a ouvert aucun public, ce bloc ne s'affiche pas et la demande
- * part sans identité — l'anonymat devient alors un choix assumé de la
- * collectivité, pas un oubli du portail.
+ * collectivité n'a ouvert aucun public, aucune identité n'est demandée et la
+ * demande part sans — l'anonymat devient alors un choix assumé de la
+ * collectivité, pas un oubli du portail, et le bloc le dit à l'usager.
+ *
+ * ⚠️ LE BLOC S'AFFICHE TOUJOURS, parce qu'il porte aussi les CONSENTEMENTS
+ * RGPD (`ConsentFields`), demandés à chaque dépôt quelle que soit la démarche
+ * et quel que soit le paramétrage de la collectivité : ce n'est pas elle qui
+ * décide s'ils sont posés (`domain/consents.ts`).
  *
  * Les clés (`courriel`, `nom_usuel`, `siret`…) sont celles du Socle et partent
  * telles quelles : Iris les rapproche du référentiel usagers sans traduction.
  */
 import type { Audience, RequesterField } from "@fn/_shared/domain/requesterConfig.ts";
 import { AUDIENCES } from "@fn/_shared/domain/requesterConfig.ts";
+import type { ConsentAnswers, ConsentKind } from "@fn/_shared/domain/consents.ts";
 import type { FieldErrors } from "@fn/_shared/domain/formulaire.ts";
 import { AddressInput } from "./AddressInput.tsx";
+import { ConsentFields } from "./ConsentFields.tsx";
 import { autocompleteFor } from "./autocomplete.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { errorText } from "@/i18n/t.ts";
@@ -134,22 +141,31 @@ export function RequesterSection({
   values,
   onChange,
   errors,
+  consents,
+  onConsentChange,
+  organismName,
   dense = false,
 }: {
-  /** Les publics ouverts par la collectivité. Au moins un, sinon rien n'est rendu. */
+  /** Les publics ouverts par la collectivité. Aucun = pas d'identité demandée, le bloc le dit. */
   audiences: Audience[];
-  audience: Audience;
+  /** Le public retenu — `null` quand aucun n'est ouvert. */
+  audience: Audience | null;
   onAudienceChange: (audience: Audience) => void;
   fields: RequesterField[];
   values: Record<string, string>;
   onChange: (key: string, value: string) => void;
+  /** Erreurs de l'identité ET des consentements (clés `consent.<kind>`). */
   errors: FieldErrors;
+  consents: ConsentAnswers;
+  onConsentChange: (kind: ConsentKind, granted: boolean) => void;
+  /** Le nom de la collectivité — celui qu'Iris interpole dans la phrase du partage. */
+  organismName: string;
   /** Une seule colonne de champs — pour un conteneur étroit (le panneau de la bulle). */
   dense?: boolean;
 }) {
   const { lang } = useLanguage();
   const t = useT();
-  if (audiences.length === 0) return null;
+  const asksIdentity = audiences.length > 0 && audience !== null;
 
   return (
     // ⚠️ `<fieldset>` / `<legend>` réels (RGAA 11.6), pas un `<section>` avec un
@@ -171,10 +187,21 @@ export function RequesterSection({
         {t("requester.title")}
       </legend>
       <div className="mt-1 flex flex-col gap-4">
-        <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("requester.subtitle")}</p>
+        {!asksIdentity && (
+          // La collectivité n'a ouvert aucun public de requérant : la demande
+          // part sans identité. C'est son choix, pas un oubli du portail — mais
+          // l'usager doit le savoir avant d'envoyer.
+          <p className="rounded-[var(--pt-radius-sm)] border border-dashed border-[color:var(--pt-border)] px-4 py-4 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
+            {t("form.noRequester")}
+          </p>
+        )}
+
+        {asksIdentity && (
+          <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("requester.subtitle")}</p>
+        )}
 
         {/* Un seul public ouvert : pas de question à poser, la réponse est faite. */}
-        {audiences.length > 1 && (
+        {asksIdentity && audiences.length > 1 && (
           <div role="radiogroup" aria-label={t("requester.audience")} className="flex flex-wrap gap-2">
             {AUDIENCES.filter((candidate) => audiences.includes(candidate.key)).map((candidate) => {
               const active = candidate.key === audience;
@@ -207,7 +234,7 @@ export function RequesterSection({
           </div>
         )}
 
-        {fields.length === 0 ? (
+        {!asksIdentity ? null : fields.length === 0 ? (
           // Public ouvert, mais tous les champs masqués : la collectivité ne
           // demande rien de plus. Le dire vaut mieux qu'un cadre vide.
           <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("requester.none")}</p>
@@ -228,6 +255,12 @@ export function RequesterSection({
             ))}
           </div>
         )}
+
+        {/* Toujours, quelle que soit la démarche et quel que soit le public :
+            un trait le sépare de l'identité, il n'en dépend pas. */}
+        <div className="border-t border-[color:var(--pt-border)] pt-4">
+          <ConsentFields answers={consents} onChange={onConsentChange} errors={errors} organismName={organismName} />
+        </div>
       </div>
     </fieldset>
     </div>

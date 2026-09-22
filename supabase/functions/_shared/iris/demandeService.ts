@@ -90,6 +90,12 @@ export async function submitDemande(
         ? { anonymous: true }
         : submission.requester,
     form_data: submission.formData,
+    // Les deux consentements du catalogue, réponse seule (contrat 2.2.0) :
+    // la phrase consignée est recomposée par Iris depuis le nom de la
+    // collectivité, et un libellé envoyé d'ici serait refusé. Ils entrent
+    // dans l'empreinte d'idempotence — un rejeu qui change une réponse est
+    // un 409, pas un 200 silencieux.
+    consents: submission.consents.map((c) => ({ kind: c.kind, granted: c.granted })),
     context: { channel: "portail" },
   };
   // La whitelist d'Iris refuse toute clé inconnue : on n'envoie une

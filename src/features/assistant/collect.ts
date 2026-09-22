@@ -9,16 +9,24 @@
  * (organisme → identité → récapitulatif), propre à l'écran : le serveur n'en
  * sait rien, il n'a pas de mémoire.
  *
- * ⚠️ L'IDENTITÉ (audience, `requesterValues`) et l'ORGANISME choisi NE
- * PARTENT JAMAIS au modèle — ils ne figurent ni dans `CollectionPayload`, ni
- * dans aucun message du fil. Seul `collectionPayload()` construit ce qui part
- * en tour de conversation, et il ne lit que `session.collection`.
+ * ⚠️ L'IDENTITÉ (audience, `requesterValues`), les CONSENTEMENTS et l'ORGANISME
+ * choisi NE PARTENT JAMAIS au modèle — ils ne figurent ni dans
+ * `CollectionPayload`, ni dans aucun message du fil. Seul `collectionPayload()`
+ * construit ce qui part en tour de conversation, et il ne lit que
+ * `session.collection`. Un consentement se coche, il ne se dicte pas.
  */
 import { answerField as answerCollectionField, sanitizeState, skipField as skipCollectionField, viewOf } from "@fn/_shared/ai/collection.ts";
 import type { CollectionState } from "@fn/_shared/ai/collection.ts";
 import type { CollectionPayload } from "@fn/_shared/domain/assistantTurn.ts";
 import type { AttachmentRef, DemandeReceipt, DemandeSubmission } from "@fn/_shared/domain/demande.ts";
 import type { DemarcheOrganization } from "@fn/_shared/domain/demarche.ts";
+import {
+  defaultConsentAnswers,
+  parseConsentAnswers,
+  toConsentAnswers,
+  type ConsentAnswers,
+  type ConsentKind,
+} from "@fn/_shared/domain/consents.ts";
 import { parseFormSchema, type FormSchema } from "@fn/_shared/domain/formSchema.ts";
 import { toAttachments, toFormData, toRequester } from "@fn/_shared/domain/formulaire.ts";
 import {
@@ -38,6 +46,12 @@ export interface CollectDemarche {
   form: FormSchema;
   requester: RequesterConfig;
   organizations: DemarcheOrganization[];
+  /**
+   * Le nom de la collectivité — celui qu'Iris interpole dans la phrase du
+   * consentement « partage ». Porté par la session pour que la carte et le
+   * récapitulatif, purs, affichent la phrase exacte sans retourner au serveur.
+   */
+  tenantName: string;
 }
 
 export interface CollectSession {
@@ -49,7 +63,13 @@ export interface CollectSession {
   organizationConfirmed: boolean;
   audience: Audience | null;
   requesterValues: Record<string, string>;
-  /** `true` dès l'ouverture si la collectivité n'a ouvert aucun public. */
+  /** Les consentements RGPD — demandés à chaque dépôt, jamais montrés au modèle. */
+  consents: ConsentAnswers;
+  /**
+   * « Vos informations » confirmées par l'usager — identité s'il y en a une,
+   * consentements toujours. Jamais vrai d'emblée : même sans public ouvert,
+   * il y a une case obligatoire à cocher.
+   */
   identityConfirmed: boolean;
 }
 
@@ -65,6 +85,7 @@ export function needsOrganizationChoice(demarche: CollectDemarche): boolean {
   return demarche.organizations.length > 1;
 }
 
+/** La collectivité demande-t-elle une identité ? (Sans, « Vos informations » ne porte que les consentements.) */
 export function needsIdentity(demarche: CollectDemarche): boolean {
   return enabledAudiences(demarche.requester).length > 0;
 }
@@ -76,6 +97,9 @@ export function needsIdentity(demarche: CollectDemarche): boolean {
  * `FormulairePage` (`audience ?? audiences[0]`) : la carte « Vos informations »
  * montre alors directement les bons champs, avec un choix qui reste modifiable
  * s'il y en a plusieurs.
+ *
+ * ⚠️ L'étape « Vos informations » n'est JAMAIS sautée : même sans public
+ * ouvert, les consentements y sont demandés (le premier est obligatoire).
  */
 export function startSession(demarche: CollectDemarche): CollectSession {
   return {
@@ -85,7 +109,8 @@ export function startSession(demarche: CollectDemarche): CollectSession {
     organizationConfirmed: !needsOrganizationChoice(demarche),
     audience: enabledAudiences(demarche.requester)[0] ?? null,
     requesterValues: {},
-    identityConfirmed: !needsIdentity(demarche),
+    consents: defaultConsentAnswers(),
+    identityConfirmed: false,
   };
 }
 
@@ -155,6 +180,10 @@ export function setRequesterValue(session: CollectSession, key: string, value: s
   return { ...session, requesterValues: { ...session.requesterValues, [key]: value } };
 }
 
+export function setConsent(session: CollectSession, kind: ConsentKind, granted: boolean): CollectSession {
+  return { ...session, consents: { ...session.consents, [kind]: granted } };
+}
+
 /** À appeler après validation (`validateRequester`, côté écran) : l'appelant a déjà vérifié. */
 export function confirmIdentity(session: CollectSession): CollectSession {
   return { ...session, identityConfirmed: true };
@@ -220,6 +249,7 @@ export function toDemandeSubmission(session: CollectSession, submissionId: strin
         : toRequester(CONTACT_TYPES[session.audience], requesterFields, session.requesterValues),
     submissionId,
     attachments,
+    consents: toConsentAnswers(session.consents),
   };
 }
 
@@ -346,6 +376,9 @@ function parseCollectDemarche(raw: unknown): CollectDemarche | null {
     form,
     requester: parseRequesterConfig(raw.requester),
     organizations,
+    // Absent d'un recueil rangé avant ce lot : la phrase retombe sur le nom
+    // générique (`consent.organismFallback`), jamais sur un trou.
+    tenantName: typeof raw.tenantName === "string" ? raw.tenantName : "",
   };
 }
 
@@ -368,7 +401,11 @@ function parseStoredSession(raw: unknown): CollectSession | null {
     organizationConfirmed: raw.organizationConfirmed === true || !needsOrganizationChoice(demarche),
     audience: isAudience(raw.audience) ? raw.audience : null,
     requesterValues,
-    identityConfirmed: raw.identityConfirmed === true || !needsIdentity(demarche),
+    consents: parseConsentAnswers(raw.consents),
+    // ⚠️ Un recueil rangé AVANT ce lot pouvait être « confirmé » sans qu'aucun
+    // consentement ait été posé : on ne le croit que si des consentements ont
+    // été rangés avec — sinon la carte se rouvre, et pose la question.
+    identityConfirmed: raw.identityConfirmed === true && isRecord(raw.consents),
   };
 }
 

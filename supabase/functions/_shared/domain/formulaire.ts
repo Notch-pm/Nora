@@ -42,7 +42,8 @@ export interface FieldError {
     | "validation.email"
     | "validation.number"
     | "validation.maxLength"
-    | "validation.maxFiles";
+    | "validation.maxFiles"
+    | "validation.consentRequired";
   params?: Record<string, string | number>;
 }
 

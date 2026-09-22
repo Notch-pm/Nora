@@ -11,6 +11,7 @@ import { Link } from "react-router-dom";
 import { viewOf } from "@fn/_shared/ai/collection.ts";
 import type { DemandeReceipt } from "@fn/_shared/domain/demande.ts";
 import type { Field } from "@fn/_shared/domain/formSchema.ts";
+import type { ConsentKind } from "@fn/_shared/domain/consents.ts";
 import { isFieldRequired, validateForm, type FieldError, type FieldErrors } from "@fn/_shared/domain/formulaire.ts";
 import { enabledAudiences, requesterFieldsFor, type Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import { FormFieldControl } from "@/features/demarche/FormFields.tsx";
@@ -374,19 +375,25 @@ export function OrganizationCard({
   );
 }
 
-/** « Vos informations » — le public, puis ses champs (`RequesterSection`, inchangé). */
+/**
+ * « Vos informations » — le public et ses champs s'il y en a, et TOUJOURS les
+ * consentements (`RequesterSection`, le même bloc que le formulaire classique).
+ */
 export function IdentityCard({
   session,
   requesterErrors,
   onAudienceChange,
   onFieldChange,
+  onConsentChange,
   onConfirm,
   dense = false,
 }: {
   session: CollectSession;
+  /** Erreurs de l'identité ET des consentements. */
   requesterErrors: FieldErrors;
   onAudienceChange: (audience: Audience) => void;
   onFieldChange: (key: string, value: string) => void;
+  onConsentChange: (kind: ConsentKind, granted: boolean) => void;
   onConfirm: () => boolean;
   /** Une seule colonne de champs — le panneau de la bulle est étroit. */
   dense?: boolean;
@@ -402,18 +409,19 @@ export function IdentityCard({
         {t("requester.title")}
       </p>
       <div className="mt-3">
-        {currentAudience !== null && (
-          <RequesterSection
-            audiences={audiences}
-            audience={currentAudience}
-            onAudienceChange={onAudienceChange}
-            dense={dense}
-            fields={fields}
-            values={session.requesterValues}
-            onChange={onFieldChange}
-            errors={requesterErrors}
-          />
-        )}
+        <RequesterSection
+          audiences={audiences}
+          audience={currentAudience}
+          onAudienceChange={onAudienceChange}
+          dense={dense}
+          fields={fields}
+          values={session.requesterValues}
+          onChange={onFieldChange}
+          errors={requesterErrors}
+          consents={session.consents}
+          onConsentChange={onConsentChange}
+          organismName={session.demarche.tenantName}
+        />
       </div>
       <button type="button" onClick={() => onConfirm()} className={BUTTON_CLASS + " mt-3"}>
         {t("assistant.collect.confirmIdentity")}
@@ -511,24 +519,33 @@ export function RecapCard({
           {recap.identity === null ? (
             <p className="mt-1 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("form.noRequester")}</p>
           ) : (
-            <>
-              <dl className="mt-1 flex flex-col divide-y divide-[color:var(--pt-border)]">
-                {recap.identity.rows.map((row) => (
-                  <div key={row.fieldId} className="py-2">
-                    <dt className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">{row.label}</dt>
-                    <dd className="text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">{row.value}</dd>
-                  </div>
-                ))}
-              </dl>
-              <button
-                type="button"
-                onClick={onModifyIdentity}
-                className="mt-1 text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline"
-              >
-                {t("assistant.recap.modify")}
-              </button>
-            </>
+            <dl className="mt-1 flex flex-col divide-y divide-[color:var(--pt-border)]">
+              {recap.identity.rows.map((row) => (
+                <div key={row.fieldId} className="py-2">
+                  <dt className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">{row.label}</dt>
+                  <dd className="text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
           )}
+          {/* Les consentements se relisent avec l'identité : même carte à la
+              saisie, même « Modifier » ici. Toujours les deux, même sans identité. */}
+          <h4 className="mt-3 text-[length:var(--pt-small)] font-semibold text-[color:var(--pt-ink)]">{t("consent.heading")}</h4>
+          <dl className="mt-1 flex flex-col divide-y divide-[color:var(--pt-border)]">
+            {recap.consents.map((row) => (
+              <div key={row.kind} className="py-2">
+                <dt className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">{row.label}</dt>
+                <dd className="text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+          <button
+            type="button"
+            onClick={onModifyIdentity}
+            className="mt-1 text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)] hover:underline"
+          >
+            {t("assistant.recap.modify")}
+          </button>
         </div>
       </div>
 

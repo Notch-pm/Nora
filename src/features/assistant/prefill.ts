@@ -11,6 +11,7 @@
  * ensuite retrouve un formulaire vide, comme d'habitude.
  */
 import type { FormValues } from "@fn/_shared/domain/conditions.ts";
+import { parseConsentAnswers, type ConsentAnswers } from "@fn/_shared/domain/consents.ts";
 import type { Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import type { CollectSession } from "./collect.ts";
 
@@ -19,6 +20,8 @@ export interface DemarchePrefill {
   requesterValues: Record<string, string>;
   audience: Audience | null;
   organizationId: string | null;
+  /** Ce que l'usager a déjà coché — repassé par les cases du formulaire, jamais envoyé d'ici. */
+  consents: ConsentAnswers;
 }
 
 export function prefillStorageKey(demarcheId: string): string {
@@ -59,7 +62,7 @@ export function parsePrefill(raw: string | null): DemarchePrefill | null {
   const organizationId =
     typeof parsed.organizationId === "string" && parsed.organizationId !== "" ? parsed.organizationId : null;
 
-  return { values, requesterValues, audience, organizationId };
+  return { values, requesterValues, audience, organizationId, consents: parseConsentAnswers(parsed.consents) };
 }
 
 /** Ce qu'on retient d'un recueil en cours, pour proposer le formulaire classique. */
@@ -69,6 +72,7 @@ export function buildPrefill(session: CollectSession): DemarchePrefill {
     requesterValues: session.requesterValues,
     audience: session.audience,
     organizationId: session.organizationId,
+    consents: session.consents,
   };
 }
 

@@ -9,7 +9,7 @@ import {
   type DemarchePrefill,
   type PrefillStorage,
 } from "./prefill.ts";
-import { answerField, chooseOrganization, setAudience, setRequesterValue, startSession, type CollectDemarche } from "./collect.ts";
+import { answerField, chooseOrganization, setAudience, setConsent, setRequesterValue, startSession, type CollectDemarche } from "./collect.ts";
 import { parseRequesterConfig } from "@fn/_shared/domain/requesterConfig.ts";
 import type { FormSchema } from "@fn/_shared/domain/formSchema.ts";
 
@@ -38,6 +38,7 @@ function demarche(overrides: Partial<CollectDemarche> = {}): CollectDemarche {
     form: FORM,
     requester: parseRequesterConfig({ citoyen: { enabled: true, fields: { courriel: "obligatoire" } } }),
     organizations: [{ id: "o1", name: "Mairie", slug: null, logoUrl: null }],
+    tenantName: "Nantes Métropole",
     ...overrides,
   };
 }
@@ -56,12 +57,14 @@ describe("buildPrefill", () => {
     session = chooseOrganization(session, "o1");
     session = setAudience(session, "citoyen");
     session = setRequesterValue(session, "courriel", "a@b.fr");
+    session = setConsent(session, "traitement", true);
 
     expect(buildPrefill(session)).toEqual({
       values: { "f-lieu": "12 rue de la Paix" },
       requesterValues: { courriel: "a@b.fr" },
       audience: "citoyen",
       organizationId: "o1",
+      consents: { traitement: true, partage: true },
     });
   });
 });
@@ -73,6 +76,7 @@ describe("parsePrefill", () => {
       requesterValues: { courriel: "a@b.fr" },
       audience: "entreprise",
       organizationId: "o2",
+      consents: { traitement: true, partage: false },
     };
     expect(parsePrefill(serializePrefill(prefill))).toEqual(prefill);
   });
@@ -89,6 +93,8 @@ describe("parsePrefill", () => {
       requesterValues: {},
       audience: null,
       organizationId: null,
+      // Les défauts du catalogue : la case obligatoire reste à cocher.
+      consents: { traitement: false, partage: true },
     });
   });
 
@@ -98,12 +104,14 @@ describe("parsePrefill", () => {
       requesterValues: { courriel: "a@b.fr", age: 42 },
       audience: "robot",
       organizationId: "",
+      consents: { traitement: "oui", partage: false },
     });
     expect(parsePrefill(raw)).toEqual({
       values: { a: "x" },
       requesterValues: { courriel: "a@b.fr" },
       audience: null,
       organizationId: null,
+      consents: { traitement: false, partage: false },
     });
   });
 });
@@ -114,6 +122,7 @@ describe("writePrefill / readAndClearPrefill", () => {
     requesterValues: {},
     audience: null,
     organizationId: null,
+    consents: { traitement: true, partage: true },
   };
 
   it("dépose, puis lit UNE fois avant d'effacer", () => {

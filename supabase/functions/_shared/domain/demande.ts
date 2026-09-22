@@ -6,8 +6,9 @@
  * d'Iris vit dans `iris/demandeService.ts`, en un seul endroit. Un renommage
  * de champ chez Iris ne remonte pas jusqu'aux écrans.
  */
+import type { ConsentAnswer } from "./consents.ts";
 
-/** Ce qu'un usager dépose : les réponses, qui il est, et pour quel organisme. */
+/** Ce qu'un usager dépose : les réponses, qui il est, ce qu'il consent, et pour quel organisme. */
 export interface DemandeSubmission {
   /** La démarche remplie. Revérifiée au catalogue publié avant tout envoi. */
   demarcheId: string;
@@ -41,6 +42,13 @@ export interface DemandeSubmission {
    * auquel le fichier répond.
    */
   attachments: AttachmentRef[];
+  /**
+   * Les consentements RGPD, demandés à CHAQUE dépôt quelle que soit la
+   * démarche (`domain/consents.ts`) : toujours les deux du catalogue, la
+   * réponse seule — la phrase consignée est recomposée par Iris. Le portail
+   * ne dépose jamais sans le consentement au traitement.
+   */
+  consents: ConsentAnswer[];
 }
 
 /** Une pièce déposée, rattachée à l'exigence du formulaire qu'elle honore. */

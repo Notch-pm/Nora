@@ -523,6 +523,7 @@ export function AssistantThread({
                 requesterErrors={collect.requesterErrors}
                 onAudienceChange={collect.setAudience}
                 onFieldChange={collect.setRequesterValue}
+                onConsentChange={collect.setConsent}
                 onConfirm={collect.confirmIdentity}
               />
             )}

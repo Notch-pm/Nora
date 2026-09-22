@@ -10,6 +10,7 @@
  * oublié d'afficher.
  */
 import type { FieldOriginRecord } from "@fn/_shared/ai/collection.ts";
+import { CONSENTS, type ConsentKind } from "@fn/_shared/domain/consents.ts";
 import type { Field } from "@fn/_shared/domain/formSchema.ts";
 import { isSection } from "@fn/_shared/domain/formSchema.ts";
 import { piecesOf, visibleNodes } from "@fn/_shared/domain/formulaire.ts";
@@ -50,17 +51,33 @@ export interface RecapIdentity {
   rows: RecapRow[];
 }
 
+/** Un consentement relu : son libellé court, et ce que l'usager a répondu. */
+export interface RecapConsent {
+  kind: ConsentKind;
+  label: string;
+  granted: boolean;
+  /** « Accepté » / « Refusé », dans la langue de l'usager. */
+  value: string;
+}
+
 export interface RecapSummary {
   sections: RecapSection[];
   organization: { id: string; name: string } | null;
   /** `null` : aucun public choisi — la demande part sans identité déclarée. */
   identity: RecapIdentity | null;
+  /** Toujours les deux du catalogue, dans son ordre — même sans identité. */
+  consents: RecapConsent[];
 }
 
 const AUDIENCE_LABEL_KEYS: Record<Audience, StringKey> = {
   citoyen: "audience.citoyen",
   entreprise: "audience.entreprise",
   association: "audience.association",
+};
+
+const CONSENT_LABEL_KEYS: Record<ConsentKind, StringKey> = {
+  traitement: "consent.traitement.short",
+  partage: "consent.partage.short",
 };
 
 function formatFieldValue(lang: string, field: Field, value: unknown): string {
@@ -140,5 +157,17 @@ export function buildRecap(lang: string, session: CollectSession): RecapSummary 
           })),
         };
 
-  return { sections, organization, identity };
+  // Même repli qu'à l'écran de saisie : la phrase se lit toujours avec un nom.
+  const organisme = demarche.tenantName.trim() === "" ? t(lang, "consent.organismFallback") : demarche.tenantName.trim();
+  const consents: RecapConsent[] = CONSENTS.map((def) => {
+    const granted = session.consents[def.kind] === true;
+    return {
+      kind: def.kind,
+      label: t(lang, CONSENT_LABEL_KEYS[def.kind], { organisme }),
+      granted,
+      value: t(lang, granted ? "consent.granted" : "consent.refused"),
+    };
+  });
+
+  return { sections, organization, identity, consents };
 }

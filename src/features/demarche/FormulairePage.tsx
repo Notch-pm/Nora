@@ -4,7 +4,8 @@
  * L'écran est à la saisie : l'usager a lu la démarche à l'écran précédent et
  * a choisi de la commencer. Trois blocs seulement — l'organisme destinataire
  * quand il y a un choix à faire, les questions de la démarche, puis « Vos
- * informations ».
+ * informations » — l'identité si la collectivité la demande, et TOUJOURS les
+ * deux consentements RGPD, quelle que soit la démarche.
  *
  * Ce que ce composant NE décide pas : ce qui est visible, obligatoire, valide
  * ou déposé. Tout cela vit dans `formulaire.ts`, en logique pure — parce que
@@ -29,6 +30,13 @@ import { isSection } from "@fn/_shared/domain/formSchema.ts";
 import type { DemandeReceipt } from "@fn/_shared/domain/demande.ts";
 import type { Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import { CONTACT_TYPES, enabledAudiences, requesterFieldsFor } from "@fn/_shared/domain/requesterConfig.ts";
+import type { ConsentAnswers, ConsentKind } from "@fn/_shared/domain/consents.ts";
+import {
+  consentErrorKey,
+  defaultConsentAnswers,
+  toConsentAnswers,
+  validateConsents,
+} from "@fn/_shared/domain/consents.ts";
 import { errorMessageFor } from "@/features/portal/errorMessages.ts";
 import { challengeToSolve } from "@/services/portal/depositChallenge.ts";
 import { fetchDepositChallenge, sendDemande, type PortalLoadFailure } from "@/services/portal/portalClient.ts";
@@ -116,6 +124,8 @@ export function FormulairePage() {
   const [requesterValues, setRequesterValues] = useState<Record<string, string>>({});
   const [audience, setAudience] = useState<Audience | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  // Les consentements : traitement décoché, partage coché (`domain/consents.ts`).
+  const [consents, setConsents] = useState<ConsentAnswers>(defaultConsentAnswers);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [requesterErrors, setRequesterErrors] = useState<FieldErrors>({});
   const [organizationError, setOrganizationError] = useState<string | null>(null);
@@ -150,6 +160,7 @@ export function FormulairePage() {
     setRequesterValues(prefill.requesterValues);
     setAudience(prefill.audience);
     setOrganizationId(prefill.organizationId);
+    setConsents(prefill.consents);
   }, [demarche]);
 
   const audiences = useMemo(
@@ -303,12 +314,30 @@ export function FormulairePage() {
     });
   };
 
+  const setConsent = (kind: ConsentKind, granted: boolean) => {
+    setConsents((previous) => ({ ...previous, [kind]: granted }));
+    // Même règle que les autres champs : cocher la case efface son erreur.
+    setRequesterErrors((previous) => {
+      const key = consentErrorKey(kind);
+      if (!(key in previous)) return previous;
+      const next = { ...previous };
+      delete next[key];
+      return next;
+    });
+  };
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (sending) return;
 
     const formErrors = validateForm(schema, values);
-    const identityErrors = validateRequester(requesterFields, requesterValues);
+    // Identité et consentements vivent dans le même bloc, et dans le même
+    // récapitulatif d'erreurs : « Vos informations » est incomplet dans les
+    // deux cas.
+    const identityErrors: FieldErrors = {
+      ...validateRequester(requesterFields, requesterValues),
+      ...validateConsents(consents),
+    };
     const missingOrganization = mustChooseOrganization && effectiveOrganizationId === null;
 
     setErrors(formErrors);
@@ -346,6 +375,7 @@ export function FormulairePage() {
         // Les fichiers sont déjà chez Iris : seuls leurs identifiants partent,
         // et un rejeu après coupure les renvoie tels quels.
         attachments: toAttachments(schema, values),
+        consents: toConsentAnswers(consents),
       },
       challenge,
     );
@@ -459,31 +489,27 @@ export function FormulairePage() {
           ),
         )}
 
-        {currentAudience !== null && (
-          <RequesterSection
-            audiences={audiences}
-            audience={currentAudience}
-            onAudienceChange={(next) => {
-              setAudience(next);
-              // Changer de public change les champs : les erreurs de l'ancien
-              // ne désignent plus rien.
-              setRequesterErrors({});
-            }}
-            fields={requesterFields}
-            values={requesterValues}
-            onChange={setRequesterValue}
-            errors={requesterErrors}
-          />
-        )}
+        {/* Toujours rendu : sans public ouvert, il dit que la demande part
+            sans identité, et il porte les consentements dans tous les cas. */}
+        <RequesterSection
+          audiences={audiences}
+          audience={currentAudience}
+          onAudienceChange={(next) => {
+            setAudience(next);
+            // Changer de public change les champs : les erreurs de l'ancien
+            // ne désignent plus rien — celles des consentements non plus, ils
+            // sont à nouveau relus avec le nouveau public.
+            setRequesterErrors({});
+          }}
+          fields={requesterFields}
+          values={requesterValues}
+          onChange={setRequesterValue}
+          errors={requesterErrors}
+          consents={consents}
+          onConsentChange={setConsent}
+          organismName={tenant.name}
+        />
 
-        {audiences.length === 0 && (
-          // La collectivité n'a ouvert aucun public de requérant : la demande
-          // part sans identité. C'est son choix, pas un oubli du portail — mais
-          // l'usager doit le savoir avant d'envoyer.
-          <p className="rounded-[var(--pt-radius-sm)] border border-dashed border-[color:var(--pt-border)] px-4 py-4 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
-            {t("form.noRequester")}
-          </p>
-        )}
 
         <div className="flex items-center gap-4 pt-2">
           <button

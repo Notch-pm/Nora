@@ -23,6 +23,7 @@ import {
   reopenOrganization,
   saveCollect,
   setAudience,
+  setConsent,
   setRequesterValue,
   skipField,
   startedNote,
@@ -67,6 +68,7 @@ function demarche(overrides: Partial<CollectDemarche> = {}): CollectDemarche {
     form: PROPRETE_FORM,
     requester: parseRequesterConfig(null),
     organizations: [],
+    tenantName: "Nantes Métropole",
     ...overrides,
   };
 }
@@ -100,9 +102,13 @@ describe("startSession", () => {
     ).toBe(false);
   });
 
-  it("confirme d'emblée l'identité si la collectivité n'a ouvert aucun public", () => {
-    expect(startSession(demarche()).identityConfirmed).toBe(true);
+  it("ne confirme JAMAIS « Vos informations » d'emblée : sans public ouvert, il reste les consentements", () => {
+    expect(startSession(demarche()).identityConfirmed).toBe(false);
     expect(startSession(demarche({ requester: CITOYEN_OUVERT })).identityConfirmed).toBe(false);
+  });
+
+  it("ouvre avec les consentements du catalogue : traitement décoché, partage coché", () => {
+    expect(startSession(demarche()).consents).toEqual({ traitement: false, partage: true });
   });
 
   it("présélectionne le premier public ouvert — même règle que FormulairePage", () => {
@@ -131,21 +137,32 @@ describe("stepOf — la machine d'étapes", () => {
     session = answerField(session, "f-lieu", "12 rue de la Paix");
     expect(stepOf(session)).toBe("fields");
     session = answerField(session, "f-nature", "gravats");
-    // ⚠️ « f-precisions » est FACULTATIF : il ne retient plus le récapitulatif.
-    // Il l'a retenu, et c'était un blocage — un facultatif que personne n'évoque
-    // n'est jamais ni répondu ni passé, donc éternellement en attente, et le
-    // bouton d'envoi n'apparaissait jamais.
-    expect(stepOf(session)).toBe("recap");
+    // ⚠️ « f-precisions » est FACULTATIF : il ne retient plus les champs.
+    // Il les a retenus, et c'était un blocage — un facultatif que personne
+    // n'évoque n'est jamais ni répondu ni passé, donc éternellement en attente,
+    // et le bouton d'envoi n'apparaissait jamais.
+    expect(stepOf(session)).toBe("identity");
   });
 
   it("⚠️ un facultatif passé explicitement ne change rien à l'étape", () => {
     // « Passer » reste utile — il retire le champ de ce que le modèle voit en
     // attente, donc il cesse de le proposer — mais il n'est plus la condition
-    // d'ouverture du récapitulatif.
+    // de sortie des champs.
     let session = startSession(demarche());
     session = answerField(session, "f-lieu", "12 rue de la Paix");
     session = answerField(session, "f-nature", "gravats");
-    expect(stepOf(skipField(session, "f-precisions"))).toBe("recap");
+    expect(stepOf(skipField(session, "f-precisions"))).toBe("identity");
+  });
+
+  it("passe TOUJOURS par « identity » avant « recap », même sans public ouvert : les consentements y sont", () => {
+    let session = startSession(demarche());
+    session = answerField(session, "f-lieu", "12 rue de la Paix");
+    session = answerField(session, "f-nature", "gravats");
+    expect(stepOf(session)).toBe("identity");
+    session = setConsent(session, "traitement", true);
+    expect(stepOf(session)).toBe("identity"); // coché, mais pas encore confirmé
+    session = confirmIdentity(session);
+    expect(stepOf(session)).toBe("recap");
   });
 
   it("passe par « organization » avant « recap » quand il y a un choix", () => {
@@ -163,6 +180,8 @@ describe("stepOf — la machine d'étapes", () => {
     session = chooseOrganization(session, "o2");
     expect(stepOf(session)).toBe("organization"); // choisi, mais pas encore confirmé
     session = confirmOrganization(session);
+    expect(stepOf(session)).toBe("identity");
+    session = confirmIdentity(setConsent(session, "traitement", true));
     expect(stepOf(session)).toBe("recap");
   });
 
@@ -216,6 +235,7 @@ describe("reopenField — « Modifier » du récapitulatif", () => {
     let session = startSession(demarche({ form: CONDITIONAL_FORM }));
     session = answerField(session, "f-mode", "appartement");
     session = answerField(session, "f-etage", "3");
+    session = confirmIdentity(setConsent(session, "traitement", true));
     expect(stepOf(session)).toBe("recap");
 
     const { session: reopened, purgedCount } = reopenField(session, "f-mode");
@@ -298,6 +318,7 @@ describe("toDemandeSubmission", () => {
     session = answerField(session, "f-lieu", "12 rue de la Paix");
     session = answerField(session, "f-nature", "gravats");
     session = skipField(session, "f-precisions");
+    session = setConsent(session, "traitement", true);
     const submission = toDemandeSubmission(session, "sub-1");
     expect(submission).toEqual({
       demarcheId: "d1",
@@ -306,7 +327,21 @@ describe("toDemandeSubmission", () => {
       requester: null,
       submissionId: "sub-1",
       attachments: [],
+      consents: [
+        { kind: "traitement", granted: true },
+        { kind: "partage", granted: true },
+      ],
     });
+  });
+
+  it("porte les deux consentements du catalogue, une case décochée valant refus", () => {
+    let session = startSession(demarche());
+    session = setConsent(session, "traitement", true);
+    session = setConsent(session, "partage", false);
+    expect(toDemandeSubmission(session, "sub-3").consents).toEqual([
+      { kind: "traitement", granted: true },
+      { kind: "partage", granted: false },
+    ]);
   });
 
   it("porte l'identité déclarée quand un public a été choisi", () => {
@@ -359,7 +394,29 @@ describe("persistance sessionStorage", () => {
     saveCollect(storage, { session, notes: [] });
     const loaded = loadCollect(storage);
     expect(loaded?.session?.demarche.id).toBe("d1");
+    expect(loaded?.session?.demarche.tenantName).toBe("Nantes Métropole");
     expect(loaded?.session?.collection).toEqual(session.collection);
+  });
+
+  it("relit les consentements cochés, et « Vos informations » confirmées avec eux", () => {
+    const storage = memoryStorage();
+    const confirmed = confirmIdentity(setConsent(setConsent(session, "traitement", true), "partage", false));
+    saveCollect(storage, { session: confirmed, notes: [] });
+    const loaded = loadCollect(storage);
+    expect(loaded?.session?.consents).toEqual({ traitement: true, partage: false });
+    expect(loaded?.session?.identityConfirmed).toBe(true);
+  });
+
+  it("⚠️ un recueil rangé AVANT les consentements rouvre « Vos informations » plutôt que de les supposer", () => {
+    // Rangé par une version antérieure : confirmé, sans jamais avoir posé la
+    // question. On ne dépose pas sur cette confirmation-là.
+    const stored = JSON.parse(JSON.stringify({ session: confirmIdentity(session), notes: [] }));
+    delete stored.session.consents;
+    delete stored.session.demarche.tenantName;
+    const parsed = parseStoredCollect(JSON.stringify(stored));
+    expect(parsed?.session?.identityConfirmed).toBe(false);
+    expect(parsed?.session?.consents).toEqual({ traitement: false, partage: true });
+    expect(parsed?.session?.demarche.tenantName).toBe("");
   });
 
   it("efface l'entrée quand il n'y a plus rien à garder", () => {

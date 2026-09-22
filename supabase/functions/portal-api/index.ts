@@ -36,6 +36,7 @@ import { hostnameForRequest } from "../_shared/http/requestHostname.ts";
 import { clientAddress, createRateLimiter, hashKey } from "../_shared/http/rateLimit.ts";
 import { allFields } from "../_shared/domain/formSchema.ts";
 import { AUDIENCES } from "../_shared/domain/requesterConfig.ts";
+import { normalizeConsents } from "../_shared/domain/consents.ts";
 import {
   demarchesOfOrganization,
   type DemarcheOrganization,
@@ -676,6 +677,13 @@ Deno.serve(async (request: Request): Promise<Response> => {
     if (body.attachments !== undefined && !Array.isArray(body.attachments)) {
       return badRequest("attachments : tableau attendu.");
     }
+    // Les consentements RGPD, AVANT toute lecture du Socle et tout appel à
+    // Iris : catalogue fermé, réponse seule, et le consentement au traitement
+    // accordé — sans lui, la demande n'existe pas. C'est ce portail qui a
+    // affiché la case : il ne remet pas à Iris un dépôt qu'il sait irrecevable.
+    const consentCheck = normalizeConsents(body.consents);
+    if (!consentCheck.ok) return badRequest(consentCheck.message);
+    const consents = consentCheck.consents;
 
     const resolved = await tenantOf(request, socle);
     if (!resolved.ok) return resolved.response;
@@ -772,6 +780,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
           requester: Object.keys(requester).length === 0 ? null : requester,
           submissionId,
           attachments,
+          consents,
         },
       },
       iris,

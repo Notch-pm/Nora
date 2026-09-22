@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FormSchema } from "@fn/_shared/domain/formSchema.ts";
 import { parseRequesterConfig } from "@fn/_shared/domain/requesterConfig.ts";
-import { answerField, chooseOrganization, type CollectDemarche, confirmIdentity, confirmOrganization, setAudience, setRequesterValue, skipField, startSession } from "./collect.ts";
+import { answerField, chooseOrganization, type CollectDemarche, confirmIdentity, confirmOrganization, setAudience, setConsent, setRequesterValue, skipField, startSession } from "./collect.ts";
 import { buildRecap } from "./recap.ts";
 
 const FORM: FormSchema = {
@@ -31,6 +31,7 @@ function demarche(overrides: Partial<CollectDemarche> = {}): CollectDemarche {
     form: FORM,
     requester: parseRequesterConfig(null),
     organizations: [],
+    tenantName: "Nantes Métropole",
     ...overrides,
   };
 }
@@ -80,6 +81,22 @@ describe("buildRecap", () => {
   it("rend `null` sans public choisi — la demande part sans identité déclarée", () => {
     const session = startSession(demarche());
     expect(buildRecap("fr", session).identity).toBeNull();
+  });
+
+  it("relit TOUJOURS les deux consentements, avec le nom de la collectivité — même sans identité", () => {
+    let session = startSession(demarche());
+    session = setConsent(session, "traitement", true);
+    session = setConsent(session, "partage", false);
+    expect(buildRecap("fr", session).consents).toEqual([
+      { kind: "traitement", label: "Traitement de la demande", granted: true, value: "Accepté" },
+      { kind: "partage", label: "Partage aux services de Nantes Métropole", granted: false, value: "Refusé" },
+    ]);
+    expect(buildRecap("en", session).consents.map((c) => c.value)).toEqual(["Accepted", "Declined"]);
+  });
+
+  it("nomme « la collectivité » quand elle n'a pas de nom — jamais une phrase à trou", () => {
+    const session = startSession(demarche({ tenantName: "  " }));
+    expect(buildRecap("fr", session).consents[1].label).toBe("Partage aux services de la collectivité");
   });
 
   it("traduit la civilité, laisse le reste tel quel, marque le vide d'un tiret", () => {

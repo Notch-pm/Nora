@@ -125,7 +125,10 @@ src/
     responseDelay.ts       le délai de traitement en toutes lettres, unité de la donnée
     FormulairePage.tsx     le formulaire, le dépôt, l'accusé
     FormFields.tsx         un contrôle par type de champ — le rendu de référence côté usager
-    RequesterSection.tsx   « Vos informations » (`fieldset`), piloté par requester_config
+    RequesterSection.tsx   « Vos informations » (`fieldset`) : l'identité, pilotée par
+                           requester_config, et TOUJOURS les consentements — le bloc s'affiche
+                           même quand la collectivité ne demande aucune identité
+    ConsentFields.tsx      les deux cases RGPD, phrases exactes de ce qu'Iris consignera
     autocomplete.ts        le jeton `autocomplete` de chaque champ d'identité (RGAA 11.13)
     DemarcheShell.tsx      le cadre commun (charte, en-tête, chargement, erreur)
     useDemarche.ts         le chargement d'une démarche
@@ -136,7 +139,8 @@ supabase/functions/
                          PortalFailure, Demande, plus les MIROIRS du schéma possédé par le Socle :
                          formSchema.ts + conditions.ts (lecture tolérante), requesterConfig.ts,
                          userCommunication.ts et theme.ts (snake_case du contrat → camelCase du
-                         portail). Et markdown.ts — Markdown → ARBRE, jamais → HTML —, ici parce
+                         portail), et consents.ts — miroir du catalogue FERMÉ des consentements
+                         RGPD d'Iris (défauts, validation d'écran, garde serveur). Et markdown.ts — Markdown → ARBRE, jamais → HTML —, ici parce
                          que le serveur en tire le résumé d'une carte (`markdownSummary`).
                          Et formulaire.ts — règles pures du formulaire : visibilité, obligation,
                          validation, form_data, identité —, ici pour que le serveur puisse
@@ -374,6 +378,10 @@ formulaire a ensuite l'écran pour lui seul.
   informations » et leurs champs viennent tous de `requester_config` (défaut du Socle : public
   fermé, champ masqué). Aucun public ouvert = la demande part **sans identité**, et l'écran le
   dit — l'anonymat devient un choix de la collectivité, pas un oubli du portail.
+- **Sauf les consentements RGPD, que le portail demande TOUJOURS** (2026-09-22). « Vos
+  informations » s'affiche pour chaque démarche, même sans identité, et porte les deux
+  consentements du catalogue fermé d'Iris — voir « Les consentements RGPD » sous « Le dépôt ».
+  Ce n'est pas la collectivité qui décide s'ils sont posés.
 - **Les pièces justificatives se déposent, et le portail n'en garde aucune** (2026-09-08, contrat
   d'ingestion Iris 2.0.0). Le fichier part **dès sa sélection** vers `portal-api`
   (`POST /v1/demandes/pieces`, un fichier par appel, 10 Mo maximum), qui le remet à Iris
@@ -469,6 +477,61 @@ le même.
 que le Socle les nomme : Iris les lit ainsi (`_shared/identity/declared.ts`) pour rapprocher
 l'usager du référentiel, ou créer sa fiche. Écrire une correspondance ici en ferait une troisième
 vérité, qui divergerait au premier champ ajouté.
+
+#### Les consentements RGPD
+
+Depuis le 2026-09-22, chaque dépôt porte les **deux consentements** que le Socle et Iris ont
+posés le 2026-09-13 (Socle `0e9f637`, contrat `contacts-api` 1.2.0 ; Iris `6e8efd1`, contrat
+d'ingestion 2.2.0). Ils remplacent « accepte les mails / accepte les SMS », et ils sont demandés
+**à chaque dépôt, quelle que soit la démarche** — jamais des champs de `form_schema` :
+
+| `kind` | Ce que l'usager accepte | Régime |
+|---|---|---|
+| `traitement` | Que les informations fournies servent à instruire sa demande | **Obligatoire** — décoché à l'ouverture, sans lui rien ne part |
+| `partage` | Que ces informations soient partagées aux services de la collectivité, pour cette demande et les suivantes | Facultatif — **proposé coché**, décochable |
+
+- **Le catalogue est fermé, et miroité** (`domain/consents.ts`, comme `requesterConfig.ts`) :
+  une collectivité ne peut ni en retirer, ni en ajouter, ni en changer le défaut. Un
+  consentement qu'un service pourrait décocher dans son paramétrage ne vaudrait rien.
+- **Le portail n'envoie que la réponse** — `consents: [{ kind, granted }]`, toujours les deux,
+  une case non cochée valant **refus** (jamais « non demandé »). La **phrase consignée** est
+  recomposée par Iris depuis le nom de la collectivité qu'il tient de sa base, puis écrite sur
+  la demande (`requests.consents`) et, si l'usager est rapproché d'une fiche, au Socle
+  (`contact_consents`, sous `source_app = 'portail-citoyen'`). Un `statement` envoyé d'ici
+  serait refusé (400).
+- ⚠️ **Ce que l'usager lit doit donc être ce qu'Iris écrit.** En français, les deux phrases
+  du dictionnaire (`consent.traitement`, `consent.partage`) sont **mot pour mot** celles du
+  catalogue d'Iris, `{organisme}` = `Tenant.name` — le nom de la **collectivité** (racine
+  Socle), le même qu'Iris interpole avec la clé plateforme (`auth.organismName`). Sur une page
+  d'organisme (`/mairie-d-arles/...`), la phrase nomme donc la collectivité, pas la mairie :
+  c'est ce qui sera archivé. `src/i18n/consents.test.ts` épingle le français sur celui d'Iris.
+- ⚠️ **Question ouverte : la langue de la preuve.** Un usager qui lit le portail en anglais
+  accepte la phrase anglaise, mais Iris consigne la française (il n'accepte ni `statement`, ni
+  langue). Le Socle, lui, dit que la phrase « vient de l'application qui a affiché la case :
+  elle seule connaît sa langue ». Pour que la trace soit fidèle en langue étrangère, il faudra
+  un ajout au contrat d'ingestion d'Iris (une `lang`, ou un `statement` accepté quand la source
+  est de confiance). À trancher côté Iris ; d'ici là, la trace d'un dépôt non francophone est
+  la phrase française, ce que le dictionnaire signale en commentaire.
+- **Deux gardes, la même règle.** L'écran refuse d'envoyer sans le consentement au traitement
+  (`validateConsents`, erreur reliée à sa case, comptée dans le récapitulatif d'erreurs) ; et
+  `portal-api` refuse (400) un corps sans `consents`, un `kind` hors catalogue, un doublon, une
+  clé en plus, ou `traitement` non accordé (`normalizeConsents`, miroir de la garde d'Iris) —
+  **avant** toute lecture du Socle et tout appel à Iris. Une enveloppe fabriquée à la main ne
+  dépose pas sans accord, et le portail ne remet pas à Iris ce qu'il sait irrecevable.
+- ⚠️ **Ordre de déploiement : l'interface d'abord, la fonction ensuite.** Une interface d'avant
+  ce lot face à la nouvelle fonction verrait tous ses dépôts refusés (pas de `consents`). Dans
+  l'autre sens, l'ancienne fonction ignore la clé et Iris marque l'anomalie
+  `consentement_absent` — dégradé, mais rien de perdu. Donc : push sur `main` (Cloudflare),
+  puis `npx supabase functions deploy portal-api`.
+- **Dans le recueil de l'assistant**, la carte « Vos informations » est le même bloc, et l'étape
+  n'est **jamais sautée** — même sans public ouvert, il reste une case obligatoire à cocher. Le
+  récapitulatif relit les deux consentements (« Accepté » / « Refusé ») et le « Continuer dans le
+  formulaire classique » les emporte avec le reste. Ils ne partent **jamais au modèle** : un
+  consentement se coche, il ne se dicte pas. Un recueil rangé dans l'onglet avant ce lot rouvre
+  la carte au lieu de croire une confirmation donnée sans qu'on ait posé la question.
+- **Lot 1 seulement.** Modifier ses consentements après coup (retrait, art. 7.3) attend l'espace
+  « Mon compte » des démarches avec compte — Iris tient le retrait par un agent (B9 de son
+  backlog), le Socle en dérive l'état par trigger.
 
 **L'adresse de l'usager se tape sur une ligne, complétée par la Base Adresse Nationale**
 (`AddressInput.tsx`, porté du champ d'Iris ; logique pure dans `src/services/adresse/ban.ts`).
@@ -653,8 +716,9 @@ résoudra pas d'elle-même. À revoir le jour où l'on distinguera l'indisponibl
 ### Ce qu'Iris enregistre
 
 Une demande déposée porte `source = 'portail-citoyen'`, la racine Socle de la collectivité,
-l'organisme destinataire s'il a été choisi, `external_ref` = l'identifiant de dépôt, et un
-`form_data` réduit aux seules clés que le formulaire déclare.
+l'organisme destinataire s'il a été choisi, `external_ref` = l'identifiant de dépôt, un
+`form_data` réduit aux seules clés que le formulaire déclare, et les deux **consentements RGPD**
+(`consents`, phrase recomposée par Iris — voir « Les consentements RGPD »).
 
 L'identité part **non traduite** dans `requester_snapshot.declared` — `courriel`, `nom_usuel`,
 `siret`… tels que le Socle les nomme. Iris tente de la rapprocher de son référentiel `contacts`,
@@ -1174,7 +1238,10 @@ regarde ailleurs, une conversation non.
   message, ni l'adresse, ni la collectivité. Délai de 1,5 s ; muet, la ville se
   demande comme avant ;
 - **l'identité du demandeur** se saisit dans sa propre carte, à la fin, et n'est
-  **jamais montrée au modèle** — elle n'a aucun chemin jusqu'à lui (test).
+  **jamais montrée au modèle** — elle n'a aucun chemin jusqu'à lui (test). La même
+  carte porte les **consentements RGPD**, toujours (2026-09-22) : l'étape existe
+  même sans public ouvert, et les consentements ne partent pas plus au modèle
+  que l'identité.
   ⚠️ Les autres réponses, elles, **partent au modèle** depuis le 2026-09-21 : c'est
   ce qui permet de répondre en langage naturel sur tous les types de champs, et
   d'accuser réception sans reposer deux fois la même question. Formulation
@@ -1266,7 +1333,8 @@ ouvertes sont dans `docs/roadmap.md` du Socle, section « Portail usagers » :
    confirmation par courriel et lien de suivi signé, donc le statut d'une demande
    consultable depuis le portail ;
 3. les démarches **avec compte** (espace usager, rattaché au référentiel
-   `contacts` du Socle) ;
+   `contacts` du Socle) — dont un « Mon compte » où l'usager **modifie ses
+   consentements** RGPD (le lot 1 du 2026-09-22 ne fait que les recueillir) ;
 4. la **création de compte** ;
 5. les **échanges** usager ↔ agent sur une demande ;
 6. ~~les **pièces jointes**~~ — **livrées le 2026-09-08** (dépôt dès la sélection, formats et

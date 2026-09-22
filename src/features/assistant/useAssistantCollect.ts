@@ -17,6 +17,7 @@ import { solveChallenge } from "@fn/_shared/ai/challenge.ts";
 import type { CollectionPayload } from "@fn/_shared/domain/assistantTurn.ts";
 import type { FieldErrors } from "@fn/_shared/domain/formulaire.ts";
 import { validateRequester } from "@fn/_shared/domain/formulaire.ts";
+import { consentErrorKey, validateConsents, type ConsentKind } from "@fn/_shared/domain/consents.ts";
 import { requesterFieldsFor, type Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import {
   fetchDemarche,
@@ -46,6 +47,7 @@ import {
   reopenOrganization,
   saveCollect,
   setAudience as setAudiencePure,
+  setConsent as setConsentPure,
   setRequesterValue as setRequesterValuePure,
   skipField,
   startedNote,
@@ -107,8 +109,10 @@ export interface UseAssistantCollect {
   reopenOrganization: () => void;
   setAudience: (audience: Audience | null) => void;
   setRequesterValue: (key: string, value: string) => void;
+  setConsent: (kind: ConsentKind, granted: boolean) => void;
+  /** Erreurs de l'identité ET des consentements (clés `consent.<kind>`). */
   requesterErrors: FieldErrors;
-  /** Valide et avance si l'identité est correcte ; rend `false` sinon (`requesterErrors` porte le détail). */
+  /** Valide identité et consentements, et avance si tout est correct ; rend `false` sinon (`requesterErrors` porte le détail). */
   confirmIdentity: () => boolean;
   reopenIdentity: () => void;
   reopenField: (fieldId: string) => void;
@@ -212,6 +216,7 @@ export function useAssistantCollect(params: {
       form: detail.form,
       requester: detail.requester,
       organizations: detail.organizations,
+      tenantName: result.snapshot.tenant.name,
     };
     submissionIdRef.current = newSubmissionId();
     setRequesterErrors({});
@@ -285,10 +290,26 @@ export function useAssistantCollect(params: {
     });
   }
 
+  function setConsentAction(kind: ConsentKind, granted: boolean): void {
+    if (session === null) return;
+    setSession(setConsentPure(session, kind, granted));
+    setRequesterErrors((previous) => {
+      const key = consentErrorKey(kind);
+      if (!(key in previous)) return previous;
+      const next = { ...previous };
+      delete next[key];
+      return next;
+    });
+  }
+
   function confirmIdentityAction(): boolean {
     if (session === null) return false;
     const fields = session.audience === null ? [] : requesterFieldsFor(session.demarche.requester, session.audience);
-    const errors = validateRequester(fields, session.requesterValues);
+    // Identité et consentements dans le même bloc, donc le même verdict.
+    const errors: FieldErrors = {
+      ...validateRequester(fields, session.requesterValues),
+      ...validateConsents(session.consents),
+    };
     setRequesterErrors(errors);
     if (Object.keys(errors).length > 0) return false;
     setSession(confirmIdentity(session));
@@ -379,6 +400,7 @@ export function useAssistantCollect(params: {
     reopenOrganization: reopenOrganizationAction,
     setAudience: setAudienceAction,
     setRequesterValue: setRequesterValueAction,
+    setConsent: setConsentAction,
     requesterErrors,
     confirmIdentity: confirmIdentityAction,
     reopenIdentity: reopenIdentityAction,
