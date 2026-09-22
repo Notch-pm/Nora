@@ -27,6 +27,7 @@
 import * as React from "react";
 import { LOCATION_ADJUST_RADIUS_M } from "@fn/_shared/domain/formSchema.ts";
 import {
+  addressText,
   clampToRadius,
   distanceMeters,
   locationFromAddress,
@@ -89,16 +90,22 @@ export function LocationInput({
   placeholder?: string;
 }) {
   const draft = React.useMemo(() => readDraft(value), [value]);
-  // Ce que l'usager voit dans le champ : l'adresse retenue ou tapée. Une valeur
-  // d'une autre forme (état ancien, chaîne nue) affiche ce qu'elle peut.
-  const text = draft?.address ?? (typeof value === "string" ? value : "");
+  // ⚠️ Ce que l'usager voit est lu DIRECTEMENT de la valeur, jamais du `draft` :
+  // celui-ci passe par `parseLocationValue`, qui rogne l'adresse et rejette une
+  // saisie encore blanche. S'en servir ici rendrait l'espace intapable (bug de
+  // production du 2026-09-22) — un champ contrôlé ne se dérive jamais d'une
+  // transformation à perte de ce qui vient d'être tapé.
+  const text = addressText(value);
   const point = draft === null ? null : locationPoint(draft);
   // Le centre du cercle : le point de l'adresse, ou — état restauré sans lui —
   // le point retenu, faute de mieux.
   const center = draft?.addressPoint ?? point;
 
   function type(next: string) {
-    onChange(next.trim() === "" ? undefined : locationFromAddress(next));
+    // Vider le champ retire la réponse ; tout le reste est conservé tel quel,
+    // espaces de bord compris (une saisie encore blanche reste affichable, et
+    // ne part pas dans la demande : `parseLocationValue` la tient pour vide).
+    onChange(next === "" ? undefined : locationFromAddress(next));
   }
 
   function choose(suggestion: AddressSuggestion) {

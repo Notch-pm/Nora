@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LOCATION_ADJUST_RADIUS_M } from "./formSchema.ts";
 import {
+  addressText,
   clampToRadius,
   distanceMeters,
   locationFromAddress,
@@ -68,13 +69,47 @@ describe("parseLocationValue — la forme du contrat, tolérante", () => {
   });
 
   it("la saisie libre : une adresse, aucun point, jamais ajustée", () => {
-    expect(locationFromAddress(" 12 rue Neuve ")).toEqual({
+    expect(locationFromAddress("12 rue Neuve")).toEqual({
       address: "12 rue Neuve",
       lat: null,
       lon: null,
       precision: null,
       adjusted: false,
     });
+  });
+
+  // ⚠️ Régression de production du 2026-09-22 : la valeur passait par `trim()`
+  // à chaque frappe, et le champ étant contrôlé, l'espace disparaissait à
+  // l'instant où elle était tapée — « 12 rue de la Paix » devenait
+  // « 12ruedelaPaix », que la BAN ne reconnaît pas. Même piège qu'Iris le
+  // 2026-08-28 : un champ contrôlé ne se dérive jamais d'une transformation à
+  // perte de ce qui vient d'être tapé.
+  it("GARDE ce qui est tapé, espaces compris — et ce qui revient au champ est ce qui en est sorti", () => {
+    for (const frappe of ["12", "12 ", "12 rue ", " 12 rue de la Paix ", "   "]) {
+      expect(locationFromAddress(frappe).address).toBe(frappe);
+      expect(addressText(locationFromAddress(frappe))).toBe(frappe);
+    }
+    // La frappe, lettre après lettre, survit à l'aller-retour par la valeur.
+    let saisie = "";
+    for (const lettre of "12 rue de la Paix") {
+      saisie += lettre;
+      expect(addressText(locationFromAddress(saisie))).toBe(saisie);
+    }
+  });
+
+  it("addressText lit aussi une valeur d'une autre forme, sans rien reconstruire", () => {
+    expect(addressText("12 rue Neuve")).toBe("12 rue Neuve");
+    expect(addressText({ address: "10 Avenue de Frémeur 44000 Nantes", lat: 47.2, lon: -1.5 })).toBe(
+      "10 Avenue de Frémeur 44000 Nantes",
+    );
+    // Blanche ou illisible : le champ affiche ce qu'il peut, il ne perd rien.
+    expect(addressText({ address: "  " })).toBe("  ");
+    for (const raw of [null, undefined, 42, [], {}, { address: 12 }]) expect(addressText(raw)).toBe("");
+  });
+
+  it("la normalisation se fait À LA FRONTIÈRE : c'est le parseur qui rogne", () => {
+    expect(parseLocationValue(locationFromAddress(" 12 rue Neuve "))!.address).toBe("12 rue Neuve");
+    expect(parseLocationValue(locationFromAddress("   "))).toBeNull();
   });
 });
 

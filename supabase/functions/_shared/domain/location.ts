@@ -80,9 +80,38 @@ export function locationIsBlank(raw: unknown): boolean {
   return parseLocationValue(raw) === null;
 }
 
-/** La saisie libre : une adresse tapée, aucun point. */
+/**
+ * La saisie libre : une adresse tapée, aucun point.
+ *
+ * ⚠️ **Le texte est gardé TEL QUEL, espaces compris.** Cette valeur alimente un
+ * champ contrôlé : la rogner ici empêcherait de taper une espace — elle
+ * disparaîtrait à l'instant où elle est frappée, et « 12 rue de la Paix »
+ * s'écrirait « 12ruedelaPaix », que la Base Adresse Nationale ne reconnaît pas
+ * (constaté en production le 2026-09-22). C'est la règle qu'Iris avait tirée du
+ * même piège le 2026-08-28 : **un champ contrôlé ne se dérive jamais d'une
+ * transformation à perte de ce qui vient d'être tapé.**
+ *
+ * La normalisation se fait À LA FRONTIÈRE, quand la réponse part :
+ * `parseLocationValue` rogne l'adresse, et une adresse blanche n'est pas un lieu.
+ */
 export function locationFromAddress(address: string): LocationValue {
-  return { address: address.trim(), lat: null, lon: null, precision: null, adjusted: false };
+  return { address, lat: null, lon: null, precision: null, adjusted: false };
+}
+
+/**
+ * Le texte à AFFICHER dans le champ, lu sans rien reconstruire : l'adresse de
+ * la valeur telle qu'elle a été tapée — même blanche, même illisible pour
+ * `parseLocationValue` (une valeur d'une autre forme n'affiche que ce qu'elle
+ * peut). C'est l'autre moitié de la règle ci-dessus : ce qui revient dans le
+ * champ est exactement ce qui en est sorti.
+ */
+export function addressText(raw: unknown): string {
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "object" && raw !== null) {
+    const address = (raw as { address?: unknown }).address;
+    if (typeof address === "string") return address;
+  }
+  return "";
 }
 
 /** Le point de l'adresse, s'il y en a un. */
