@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { handlingOrganizationOf } from "../domain/demarche.ts";
 import { getPublicDemarche, getPublicDemarches } from "./demarcheService.ts";
 import type { SocleClient, SocleReply } from "./socleClient.ts";
 
@@ -113,6 +114,12 @@ const CATALOGUE = [
     name: "Acte de mariage",
     organizations: [
       { id: "o-accm", name: "ACCM", slug: "laurentville", logo_url: "https://exemple.fr/accm.png" },
+      // La vitrine est la mairie ; c'est son service interne qui instruit
+      // (contrat 1.16.0) — et c'est lui qu'Iris attend au dépôt.
+      {
+        id: "o-rosny", name: "Mairie de Rosny-sous-Bois", slug: "rosny-sous-bois", logo_url: null,
+        handling_organization_id: "o-services-techniques",
+      },
       // Logo servi en clair : écarté comme toute image d'une page publique.
       {
         id: "o-arles",
@@ -134,9 +141,17 @@ describe("getPublicDemarches — les organismes et leur adresse", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.demarches[0].organizations).toEqual([
-      { id: "o-accm", name: "ACCM", slug: "laurentville", logoUrl: "https://exemple.fr/accm.png" },
-      { id: "o-arles", name: "Mairie d'Arles", slug: "mairie-d-arles", logoUrl: null },
-      { id: "o-nu", name: "Service sans slug", slug: null, logoUrl: null },
+      { id: "o-accm", name: "ACCM", slug: "laurentville", logoUrl: "https://exemple.fr/accm.png", handlingOrganizationId: null },
+      {
+        id: "o-rosny", name: "Mairie de Rosny-sous-Bois", slug: "rosny-sous-bois", logoUrl: null,
+        handlingOrganizationId: "o-services-techniques",
+      },
+      { id: "o-arles", name: "Mairie d'Arles", slug: "mairie-d-arles", logoUrl: null, handlingOrganizationId: null },
+      { id: "o-nu", name: "Service sans slug", slug: null, logoUrl: null, handlingOrganizationId: null },
+    ]);
+    // La demande s'adresse au service qui instruit — ou à l'affiché, s'il instruit lui-même.
+    expect(result.demarches[0].organizations.map(handlingOrganizationOf)).toEqual([
+      "o-accm", "o-services-techniques", "o-arles", "o-nu",
     ]);
   });
 
@@ -149,7 +164,7 @@ describe("getPublicDemarches — les organismes et leur adresse", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.demarches[0].organizations).toEqual([
-      { id: "o", name: "O", slug: null, logoUrl: null },
+      { id: "o", name: "O", slug: null, logoUrl: null, handlingOrganizationId: null },
     ]);
   });
 });

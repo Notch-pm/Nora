@@ -235,12 +235,13 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
         description: "Signalez un problème rencontré dans l'espace public.",
         estimatedMinutes: 5,
         organizations: [
-          { id: NANTES, name: "Ville de Nantes", slug: "nantes", logoUrl: null },
+          { id: NANTES, name: "Ville de Nantes", slug: "nantes", logoUrl: null, handlingOrganizationId: null },
           {
             id: "q-chantenay",
             name: "Mairie de quartier de Chantenay",
             slug: "mairie-de-chantenay",
             logoUrl: null,
+            handlingOrganizationId: null,
           },
         ],
         audiences: ["citoyen"],
@@ -252,7 +253,7 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
         // la carte n'aurait aucun texte alors que la collectivité en a écrit un.
         description: "Effectuez votre demande en ligne.",
         estimatedMinutes: null,
-        organizations: [{ id: NANTES, name: "Ville de Nantes", slug: null, logoUrl: null }],
+        organizations: [{ id: NANTES, name: "Ville de Nantes", slug: null, logoUrl: null, handlingOrganizationId: null }],
         // ⚠️ Dans l'ordre du filtre, pas celui du Socle : deux catalogues
         // paramétrés dans un ordre différent doivent se filtrer pareil.
         audiences: ["citoyen", "entreprise"],

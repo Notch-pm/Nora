@@ -446,6 +446,15 @@ vérifications, toutes **côté serveur**, parce qu'aucune ne peut être délég
    deviendrait un moyen de déposer sur une démarche en brouillon ou fermée ;
 3. **l'organisme destinataire** doit faire partie de ceux qui proposent la démarche.
 
+⚠️ **La vitrine et le guichet ne sont pas le même organisme.** L'usager choisit ce que le
+portail affiche — sa mairie — mais la demande part vers le **service interne** qui a activé la
+démarche, s'il y en a un (`handling_organization_id` du contrat 1.16.0, porté par
+`DemarcheOrganization.handlingOrganizationId`). Iris est strict : il refuse (400) une demande
+adressée à un organisme qui n'active pas la démarche, et un porteur ne l'active pas — son service
+le fait pour lui. Constaté le 2026-09-22 sur test2 : formulaire rempli, identité saisie, envoi
+refusé « démarche non activée pour cet organisme ». Le portail ne montre jamais ce service : la
+collectivité a choisi de ne pas le montrer.
+
 S'y ajoute un filtrage : seules les clés que le formulaire déclare (et celles de l'identité du
 Socle) sont déposées. Une enveloppe fabriquée à la main ne peut pas glisser de champs inventés
 dans une demande, où un agent les lirait comme des réponses de l'usager.
@@ -537,14 +546,22 @@ Par le tableau de bord Supabase (*Edge Functions → Secrets*) ou par la CLI, de
 ```bash
 supabase secrets set \
   IRIS_API_URL=https://<ref-iris>.supabase.co/functions/v1/requests-api \
-  IRIS_API_KEY=<la clé irs_…>
+  IRIS_API_KEYS='{"<id Socle de la collectivité>":"<sa clé irs_…>","<autre id>":"<autre clé>"}'
 ```
+
+**Une clé PAR collectivité**, rangées dans un seul secret JSON (`irisKeys.ts`) : `portal-api`
+choisit celle de la collectivité du domaine visité. Ajouter une collectivité, c'est refaire les
+étapes 0 à 2 pour elle, puis reposer `IRIS_API_KEYS` avec une entrée de plus — le secret se
+remplace en entier, il ne se complète pas. ⚠️ Une fois ce secret posé il fait foi SEUL : une
+collectivité qui n'y figure pas ne peut pas déposer (`iris_misconfigured`, et le journal la
+nomme), on ne retombe pas sur la clé d'une autre. L'ancien `IRIS_API_KEY` ne sert que tant que
+`IRIS_API_KEYS` n'existe pas ; il peut ensuite être retiré.
 
 Pas de redéploiement nécessaire : `portal-api` lit `Deno.env` à chaque requête, le changement prend
 effet au prochain démarrage du worker.
 
 ⚠️ **Regénérer une clé, c'est deux gestes** — mettre à jour `key_hash` en base *et* reposer
-`IRIS_API_KEY`. N'en faire qu'un laisse le portail avec une clé qu'Iris ne connaît plus, et le
+`IRIS_API_KEYS`. N'en faire qu'un laisse le portail avec une clé qu'Iris ne connaît plus, et le
 symptôme est le même que si rien n'avait été fait.
 
 Sans les deux secrets `IRIS_*`, tout le portail fonctionne **sauf** le dépôt, qui répond
@@ -601,44 +618,37 @@ puis de créer une fiche. S'il n'y parvient pas, il **n'échoue pas** : la deman
 avec `identity_status = 'non_rapprochee'` et l'anomalie `usager_a_creer_dans_socle`, qu'un agent
 traite à l'instruction. Un Socle muet ne doit jamais faire perdre une demande.
 
-## Plusieurs portails, ou un portail multi-collectivités ?
+## Une instance, plusieurs collectivités — en dépôt aussi
 
-C'est la **question ouverte la plus structurante** du portail, et elle n'est pas tranchée.
+La question a été ouverte longtemps ; elle est **tranchée depuis le 2026-09-21** : une seule
+instance sert toutes les collectivités, en lecture comme en dépôt.
 
-En l'état, l'instance est **multi-collectivités en lecture** et **mono-collectivité en dépôt** :
+| | Comment |
+| --- | --- |
+| Lire — accueil, démarches, formulaire | la collectivité vient du domaine visité, et la clé Socle est une clé *plateforme* : elle résout tous les domaines |
+| Déposer — `POST /v1/demandes`, `/v1/demandes/pieces` | la clé Iris est liée à UNE source, donc à UNE collectivité (Iris rejette en 403 toute enveloppe dont la racine diffère) : `portal-api` choisit la clé de la collectivité qu'il vient de résoudre, dans le registre `IRIS_API_KEYS` (`irisKeys.ts`) |
 
-| | Multi-tenant ? | Pourquoi |
-| --- | --- | --- |
-| Lire — accueil, démarches, formulaire | **oui** | la collectivité vient du domaine visité, et la clé Socle est une clé *plateforme* : elle résout tous les domaines |
-| Déposer — `POST /v1/demandes` | **non** | la clé Iris est liée à UNE source, elle-même liée à UN tenant ; Iris rejette en 403 toute enveloppe dont la racine diffère |
+Ce qui a été écarté, et pourquoi :
 
-Un dépôt depuis un domaine porté par une **sous-organisation** bute sur la même règle.
+- **un déploiement par collectivité** : N déploiements à tenir à jour, et tout ce qui fait le
+  cœur de l'architecture — résolution par `Origin`, cache par hostname — devenait du code mort ;
+- **une clé Iris « plateforme »** couvrant toutes les collectivités : une fuite ouvrirait le dépôt
+  chez toutes à la fois, et la révoquer les couperait toutes. Une clé par collectivité se révoque
+  seule, et le journal d'Iris dit qui a déposé quoi sans rien avoir à croiser.
 
-Deux directions, qui ne coûtent pas la même chose :
+Le registre est un **secret JSON unique** parce que les secrets d'edge function sont plats. Il
+tient sans peine quelques dizaines de collectivités. Au-delà, ou le jour où l'ouverture d'une
+collectivité doit se faire sans passer par un secret (libre-service depuis le Socle), sa place est
+une table chiffrée côté Socle, servie au portail par sa clé plateforme — `resolveIrisKey` est le
+seul endroit à changer.
 
-**A — une instance, un registre de clés par collectivité.** `portal-api` choisit la clé Iris
-d'après le tenant qu'il vient de résoudre. La promesse « une instance sert toutes les
-collectivités » tient alors de bout en bout, et ajouter une collectivité reste une ligne dans
-`organization_domains`. Prix : il faut un endroit où ranger N secrets — les secrets d'edge function
-sont plats — donc une table chiffrée côté Socle, ou un secret unique portant un JSON, et une
-rotation à instruire collectivité par collectivité.
+⚠️ Ce qui reste vrai : un dépôt depuis un domaine porté par une **sous-organisation** s'envoie
+sous la racine de la collectivité, avec la clé de cette racine.
 
-**B — un déploiement par collectivité.** Chaque portail a ses propres secrets, donc sa propre clé
-Iris, et le problème disparaît sans écrire une ligne. Prix : N déploiements à tenir à jour, N
-domaines à configurer, et surtout le multi-tenant du portail devient inutile — la résolution par
-`Origin`, `PORTAL_DEV_DOMAIN_SUFFIX`, le cache par hostname perdent leur raison d'être. Ce qui est
-aujourd'hui le cœur de l'architecture deviendrait du code mort.
-
-Trois questions à trancher avant d'écrire quoi que ce soit :
-
-- une collectivité aura-t-elle un jour **plusieurs domaines** (une marque par commune membre) ?
-- le portail reste-t-il **une application déployée**, ou devient-il un gabarit qu'on instancie ?
-- Iris peut-il délivrer une clé **plateforme** couvrant plusieurs tenants, comme le Socle en a une ?
-  C'est le point de bascule : si oui, l'option A se réduit à presque rien, et B perd son seul
-  avantage.
-
-Tant que la question n'est pas tranchée, **une seule collectivité peut déposer**. Les autres
-consultent et remplissent normalement ; leur dépôt échoue sur l'autorisation d'Iris.
+Constaté le 2026-09-21 sur test2 (Rosny-sous-Bois), avant ce registre : formulaire rempli dans la
+conversation, identité saisie, envoi refusé — la seule clé posée était celle d'une autre
+collectivité. Les demandes de démonstration visibles dans Iris pour d'autres collectivités
+venaient de chargements par script, pas du portail.
 
 ## Sécurité
 
@@ -1241,6 +1251,5 @@ reste à commander ; le détail est dans `docs/roadmap.md` du Socle,
 § « Accessibilité RGAA ». Et les autres mentions obligatoires d'un site public,
 ~~premier domaine réel~~ (**en ligne depuis le 2026-09-12** :
 `laurentville.edilumen.fr`, construit par Cloudflare **au push sur `main`**), et
-surtout **le multi-collectivités du dépôt** — voir
-« Plusieurs portails, ou un portail multi-collectivités ? ». C'est un choix
-d'architecture, pas une tâche : il conditionne si cette instance reste unique.
+~~le multi-collectivités du dépôt~~ (**tranché le 2026-09-21** : une clé Iris par
+collectivité, voir « Une instance, plusieurs collectivités — en dépôt aussi »).

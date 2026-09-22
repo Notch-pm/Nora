@@ -69,7 +69,15 @@ function toOrganizations(raw: unknown): DemarcheOrganization[] {
     // publique : `https` absolue ou rien (`urls.ts`). Un logo écarté rend une
     // pastille, pas une image cassée.
     if (id !== null && name !== null) {
-      organizations.push({ id, name, slug: text(org.slug), logoUrl: httpsUrl(org.logo_url) });
+      organizations.push({
+        id,
+        name,
+        slug: text(org.slug),
+        logoUrl: httpsUrl(org.logo_url),
+        // Le service qui instruit derrière la vitrine (contrat 1.16.0) — c'est
+        // lui qu'Iris attend au dépôt, voir `DemarcheOrganization`.
+        handlingOrganizationId: text(org.handling_organization_id),
+      });
     }
   }
   return organizations;

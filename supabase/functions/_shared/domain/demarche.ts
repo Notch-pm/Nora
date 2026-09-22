@@ -39,6 +39,26 @@ export interface DemarcheOrganization {
    * comme l'en-tête le fait déjà, jamais le logo de la collectivité.
    */
   logoUrl: string | null;
+  /**
+   * Le SERVICE INTERNE qui instruit, quand ce n'est pas l'organisme affiché.
+   *
+   * ⚠️ La vitrine et le guichet ne sont pas le même organisme. Le Socle nomme
+   * ici le porteur — « Mairie de Rosny-sous-Bois », ce que l'usager voit et
+   * choisit — et donne à part celui qui a activé la démarche, « Services
+   * techniques ». C'est CE dernier qu'Iris attend au dépôt : il refuse toute
+   * demande adressée à un organisme qui n'active pas la démarche, et le
+   * porteur ne l'active pas — son service le fait pour lui. Constaté le
+   * 2026-09-22 sur test2 : formulaire rempli, envoi refusé.
+   *
+   * Absent ou `null` : l'organisme affiché instruit lui-même. Le portail ne le
+   * montre jamais — la collectivité a choisi de ne pas le montrer.
+   */
+  handlingOrganizationId?: string | null;
+}
+
+/** L'organisme auquel une demande s'ADRESSE — le service qui instruit, sinon l'affiché. */
+export function handlingOrganizationOf(org: DemarcheOrganization): string {
+  return org.handlingOrganizationId ?? org.id;
 }
 
 /**

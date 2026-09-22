@@ -30,6 +30,7 @@ import { createSocleClient } from "../_shared/socle/socleClient.ts";
 import { withCache } from "../_shared/socle/cachedSocleClient.ts";
 import { createAudienceClient } from "../_shared/socle/audienceClient.ts";
 import { createIrisClient } from "../_shared/iris/irisClient.ts";
+import { resolveIrisKey } from "../_shared/iris/irisKeys.ts";
 import { submitDemande } from "../_shared/iris/demandeService.ts";
 import { httpStatusForPieceFailure, uploadPiece } from "../_shared/iris/pieceService.ts";
 import { hostnameForRequest } from "../_shared/http/requestHostname.ts";
@@ -39,6 +40,7 @@ import { AUDIENCES } from "../_shared/domain/requesterConfig.ts";
 import {
   demarchesOfOrganization,
   type DemarcheOrganization,
+  handlingOrganizationOf,
   organizationBySlug,
   villesOf,
 } from "../_shared/domain/demarche.ts";
@@ -217,6 +219,31 @@ const FAILURE_MESSAGES: Record<PortalFailure, string> = {
   iris_misconfigured:
     "Votre demande n'a pas pu être envoyée. Merci de réessayer dans quelques instants.",
 };
+
+/**
+ * La clé Iris de la collectivité qui dépose (`irisKeys.ts`) — ou l'échec à rendre.
+ *
+ * ⚠️ Le journal nomme la COLLECTIVITÉ, jamais une clé : c'est ce que
+ * l'exploitant doit savoir pour agir (« il manque une entrée pour elle dans
+ * `IRIS_API_KEYS` »), et c'est tout ce qu'on peut écrire sans rien exposer.
+ */
+function irisKeyFor(tenantId: string): string | Response {
+  const resolution = resolveIrisKey(tenantId, {
+    registry: Deno.env.get("IRIS_API_KEYS"),
+    legacyKey: Deno.env.get("IRIS_API_KEY"),
+  });
+  if (resolution.ok) return resolution.apiKey;
+  if (resolution.reason === "not_configured") {
+    console.error("portal-api : aucune clé Iris posée (IRIS_API_KEYS, ou IRIS_API_KEY).");
+    return failure("not_configured");
+  }
+  console.error(
+    resolution.reason === "unreadable"
+      ? "portal-api : IRIS_API_KEYS n'est pas un objet JSON lisible."
+      : "portal-api : pas de clé Iris pour la collectivité " + tenantId + " dans IRIS_API_KEYS.",
+  );
+  return failure("iris_misconfigured");
+}
 
 function failure(reason: PortalFailure): Response {
   // `no-store` sur les échecs : une indisponibilité passagère ne doit pas
@@ -536,9 +563,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
   // que la démarche demande pour ce champ.
   if (request.method === "POST" && path === "/v1/demandes/pieces") {
     const irisUrl = Deno.env.get("IRIS_API_URL");
-    const irisKey = Deno.env.get("IRIS_API_KEY");
-    if (!irisUrl || !irisKey) {
-      console.error("portal-api : secrets Iris manquants pour le dépôt d'une pièce.");
+    if (!irisUrl) {
+      console.error("portal-api : IRIS_API_URL manquant pour le dépôt d'une pièce.");
       return failure("not_configured");
     }
     const pieceFailure = (code: keyof typeof PIECE_MESSAGES, status: number, message?: string) =>
@@ -554,6 +580,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
     const resolved = await tenantOf(request, socle);
     if (!resolved.ok) return resolved.response;
+    const irisKey = irisKeyFor(resolved.tenant.id);
+    if (irisKey instanceof Response) return irisKey;
 
     let form: FormData;
     try {
@@ -623,10 +651,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
   // c'est un agent qui la qualifie.
   if (request.method === "POST" && path === "/v1/demandes") {
     const irisUrl = Deno.env.get("IRIS_API_URL");
-    const irisKey = Deno.env.get("IRIS_API_KEY");
-    if (!irisUrl || !irisKey) {
-      const missing = [!irisUrl ? "IRIS_API_URL" : null, !irisKey ? "IRIS_API_KEY" : null];
-      console.error("portal-api : secrets Iris manquants —", missing.filter((n) => n !== null).join(", "));
+    if (!irisUrl) {
+      console.error("portal-api : secret Iris manquant — IRIS_API_URL");
       return failure("not_configured");
     }
 
@@ -679,6 +705,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
     const resolved = await tenantOf(request, socle);
     if (!resolved.ok) return resolved.response;
     const tenant = resolved.tenant;
+    // La clé est celle de CETTE collectivité — et on le sait avant de lire la
+    // démarche : inutile de solliciter le Socle pour un dépôt qui ne partira pas.
+    const irisKey = irisKeyFor(tenant.id);
+    if (irisKey instanceof Response) return irisKey;
 
     const result = await getPublicDemarche(
       tenant.id,
@@ -696,12 +726,18 @@ Deno.serve(async (request: Request): Promise<Response> => {
       typeof body.organizationId === "string" && body.organizationId.trim() !== ""
         ? body.organizationId.trim()
         : null;
-    if (
-      rawOrganizationId !== null &&
-      !demarche.organizations.some((org) => org.id === rawOrganizationId)
-    ) {
+    const chosenOrganization =
+      rawOrganizationId === null
+        ? null
+        : demarche.organizations.find((org) => org.id === rawOrganizationId) ?? null;
+    if (rawOrganizationId !== null && chosenOrganization === null) {
       return badRequest("organizationId : cet organisme ne propose pas cette démarche.");
     }
+    // ⚠️ La demande s'ADRESSE au service qui instruit, pas à la vitrine que
+    // l'usager a choisie : Iris refuse un organisme qui n'active pas la
+    // démarche, et un porteur ne l'active pas — son service interne le fait
+    // (`handlingOrganizationOf`). L'usager, lui, n'a vu que sa mairie.
+    const organizationId = chosenOrganization === null ? null : handlingOrganizationOf(chosenOrganization);
 
     // On ne dépose que des clés que le formulaire déclare. Une enveloppe
     // fabriquée à la main ne peut donc pas glisser de champs inventés dans une
@@ -758,7 +794,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
         demarcheName: demarche.name,
         submission: {
           demarcheId,
-          organizationId: rawOrganizationId,
+          organizationId,
           formData,
           requester: Object.keys(requester).length === 0 ? null : requester,
           submissionId,
