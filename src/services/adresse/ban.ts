@@ -4,15 +4,18 @@
  * Le référentiel est la Base Adresse Nationale, servie par la Géoplateforme
  * (IGN) : publique, sans clé ni compte. Même service et même lecture tolérante
  * qu'Iris (`src/lib/adresse.ts`), réduits à ce que le portail consomme : une
- * ligne à proposer pendant la frappe. Ni coordonnées, ni code INSEE, ni score :
- * le portail n'en ferait rien, et ce qu'on ne lit pas ne peut pas fuir.
+ * ligne à proposer pendant la frappe, et — depuis le lieu d'intervention
+ * (Socle 1.29.0) — le POINT de la proposition, qui pose le marqueur sur la
+ * carte et part avec la demande. Ni code INSEE, ni score : le portail n'en
+ * ferait rien, et ce qu'on ne lit pas ne peut pas fuir.
  *
- * ⚠️ L'appel part DU NAVIGATEUR de l'usager (décision du 2026-09-22) : c'est
- * le seul appel de l'écran hors de `portal-api`. Ce qui transite : le fragment
- * d'adresse tapé dès trois caractères, et l'adresse IP du visiteur — comme
- * pour tout site qui interroge ce service. Jamais un nom, jamais une démarche.
- * Rien de la réponse n'est gardé : seule la ligne choisie (ou tapée) part
- * avec la demande, dans la clé `adresse` du Socle.
+ * ⚠️ L'appel part DU NAVIGATEUR de l'usager (décision du 2026-09-22) : avec les
+ * tuiles de la carte (`src/lib/carto.ts`), ce sont les seuls appels de l'écran
+ * hors de `portal-api`. Ce qui transite : le fragment d'adresse tapé dès trois
+ * caractères, et l'adresse IP du visiteur — comme pour tout site qui interroge
+ * ce service. Jamais un nom, jamais une démarche. Ce qui est gardé : pour
+ * l'adresse de l'usager, la seule ligne choisie (ou tapée), dans la clé
+ * `adresse` du Socle ; pour un lieu d'intervention, la ligne ET son point.
  */
 
 /** `api-adresse.data.gouv.fr` a été décommissionné début 2026 : c'est ici que la BAN se sert. */
@@ -44,6 +47,12 @@ export interface AddressSuggestion {
   /** « 44, Loire-Atlantique, Pays de la Loire ». */
   context: string;
   precision: AddressPrecision;
+  /**
+   * Le point de la proposition (WGS 84), lu dans `geometry.coordinates` — ordre
+   * GeoJSON `[lon, lat]`. `null` tous les deux si la BAN ne l'a pas donné.
+   */
+  lat: number | null;
+  lon: number | null;
 }
 
 /**
@@ -115,6 +124,7 @@ export function parseAddressSuggestions(raw: unknown): AddressSuggestion[] {
     const p = isRecord(feature.properties) ? feature.properties : {};
     const label = text(p.label);
     if (label === "") continue; // sans libellé, la proposition n'est pas choisissable
+    const point = pointOf(feature.geometry);
     out.push({
       id: text(p.id) || label,
       label,
@@ -123,9 +133,20 @@ export function parseAddressSuggestions(raw: unknown): AddressSuggestion[] {
       city: text(p.city),
       context: text(p.context),
       precision: precisionOf(p.type),
+      lat: point?.lat ?? null,
+      lon: point?.lon ?? null,
     });
   }
   return out;
+}
+
+/** `[lon, lat]` GeoJSON → `{ lat, lon }`, ou `null` si la géométrie n'est pas un point lisible. */
+function pointOf(geometry: unknown): { lat: number; lon: number } | null {
+  if (!isRecord(geometry) || !Array.isArray(geometry.coordinates)) return null;
+  const [lon, lat] = geometry.coordinates;
+  if (typeof lat !== "number" || typeof lon !== "number") return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return { lat, lon };
 }
 
 /** Seconde ligne d'une proposition : le contexte départemental, à défaut la commune. */

@@ -548,9 +548,30 @@ l'usager** vers `data.geopf.fr` (Géoplateforme, IGN — API publique de l'État
 du 2026-09-22). Ce qui transite : le fragment d'adresse tapé, et l'adresse IP du visiteur, comme
 pour tout site qui interroge ce service. Ni nom, ni démarche, ni collectivité. Rien de la réponse
 n'est gardé — ni coordonnées, ni identifiant BAN : seule la ligne choisie ou tapée part avec la
-demande. Le service se substitue par `VITE_GEOCODE_URL` (voir `.env.example`). Les blocs d'adresse
-des formulaires de démarche (`intervention_*`) ne sont pas concernés : ils restent des champs
-séparés.
+demande. Le service se substitue par `VITE_GEOCODE_URL` (voir `.env.example`).
+
+**Le lieu d'intervention se pose sur une carte** (champ `location` du Socle, contrat 1.29.0 ;
+`LocationInput.tsx`, logique pure dans `supabase/functions/_shared/domain/location.ts`). Le même
+champ d'adresse assisté, et — dès qu'une proposition est retenue — une carte OpenStreetMap centrée
+sur l'adresse, où l'usager **déplace le point** (souris, doigt, ou flèches du clavier : 5 m, 25 m
+avec Maj) pour désigner l'endroit exact, **dans un rayon de 150 m** : au-delà, le geste s'arrête sur
+le cercle. **L'adresse ne bouge pas** ; « Replacer sur l'adresse » annule ; la distance est
+annoncée aux lecteurs d'écran. Retaper du texte libre efface le point (sans point de référence,
+rien à ajuster) — la demande part alors avec l'adresse seule. Ce qui part avec la demande, sous la
+clé du champ : `{ address, lat, lon, precision, adjusted }` — le libellé retenu ou tapé, le **point
+retenu** (celui de l'adresse ou celui où l'usager l'a posé), la finesse BAN, et si le point a été
+déplacé. `portal-api` revalide la forme (cinq clés, couple de coordonnées finies) mais pas la
+distance : il ne connaît pas le point de l'adresse. Iris lit ce point **sans le géocoder**.
+
+⚠️ **La carte est le second appel de l'écran hors de `portal-api`**, lui aussi **depuis le
+navigateur** : les tuiles viennent de `tile.openstreetmap.org` (`src/lib/carto.ts`, mosaïque portée
+d'Iris, attribution ODbL affichée). Ce qui transite : la zone regardée et l'adresse IP du visiteur,
+comme pour tout site qui affiche une carte — ni nom, ni démarche. Pour un lieu d'intervention, la
+BAN livre en plus le **point** de la proposition (`ban.ts` le lit désormais ; pour l'adresse de
+l'usager, seul le libellé est gardé). La politique d'usage de l'OSMF réserve ses serveurs aux
+faibles volumes : `VITE_MAP_TILE_URL` bascule sur un fournisseur dédié sans toucher au code.
+L'ancien bloc « Lieu d'intervention » du Socle (une section de champs `intervention_*`) subsiste
+sur les démarches paramétrées avant le 2026-09-22 : il se rend comme avant, champ par champ.
 
 ## Raccordement à Iris
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FormSchema } from "../domain/formSchema.ts";
 import {
+  isConversationField,
   answerField,
   applyUpdates,
   coerceUpdate,
@@ -508,5 +509,15 @@ describe("sanitizeState — l'état vient du navigateur", () => {
   it("borne les pièces au nombre que la démarche demande", () => {
     const three = [1, 2, 3].map((n) => ({ uploadId: "u" + n, name: "p", size: 1 }));
     expect(sanitizeState(SCHEMA, "d1", { values: { "f-photo": three } }).values).toEqual({});
+  });
+});
+
+describe("le lieu d'intervention — le contrôle est le seul chemin", () => {
+  it("ne se recueille pas en conversation : l'adresse se dirait, le point ne se pose que sur la carte", () => {
+    const lieu = { id: "f-ou", key: "intervention_lieu", type: "location", label: "Où ?" } as const;
+    expect(isConversationField(lieu)).toBe(false);
+    // Les voisins ne changent pas : un texte se dit, une date et une pièce non.
+    expect(isConversationField({ id: "t", key: "t", type: "text", label: "T" })).toBe(true);
+    expect(isConversationField({ id: "d", key: "d", type: "date", label: "D" })).toBe(false);
   });
 });

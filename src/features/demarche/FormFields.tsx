@@ -14,6 +14,7 @@ import { useT, useTn } from "@/i18n/LanguageLayout.tsx";
 import type { StringKey } from "@/i18n/strings.ts";
 import { uploadPiece, type PieceUploadFailure } from "@/services/portal/portalClient.ts";
 import { piecesOf, type UploadedPiece } from "@fn/_shared/domain/formulaire.ts";
+import { LocationInput } from "./LocationInput.tsx";
 
 // ⚠️ Le contour d'un champ de saisie tient 3 : 1 (RGAA 3.3) — `--pt-field-border`,
 // pas `--pt-border` (1,24 : 1, réservé aux cartes et séparateurs décoratifs).
@@ -231,6 +232,20 @@ export function FormFieldControl({
             demarcheId={demarcheId}
             invalid={error !== null}
             describedBy={describedByAttr}
+          />
+        );
+      case "location":
+        // Adresse sur une ligne (BAN) + carte où le point se déplace dans un
+        // rayon de 150 m — voir `LocationInput`. La valeur est un objet.
+        return (
+          <LocationInput
+            id={inputId}
+            value={value}
+            onChange={onChange}
+            className={controlClass}
+            invalid={error !== null}
+            describedBy={describedByAttr}
+            placeholder={field.placeholder}
           />
         );
       case "textarea":

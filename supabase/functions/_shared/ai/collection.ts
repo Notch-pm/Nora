@@ -36,6 +36,7 @@ import type { FormValues } from "../domain/conditions.ts";
 import type { ChoiceField, Field, FormSchema } from "../domain/formSchema.ts";
 import { allFields } from "../domain/formSchema.ts";
 import { isBlank, isFieldRequired, piecesOf, validateForm, visibleFields } from "../domain/formulaire.ts";
+import { parseLocationValue } from "../domain/location.ts";
 
 /**
  * D'où vient une valeur posée par l'ASSISTANT.
@@ -90,7 +91,10 @@ export interface CollectionState {
  * rapide.
  */
 export function isConversationField(field: Field): boolean {
-  return field.type !== "attachment" && field.type !== "date";
+  // Un lieu d'intervention ne se décrit pas non plus : l'adresse, le modèle
+  // saurait la recueillir, mais le POINT — l'endroit exact, dans un rayon de
+  // 150 m — ne se pose que sur la carte. Le contrôle est le seul chemin.
+  return field.type !== "attachment" && field.type !== "date" && field.type !== "location";
 }
 
 /**
@@ -134,6 +138,8 @@ function plausible(field: Field, value: unknown): boolean {
       );
     case "attachment":
       return Array.isArray(value) && value.length <= field.maxFiles && piecesOf(value).length === value.length;
+    case "location":
+      return parseLocationValue(value) !== null;
     default:
       return typeof value === "string" && value.length <= MAX_TEXT_CHARS;
   }

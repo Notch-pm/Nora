@@ -35,6 +35,7 @@ import { httpStatusForPieceFailure, uploadPiece } from "../_shared/iris/pieceSer
 import { hostnameForRequest } from "../_shared/http/requestHostname.ts";
 import { clientAddress, createRateLimiter, hashKey } from "../_shared/http/rateLimit.ts";
 import { allFields } from "../_shared/domain/formSchema.ts";
+import { parseLocationValue } from "../_shared/domain/location.ts";
 import { AUDIENCES } from "../_shared/domain/requesterConfig.ts";
 import { normalizeConsents } from "../_shared/domain/consents.ts";
 import {
@@ -721,13 +722,26 @@ Deno.serve(async (request: Request): Promise<Response> => {
     // On ne dépose que des clés que le formulaire déclare. Une enveloppe
     // fabriquée à la main ne peut donc pas glisser de champs inventés dans une
     // demande, où un agent les lirait comme des réponses de l'usager.
-    const declaredKeys = new Set(
-      demarche.form === null ? [] : allFields(demarche.form).map((field) => field.key),
+    const declaredFields = demarche.form === null ? [] : allFields(demarche.form);
+    const declaredKeys = new Set(declaredFields.map((field) => field.key));
+    // Un lieu d'intervention (type `location`) part sous la forme du contrat
+    // Socle, revalidée ici : cinq clés, un couple lat/lon fini et dans les
+    // bornes WGS 84, ou rien. ⚠️ Le serveur ne connaît pas le point de
+    // l'adresse : il ne peut pas revérifier les 150 m — c'est l'écran qui
+    // borne le déplacement ; ici on garantit la FORME, pas la distance.
+    const locationKeys = new Set(
+      declaredFields.filter((field) => field.type === "location").map((field) => field.key),
     );
     const rawFormData = isRecord(body.formData) ? body.formData : {};
     const formData: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(rawFormData)) {
-      if (declaredKeys.has(key)) formData[key] = value;
+      if (!declaredKeys.has(key)) continue;
+      if (locationKeys.has(key)) {
+        const location = parseLocationValue(value);
+        if (location !== null) formData[key] = location;
+        continue;
+      }
+      formData[key] = value;
     }
 
     // Les pièces : un identifiant de dépôt (Iris revérifie qu'il est de CETTE

@@ -26,6 +26,7 @@ import type { Demarche, DemarcheDetail } from "../domain/demarche.ts";
 import type { FormValues } from "../domain/conditions.ts";
 import { type ChoiceField, type Field, type FormSchema, isChoiceType } from "../domain/formSchema.ts";
 import { isBlank, isFieldRequired, visibleFields } from "../domain/formulaire.ts";
+import { parseLocationValue } from "../domain/location.ts";
 import type { Tenant } from "../domain/tenant.ts";
 import { verifySolution } from "./challenge.ts";
 import {
@@ -137,6 +138,11 @@ function writtenValue(field: Field, values: FormValues): string | null {
   if (isBlank(value)) return null;
   if (typeof value === "boolean") return value ? "oui" : "non";
   if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string").join(", ");
+  if (field.type === "location") {
+    const location = parseLocationValue(value);
+    if (location === null) return null;
+    return location.adjusted ? `${location.address} (emplacement précisé sur la carte)` : location.address;
+  }
   return typeof value === "string" ? value : String(value);
 }
 

@@ -119,6 +119,23 @@ describe("validation", () => {
     expect(validateForm(schema, { p1: "fichier" })).toEqual({ p1: { key: "validation.required" } });
   });
 
+  it("un lieu d'intervention obligatoire manque tant qu'il n'a pas d'adresse — quelle que soit la forme reçue", () => {
+    const schema: FormSchema = {
+      version: 1,
+      content: [{ id: "l1", key: "intervention_lieu", type: "location", label: "Lieu", required: true }],
+    };
+    for (const value of [undefined, "", "12 rue Neuve", {}, { address: " " }, { lat: 1, lon: 2 }]) {
+      expect(validateForm(schema, { l1: value })).toEqual({ l1: { key: "validation.required" } });
+    }
+    expect(validateForm(schema, { l1: { address: "12 rue Neuve", lat: null, lon: null } })).toEqual({});
+    // Facultatif : une forme bancale ne retient pas l'envoi, elle ne part simplement pas.
+    const optional: FormSchema = {
+      version: 1,
+      content: [{ id: "l1", key: "intervention_lieu", type: "location", label: "Lieu" }],
+    };
+    expect(validateForm(optional, { l1: "12 rue Neuve" })).toEqual({});
+  });
+
   it("borne le nombre de fichiers à ce que la démarche demande", () => {
     const schema: FormSchema = {
       version: 1,
@@ -194,6 +211,44 @@ describe("toFormData — on saisit par id, on dépose par key", () => {
       ],
     };
     expect(toFormData(schema, { p1: [{ uploadId: "u1", name: "a.jpg", size: 1 }] })).toEqual({});
+  });
+});
+
+describe("toFormData — le lieu d'intervention part normalisé", () => {
+  const schema: FormSchema = {
+    version: 1,
+    content: [{ id: "l1", key: "intervention_lieu", type: "location", label: "Lieu" }],
+  };
+
+  it("cinq clés, rien d'autre — ce que l'écran a accroché à la valeur ne traverse pas", () => {
+    const data = toFormData(schema, {
+      l1: {
+        address: " 10 Avenue de Frémeur 44000 Nantes ",
+        lat: 47.223,
+        lon: -1.573,
+        precision: "adresse",
+        adjusted: true,
+        suggestionId: "44109_3356_00010",
+        addressPoint: { lat: 47.223, lon: -1.573 },
+      },
+    });
+    expect(data).toEqual({
+      intervention_lieu: {
+        address: "10 Avenue de Frémeur 44000 Nantes",
+        lat: 47.223,
+        lon: -1.573,
+        precision: "adresse",
+        adjusted: true,
+      },
+    });
+  });
+
+  it("une saisie libre part avec son adresse et sans point ; une forme illisible ne part pas", () => {
+    expect(toFormData(schema, { l1: { address: "12 rue Neuve" } })).toEqual({
+      intervention_lieu: { address: "12 rue Neuve", lat: null, lon: null, precision: null, adjusted: false },
+    });
+    expect(toFormData(schema, { l1: "12 rue Neuve" })).toEqual({});
+    expect(toFormData(schema, { l1: { address: "" } })).toEqual({});
   });
 });
 

@@ -27,6 +27,27 @@ describe("parseFormSchema — tolérant nœud par nœud", () => {
     expect(allFields(schema!).map((field) => field.key)).toEqual(["nom", "motif"]);
   });
 
+  it("lit un lieu d'intervention (type `location`, Socle 1.29.0) — sans option propre, clés inconnues ignorées", () => {
+    const schema = parseFormSchema({
+      version: 1,
+      content: [
+        { id: "f3", key: "intervention_lieu", type: "location", label: "Lieu", required: true, radius: 300 },
+        CHAMP_NOM,
+      ],
+    });
+    const [lieu] = allFields(schema!);
+    expect(lieu).toEqual({
+      id: "f3",
+      key: "intervention_lieu",
+      type: "location",
+      label: "Lieu",
+      required: true,
+      help: undefined,
+      placeholder: undefined,
+      visibleIf: undefined,
+    });
+  });
+
   it("écarte un champ sans clé machine : sa réponse n'aurait pas de nom dans la demande", () => {
     const schema = parseFormSchema({
       version: 1,

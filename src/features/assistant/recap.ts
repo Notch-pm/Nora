@@ -14,6 +14,7 @@ import { CONSENTS, type ConsentKind } from "@fn/_shared/domain/consents.ts";
 import type { Field } from "@fn/_shared/domain/formSchema.ts";
 import { isSection } from "@fn/_shared/domain/formSchema.ts";
 import { piecesOf, visibleNodes } from "@fn/_shared/domain/formulaire.ts";
+import { parseLocationValue } from "@fn/_shared/domain/location.ts";
 import { requesterFieldsFor, type Audience } from "@fn/_shared/domain/requesterConfig.ts";
 import { t } from "@/i18n/t.ts";
 import type { StringKey } from "@/i18n/strings.ts";
@@ -97,6 +98,11 @@ function formatFieldValue(lang: string, field: Field, value: unknown): string {
     case "attachment": {
       const pieces = piecesOf(value);
       return pieces.length > 0 ? pieces.map((p) => p.name).join(", ") : EMPTY;
+    }
+    case "location": {
+      const location = parseLocationValue(value);
+      if (location === null) return EMPTY;
+      return location.adjusted ? `${location.address} — ${t(lang, "location.adjustedShort")}` : location.address;
     }
     default:
       return typeof value === "string" && value.trim() !== "" ? value : EMPTY;

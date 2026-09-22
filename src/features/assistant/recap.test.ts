@@ -59,6 +59,21 @@ describe("buildRecap", () => {
     ]);
   });
 
+  it("relit un lieu d'intervention par son adresse, et dit quand le point a été précisé sur la carte", () => {
+    const form: FormSchema = {
+      version: 1,
+      content: [{ id: "f-ou", key: "intervention_lieu", type: "location", label: "Où ?", required: true }],
+    };
+    const at = { address: "10 Avenue de Frémeur 44000 Nantes", lat: 47.223, lon: -1.573, precision: "adresse" };
+    let session = startSession(demarche({ form }));
+    session = answerField(session, "f-ou", { ...at, adjusted: false });
+    expect(buildRecap("fr", session).sections[0]!.rows[0]!.value).toBe("10 Avenue de Frémeur 44000 Nantes");
+    session = answerField(session, "f-ou", { ...at, adjusted: true });
+    expect(buildRecap("fr", session).sections[0]!.rows[0]!.value).toBe(
+      "10 Avenue de Frémeur 44000 Nantes — emplacement précisé sur la carte",
+    );
+  });
+
   it("montre l'organisme choisi", () => {
     let session = startSession(
       demarche({

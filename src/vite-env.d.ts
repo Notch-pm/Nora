@@ -14,6 +14,8 @@ interface ImportMetaEnv {
   readonly VITE_PORTAL_CACHE_TTL_SECONDS?: string;
   /** Le géocodeur qui complète l'adresse de l'usager. Facultative — la Géoplateforme (IGN) par défaut. */
   readonly VITE_GEOCODE_URL?: string;
+  /** Le fournisseur de tuiles de la carte du lieu d'intervention. Facultative — OpenStreetMap par défaut. */
+  readonly VITE_MAP_TILE_URL?: string;
 }
 
 interface ImportMeta {

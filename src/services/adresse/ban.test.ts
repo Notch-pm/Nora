@@ -54,6 +54,8 @@ function suggestion(over: Partial<AddressSuggestion> = {}): AddressSuggestion {
     city: "Nantes",
     context: "44, Loire-Atlantique, Pays de la Loire",
     precision: "adresse",
+    lat: 47.223,
+    lon: -1.573,
     ...over,
   };
 }
@@ -90,7 +92,7 @@ describe("addressSearchUrl", () => {
 });
 
 describe("parseAddressSuggestions", () => {
-  it("lit une réponse réelle, ignore les champs inconnus et ne garde aucune coordonnée", () => {
+  it("lit une réponse réelle, ignore les champs inconnus et lit le point (GeoJSON = [lon, lat])", () => {
     const [s] = parseAddressSuggestions(REAL_RESPONSE);
     expect(s).toEqual({
       id: "44109_3356_00010",
@@ -100,7 +102,22 @@ describe("parseAddressSuggestions", () => {
       city: "Nantes",
       context: "44, Loire-Atlantique, Pays de la Loire",
       precision: "adresse",
+      lat: 47.223,
+      lon: -1.573,
     });
+    // Ni code INSEE, ni score : ce qu'on ne lit pas ne peut pas fuir.
+    expect(s).not.toHaveProperty("citycode");
+    expect(s).not.toHaveProperty("score");
+  });
+
+  it("sans géométrie lisible, la proposition reste choisissable — sans point", () => {
+    const feature = REAL_RESPONSE.features[0]!;
+    for (const geometry of [undefined, null, { type: "Point" }, { coordinates: ["a", 1] }, { coordinates: [1] }]) {
+      const [s] = parseAddressSuggestions({ features: [{ ...feature, geometry }] });
+      expect(s!.label).toBe(feature.properties.label);
+      expect(s!.lat).toBeNull();
+      expect(s!.lon).toBeNull();
+    }
   });
 
   it("rend une liste vide sur toute forme inattendue — jamais d'exception", () => {
@@ -131,6 +148,8 @@ describe("parseAddressSuggestions", () => {
       city: "",
       context: "",
       precision: "commune",
+      lat: null,
+      lon: null,
     });
   });
 

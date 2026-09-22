@@ -37,6 +37,8 @@ export function AddressInput({
   describedBy,
   autoComplete,
   inline = false,
+  onChoose,
+  placeholder,
 }: {
   id: string;
   value: string;
@@ -52,6 +54,13 @@ export function AddressInput({
    * rognée. Elle pousse alors le contenu — le prix d'un conteneur étroit.
    */
   inline?: boolean;
+  /**
+   * La proposition retenue, entière — pour qui en veut plus que le libellé
+   * (le lieu d'intervention en lit le point). Retaper du texte libre ne
+   * rappelle pas ce rappel : `onChange` seul est alors appelé.
+   */
+  onChoose?: (suggestion: AddressSuggestion) => void;
+  placeholder?: string;
 }) {
   const t = useT();
   const tn = useTn();
@@ -72,6 +81,7 @@ export function AddressInput({
     setChosen(true);
     setOpen(false);
     onChange(suggestion.label);
+    onChoose?.(suggestion);
   }
 
   function type(next: string) {
@@ -117,6 +127,7 @@ export function AddressInput({
         className={className}
         value={value}
         autoComplete={autoComplete}
+        placeholder={placeholder}
         role="combobox"
         aria-expanded={showList}
         aria-controls={listId}

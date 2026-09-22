@@ -32,7 +32,8 @@ export type FieldType =
   | "select"
   | "radio"
   | "checkboxes"
-  | "attachment";
+  | "attachment"
+  | "location";
 
 export const CHOICE_TYPES = ["select", "radio", "checkboxes"] as const;
 export type ChoiceType = (typeof CHOICE_TYPES)[number];
@@ -79,6 +80,23 @@ export interface ChoiceField extends FieldCommon {
 /** Nombre maximum de fichiers autorisés pour une pièce justificative. */
 export const MAX_ATTACHMENT_FILES = 5;
 
+/**
+ * Rayon, en mètres, dans lequel l'usager peut déplacer le point d'un lieu
+ * d'intervention autour de l'adresse. Constante de plateforme du Socle
+ * (`LOCATION_ADJUST_RADIUS_M`, contrat 1.29.0), pas une option du champ.
+ */
+export const LOCATION_ADJUST_RADIUS_M = 150;
+
+/**
+ * Lieu d'intervention (Socle 1.29.0) : une adresse sur une ligne, complétée
+ * par la Base Adresse Nationale, et un point que l'usager peut déplacer dans
+ * un rayon de `LOCATION_ADJUST_RADIUS_M` pour désigner l'endroit exact. Sa
+ * réponse est un objet `LocationValue` (`location.ts`), pas une chaîne.
+ */
+export interface LocationField extends FieldCommon {
+  type: "location";
+}
+
 export interface AttachmentField extends FieldCommon {
   type: "attachment";
   /** Référence vers un type du catalogue `document_types` du Socle. */
@@ -91,7 +109,7 @@ export interface AttachmentField extends FieldCommon {
   requiredIf?: Condition;
 }
 
-export type Field = SimpleField | ChoiceField | AttachmentField;
+export type Field = SimpleField | ChoiceField | AttachmentField | LocationField;
 
 export interface Section {
   id: string;
@@ -240,6 +258,9 @@ function toField(raw: unknown): Field | null {
     // plutôt que d'afficher un sélecteur vide que rien ne peut satisfaire.
     if (options.length === 0) return null;
     return { ...common, type: type as ChoiceType, options };
+  }
+  if (type === "location") {
+    return { ...common, type: "location" };
   }
   if ((SIMPLE_TYPES as readonly string[]).includes(type)) {
     const maxLength =

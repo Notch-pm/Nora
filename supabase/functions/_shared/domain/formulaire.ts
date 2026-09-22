@@ -26,6 +26,7 @@ import { evaluateCondition } from "./conditions.ts";
 import type { AttachmentRef } from "./demande.ts";
 import type { Field, FormNode, FormSchema, Section } from "./formSchema.ts";
 import { isSection } from "./formSchema.ts";
+import { locationIsBlank, parseLocationValue } from "./location.ts";
 import type { RequesterField } from "./requesterConfig.ts";
 
 /** Erreurs de saisie, indexées par `id` de champ (ou clé de champ requérant). */
@@ -73,6 +74,8 @@ export function isBlank(value: unknown): boolean {
   if (typeof value === "string") return value.trim() === "";
   if (Array.isArray(value)) return value.length === 0;
   if (typeof value === "boolean") return value === false;
+  // Un lieu d'intervention sans adresse n'est pas une réponse (`location.ts`).
+  if (typeof value === "object") return locationIsBlank(value);
   return false;
 }
 
@@ -146,6 +149,13 @@ function fieldError(field: Field, values: FormValues): FieldError | null {
     return isFieldRequired(field, values) ? REQUIRED : null;
   }
 
+  // Un lieu d'intervention se dépose sous la forme du contrat, ou pas du tout :
+  // une valeur d'une autre forme (chaîne nue, objet bancal) vaut « rien de
+  // saisi », obligatoire ou non.
+  if (field.type === "location" && parseLocationValue(value) === null) {
+    return isFieldRequired(field, values) ? REQUIRED : null;
+  }
+
   if (field.type === "email" && typeof value === "string" && !EMAIL_RE.test(value.trim())) {
     return { key: "validation.email" };
   }
@@ -210,6 +220,13 @@ export function toFormData(schema: FormSchema, values: FormValues): Record<strin
     if (field.type === "number" && typeof value === "string") {
       const parsed = Number(value);
       data[field.key] = Number.isFinite(parsed) ? parsed : value;
+      continue;
+    }
+    // Le lieu part NORMALISÉ : les cinq clés du contrat, rien d'autre — ce que
+    // l'écran a pu accrocher à la valeur en chemin ne traverse pas.
+    if (field.type === "location") {
+      const location = parseLocationValue(value);
+      if (location !== null) data[field.key] = location;
       continue;
     }
     data[field.key] = typeof value === "string" ? value.trim() : value;
