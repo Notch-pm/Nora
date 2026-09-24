@@ -59,6 +59,13 @@ export interface RechercheSection {
    * dépend.
    */
   imageFixed: boolean;
+  /** Couleur du titre et du sous-titre sur l'image. Toujours `"theme"` sans image. */
+  textColor: "theme" | "white";
+  /**
+   * Ombre portée sous le titre et le sous-titre — un halo **sans décalage**,
+   * qui part de tous les côtés (voir `imageTextStyle`). `false` sans image.
+   */
+  textShadow: boolean;
 }
 
 export interface DemarchesSection {

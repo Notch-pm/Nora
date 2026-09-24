@@ -157,6 +157,8 @@ describe("getPublishedPage — traduction", () => {
           image_url: "https://medias.ville.fr/hotel-de-ville.jpg",
           image_full_width: true,
           image_fixed: true,
+          text_color: "white",
+          text_shadow: true,
         },
       ],
     };
@@ -167,6 +169,8 @@ describe("getPublishedPage — traduction", () => {
       imageUrl: "https://medias.ville.fr/hotel-de-ville.jpg",
       imageFullWidth: true,
       imageFixed: true,
+      textColor: "white",
+      textShadow: true,
     });
   });
 
@@ -177,7 +181,7 @@ describe("getPublishedPage — traduction", () => {
     // rendu, qui n'aurait rien à habiller.
     const body = {
       ...PUBLISHED,
-      sections: [{ ...PUBLISHED.sections[0], image_url: "", image_full_width: true, image_fixed: true }],
+      sections: [{ ...PUBLISHED.sections[0], image_url: "", image_full_width: true, image_fixed: true, text_color: "white", text_shadow: true }],
     };
     const result = await getPublishedPage("t1", replying({ kind: "ok", body }), "fr");
     if (!result.ok || !result.page) throw new Error("attendu une page");
@@ -185,6 +189,8 @@ describe("getPublishedPage — traduction", () => {
       imageUrl: null,
       imageFullWidth: false,
       imageFixed: false,
+      textColor: "theme",
+      textShadow: false,
     });
   });
 

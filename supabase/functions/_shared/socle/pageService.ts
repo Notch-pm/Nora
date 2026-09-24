@@ -84,6 +84,10 @@ function toSection(raw: unknown, lang: string): HomeSection | null {
         // c'est ICI qu'on les éteint — pas dans le rendu.
         imageFullWidth: imageUrl !== null && row.image_full_width === true,
         imageFixed: imageUrl !== null && row.image_fixed === true,
+        // Habillage des textes (Socle 1.32.0) : même geste, un titre blanc
+        // sur la page blanche disparaîtrait. Absent ou inconnu = encre du thème.
+        textColor: imageUrl !== null && row.text_color === "white" ? "white" : "theme",
+        textShadow: imageUrl !== null && row.text_shadow === true,
       };
     }
     case "demarches":

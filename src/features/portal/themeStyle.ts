@@ -389,3 +389,37 @@ export function imageBackdropStyle(
     backgroundAttachment: fixed ? "fixed" : "scroll",
   };
 }
+
+/**
+ * Halo sous un texte blanc : trois ombres **sans décalage**, de plus en plus
+ * larges et de plus en plus légères — l'ombre part de tous les côtés à la fois,
+ * serrée au bord des lettres (lisibilité) puis diffuse (elle détache le mot sans
+ * dessiner de boîte). Exporté pour le test.
+ */
+export const DARK_TEXT_HALO =
+  "0 0 2px rgba(0, 0, 0, 0.7), 0 0 8px rgba(0, 0, 0, 0.55), 0 0 18px rgba(0, 0, 0, 0.4)";
+/** Même halo, en clair, sous l'encre sombre du thème. */
+export const LIGHT_TEXT_HALO =
+  "0 0 2px rgba(255, 255, 255, 0.85), 0 0 8px rgba(255, 255, 255, 0.7), 0 0 18px rgba(255, 255, 255, 0.5)";
+
+/**
+ * Couleur et ombre du titre et du sous-titre du bloc de recherche posés sur
+ * son image (Socle 1.32.0 : `text_color` / `text_shadow`).
+ *
+ * ⚠️ L'ombre prend toujours le **contre-pied** du texte : sombre sous du blanc,
+ * claire sous l'encre. Une ombre noire sous une encre presque noire épaissirait
+ * les lettres sans rien détacher.
+ *
+ * ⚠️ **Miroir volontaire** de `Socle/src/features/portal/themeStyle.ts` : les
+ * mêmes nombres, pour que l'aperçu de l'éditeur montre ce que le site rend.
+ *
+ * Rend `undefined` quand il n'y a rien à changer (encre du thème, sans ombre).
+ */
+export function imageTextStyle(color: "theme" | "white", shadow: boolean): CSSProperties | undefined {
+  const white = color === "white";
+  if (!white && !shadow) return undefined;
+  return {
+    ...(white ? { color: "#ffffff" } : {}),
+    ...(shadow ? { textShadow: white ? DARK_TEXT_HALO : LIGHT_TEXT_HALO } : {}),
+  };
+}

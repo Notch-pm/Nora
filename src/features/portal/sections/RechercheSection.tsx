@@ -21,7 +21,7 @@
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import type { RechercheSection as RechercheSectionData } from "@fn/_shared/domain/page.ts";
 import { resolveShortcuts } from "../composition.ts";
-import { imageBackdropStyle } from "../themeStyle.ts";
+import { imageBackdropStyle, imageTextStyle } from "../themeStyle.ts";
 import { useT } from "@/i18n/LanguageLayout.tsx";
 
 /** Exportée : la page d'un organisme s'en sert pour son propre champ de recherche. */
@@ -61,6 +61,9 @@ export function RechercheSection({
 
   const backdrop = imageBackdropStyle(section.imageUrl, section.imageFixed);
   const hasImage = backdrop !== undefined;
+  // Blanc et/ou halo, choisis par l'agent photo par photo. La frontière les a
+  // déjà éteints sans image : rien à garder ici.
+  const textStyle = imageTextStyle(section.textColor, section.textShadow);
 
   return (
     <section
@@ -78,11 +81,15 @@ export function RechercheSection({
       }
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col items-center gap-3.5">
-        <h2 className="text-center text-[length:var(--pt-h1)] font-extrabold leading-tight tracking-tight text-[color:var(--pt-ink)]">
+        <h2
+          style={textStyle}
+          className="text-center text-[length:var(--pt-h1)] font-extrabold leading-tight tracking-tight text-[color:var(--pt-ink)]"
+        >
           {section.title}
         </h2>
         {section.subtitle.trim() !== "" && (
           <p
+            style={textStyle}
             className={
               "text-center text-[length:var(--pt-body)] " +
               // ⚠️ Le gris de texte passe à l'encre pleine sur une image : il ne

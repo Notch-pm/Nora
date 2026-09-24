@@ -5,7 +5,10 @@ import {
   DEFAULT_PRIMARY,
   DEFAULT_SECONDARY,
   headerLogoUrl,
+  DARK_TEXT_HALO,
   imageBackdropStyle,
+  imageTextStyle,
+  LIGHT_TEXT_HALO,
   isDarkColor,
   relativeLuminance,
   themeStyle,
@@ -262,5 +265,26 @@ describe("le fond image d'un bloc", () => {
     const photo = "#808080";
     expect(ratio("#1c2220", photo)).toBeLessThan(4.5);
     expect(ratio("#1c2220", photo)).toBeGreaterThan(ratio("#5c6663", photo));
+  });
+});
+
+describe("les textes posés sur l'image du bloc de recherche", () => {
+  it("ne change rien par défaut : encre du thème, sans ombre", () => {
+    expect(imageTextStyle("theme", false)).toBeUndefined();
+  });
+
+  it("passe le texte en blanc", () => {
+    expect(imageTextStyle("white", false)).toEqual({ color: "#ffffff" });
+  });
+
+  it("l'ombre part de tous les côtés : aucun décalage, seulement du flou", () => {
+    for (const halo of [DARK_TEXT_HALO, LIGHT_TEXT_HALO]) {
+      for (const layer of halo.split(/,\s*(?![^(]*\))/)) expect(layer.startsWith("0 0 ")).toBe(true);
+    }
+  });
+
+  it("l'ombre prend le contre-pied du texte : sombre sous le blanc, claire sous l'encre", () => {
+    expect(imageTextStyle("white", true)).toEqual({ color: "#ffffff", textShadow: DARK_TEXT_HALO });
+    expect(imageTextStyle("theme", true)).toEqual({ textShadow: LIGHT_TEXT_HALO });
   });
 });
