@@ -205,6 +205,17 @@ liste ordonnée de sections typées. Règles de rendu, toutes dans
 - **La recherche est réelle.** Le champ de la section `recherche` filtre les
   grilles `demarches` de la page (normalisation sans accents ni casse) ; sans
   section `recherche`, aucun filtre.
+- **Le bloc de recherche peut porter une image de fond** (`image_url`, en CSS,
+  jamais en `<img>` : c'est un fond, pas une illustration), en **pleine
+  largeur** (rendu hors du conteneur centré) et/ou **fixe**. Sans voile : la
+  photo se voit telle quelle. Pour que le texte reste lisible, la collectivité
+  choisit photo par photo un titre et un sous-titre **blancs** (`text_color`)
+  et/ou une **ombre portée** (`text_shadow`, Socle 1.32.0) — un halo sans
+  décalage qui part de tous les côtés, sombre sous le blanc, clair sous l'encre
+  (`imageTextStyle` dans `themeStyle.ts`, miroir de celui du Socle).
+  ⚠️ Sans image, `pageService.ts` **éteint** toutes ces options : le Socle les
+  conserve quand l'adresse est effacée, et un titre blanc sur la page blanche
+  disparaîtrait. Le rendu n'a pas à le savoir.
 - **Le filtre « Je suis… »** (citoyen / entreprise / association) ne s'affiche
   que si la collectivité l'a demandé sur la grille (`audience_filter`) **et**
   que le catalogue vise au moins deux publics — un sélecteur à une entrée est
@@ -1397,6 +1408,9 @@ le sélecteur de langue au `onChange` (7.4) et le miroir RTL. L'audit lui-même
 reste à commander ; le détail est dans `docs/roadmap.md` du Socle,
 § « Accessibilité RGAA ». Et les autres mentions obligatoires d'un site public,
 ~~premier domaine réel~~ (**en ligne depuis le 2026-09-12** :
-`laurentville.edilumen.fr`, construit par Cloudflare **au push sur `main`**), et
+`laurentville.edilumen.fr`, construit par Cloudflare **au push sur `main`** —
+⚠️ le 2026-09-24 le push n'a déclenché aucun build : vérifier que le bundle en
+ligne a changé, sinon voir « Publier l'interface à la main » dans
+`docs/operations.md` du Socle), et
 ~~le multi-collectivités du dépôt~~ (**tranché le 2026-09-21** : une clé Iris par
 collectivité, voir « Une instance, plusieurs collectivités — en dépôt aussi »).
