@@ -1302,7 +1302,9 @@ la porte n'existe pas et le portail dépose comme avant.
   hors recueil, le prompt reçoit ce que chaque organisme a écrit dans l'onglet
   « Informations usagers » du Socle (`GET /v1/portal/organizations`,
   `socle/organismeInfoService.ts` → `domain/organismeInfo.ts`) : descriptif, horaires
-  jour par jour, remarques, FAQ. La grille s'écrit sur **sept jours**, un jour absent
+  jour par jour, remarques, FAQ — et, depuis le contrat 1.31.0, le **téléphone** et le
+  **courriel** de la fiche, que l'assistant recopie tels quels (jamais composés, jamais
+  prêtés d'un organisme à l'autre). La grille s'écrit sur **sept jours**, un jour absent
   en toutes lettres « fermé » ; une grille **vide** s'écrit « non indiqués », jamais
   « fermé ». Ses règles (`ORGANISMES_RULES`, hors de `BASE_RULES` et donc de la
   console) : lire les remarques avant d'affirmer une ouverture, ne pas supposer la

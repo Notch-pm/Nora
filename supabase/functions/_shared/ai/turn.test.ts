@@ -55,6 +55,8 @@ const mairie: OrganismeInfo = {
   id: NANTES,
   name: "Mairie de Nantes",
   isTenant: true,
+  phone: "02 40 41 90 00",
+  email: "accueil@mairie-nantes.fr",
   description: "",
   openingHours: [
     { day: "monday", morningOpen: "08:30", morningClose: "12:00", afternoonOpen: "13:30", afternoonClose: "17:00" },
@@ -68,6 +70,8 @@ const mediatheque: OrganismeInfo = {
   id: "55555555-5555-4555-8555-555555555555",
   name: "Médiathèque",
   isTenant: false,
+  phone: null,
+  email: null,
   description: "Prêt de livres.",
   openingHours: [],
   openingHoursNotes: "",
@@ -309,7 +313,8 @@ describe("le prompt — n'y entre que ce qu'un visiteur peut déjà lire", () =>
 
   it("les organismes : grille sur sept jours, remarques, FAQ, et leurs règles avec eux", () => {
     const text = buildAssistantPrompt({ tenantName: "V", lang: "fr", catalogue, candidates: [], focus: null, organismes: [mairie, mediatheque] });
-    expect(text).toContain("organisme: Mairie de Nantes (la collectivité)");
+    expect(text).toContain("organisme: Mairie de Nantes (la collectivité)\ntéléphone: 02 40 41 90 00\ncourriel: accueil@mairie-nantes.fr");
+    expect(text).toContain("Ne compose JAMAIS un numéro ni un courriel");
     expect(text).toContain("- lundi : 08:30 – 12:00 et 13:30 – 17:00");
     expect(text).toContain("- samedi : 09:00 – 12:00 sans interruption");
     // ⚠️ Un jour absent de la grille est ÉCRIT fermé : le modèle n'a pas à le déduire.

@@ -10,6 +10,8 @@ const MAIRIE = {
   name: "Mairie de Plounéour",
   slug: "plouneour",
   is_tenant: true,
+  phone: "02 98 00 00 00",
+  email: "accueil@plouneour.fr",
   updated_at: "2026-09-24T08:00:00+00:00",
   info: {
     description: "La mairie vous accueille pour l'état civil.",
@@ -43,6 +45,8 @@ describe("getOrganismesInfo", () => {
           id: MAIRIE.id,
           name: "Mairie de Plounéour",
           isTenant: true,
+          phone: "02 98 00 00 00",
+          email: "accueil@plouneour.fr",
           description: "La mairie vous accueille pour l'état civil.",
           openingHours: MAIRIE.info.openingHours,
           openingHoursNotes: "Fermé les jours fériés.",
@@ -99,6 +103,15 @@ describe("parseOrganismesInfo", () => {
       ["monday", "08:30"],
       ["thursday", "09:00"],
     ]);
+  });
+
+  it("un organisme qui n'a que ses coordonnées est gardé ; un Socle d'avant 1.31.0 n'en donne pas", () => {
+    const vide = { description: "", openingHours: [], openingHoursNotes: "", faq: [] };
+    const [ccas] = parseOrganismesInfo([{ id: "ccas", name: "CCAS", phone: " 01 23 45 67 89 ", email: "", info: vide }]);
+    expect(ccas).toMatchObject({ phone: "01 23 45 67 89", email: null });
+    expect(parseOrganismesInfo([{ id: "x", name: "X", info: vide }])).toEqual([]);
+    const [ancien] = parseOrganismesInfo([{ ...MAIRIE, phone: undefined, email: undefined }]);
+    expect(ancien).toMatchObject({ phone: null, email: null });
   });
 
   it("une question sans réponse ne sert à rien à l'assistant : écartée", () => {

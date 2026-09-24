@@ -3,7 +3,8 @@
  *
  * Chaque organisme les rédige dans l'onglet « Informations usagers » du Socle :
  * un descriptif, ses horaires d'accueil jour par jour, des remarques sur ces
- * horaires, une FAQ. Le Socle les sert toutes en une lecture
+ * horaires, une FAQ. S'y ajoutent le téléphone et le courriel de sa fiche
+ * (contrat 1.31.0). Le Socle les sert toutes en une lecture
  * (`GET /v1/portal/organizations?tenant_id=…`, contrat 1.30.0). Enregistré =
  * publié : il n'y a pas de brouillon.
  *
@@ -42,6 +43,9 @@ export interface OrganismeInfo {
   name: string;
   /** La collectivité elle-même (en tête de liste), plutôt qu'un de ses organismes. */
   isTenant: boolean;
+  /** Téléphone et courriel de sa fiche au Socle (contrat 1.31.0) — `null` si non renseignés. */
+  phone: string | null;
+  email: string | null;
   /** Markdown, `""` si rien n'est écrit. */
   description: string;
   /** Un élément par jour d'ouverture, dans l'ordre de la semaine. Vide = non renseigné. */
@@ -61,6 +65,13 @@ function isRecord(value: unknown): value is Row {
 
 function text(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+/** Une coordonnée : du texte non vide, borné ; `null` sinon (et face à un Socle d'avant 1.31.0). */
+function contact(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const clean = value.trim();
+  return clean !== "" && clean.length <= 200 ? clean : null;
 }
 
 function isTime(value: unknown): value is string {
@@ -111,6 +122,8 @@ function parseOrganisme(raw: unknown): OrganismeInfo | null {
     id: raw.id,
     name: raw.name,
     isTenant: raw.is_tenant === true,
+    phone: contact(raw.phone),
+    email: contact(raw.email),
     description: text(info.description),
     openingHours: parseOpeningHours(info.openingHours),
     openingHoursNotes: text(info.openingHoursNotes),
@@ -120,6 +133,8 @@ function parseOrganisme(raw: unknown): OrganismeInfo | null {
       .filter((item) => item.question !== "" && item.answer !== ""),
   };
   const empty =
+    organisme.phone === null &&
+    organisme.email === null &&
     organisme.description.trim() === "" &&
     organisme.openingHours.length === 0 &&
     organisme.openingHoursNotes.trim() === "" &&

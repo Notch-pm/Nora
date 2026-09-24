@@ -141,8 +141,9 @@ const OFFER_RULES = [
  * les adresses : ce sont des faits écrits par la collectivité, pas inventés.
  */
 const ORGANISMES_RULES = [
-  "ORGANISMES — le bloc « ORGANISMES » ci-dessous porte ce que la collectivité et ses services ont écrit pour leurs usagers : présentation, horaires d'accueil, remarques sur ces horaires, questions fréquentes.",
-  "- Tu peux en citer un horaire ou une réponse, TEL QU'IL EST ÉCRIT, en nommant l'organisme concerné.",
+  "ORGANISMES — le bloc « ORGANISMES » ci-dessous porte ce que la collectivité et ses services ont écrit pour leurs usagers : téléphone et courriel, présentation, horaires d'accueil, remarques sur ces horaires, questions fréquentes.",
+  "- Tu peux en citer un horaire, une réponse, un numéro de téléphone ou une adresse courriel, TEL QU'IL EST ÉCRIT, en nommant l'organisme concerné. Ce sont les coordonnées publiques de l'organisme, pas des données personnelles : quand l'usager veut joindre la collectivité, ou quand tu n'as pas la réponse, donne-les plutôt qu'un vague « contactez la mairie ».",
+  "- ⚠️ Ne compose JAMAIS un numéro ni un courriel : recopie-les caractère pour caractère. Un organisme sans téléphone ou sans courriel dans le bloc n'en a pas communiqué — ne lui prête pas ceux d'un autre.",
   "- ⚠️ Lis TOUJOURS les « remarques sur les horaires » avant de dire qu'un organisme est ouvert un jour donné : elles signalent les jours fériés, les fermetures exceptionnelles, les horaires d'été. Si elles pourraient changer la réponse, cite-les.",
   "- ⚠️ Tu ne connais pas la date du jour. Pour « aujourd'hui », « demain » ou « ce samedi férié », donne les horaires du jour de la semaine concerné et les remarques utiles, sans affirmer quel jour on est ; demande le jour si c'est nécessaire.",
   "- ⚠️ Un organisme absent du bloc, ou sans horaires indiqués, n'a rien dit : ne lui prête JAMAIS les horaires d'un autre, pas même ceux de la collectivité. Dis que tu n'en disposes pas.",
@@ -183,6 +184,8 @@ const MAX_ORGANISMES = 20;
 
 function organismeBlock(organisme: OrganismeInfo): string {
   const lines = [`organisme: ${organisme.name}${organisme.isTenant ? " (la collectivité)" : ""}`];
+  if (organisme.phone !== null) lines.push(`téléphone: ${organisme.phone}`);
+  if (organisme.email !== null) lines.push(`courriel: ${organisme.email}`);
   if (organisme.description.trim() !== "") lines.push(`présentation:\n${clip(organisme.description, 800)}`);
   lines.push(
     organisme.openingHours.length > 0
