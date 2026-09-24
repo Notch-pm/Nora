@@ -25,6 +25,7 @@ import { getPublicDemarche, getPublicDemarches } from "../_shared/socle/demarche
 import { getPublishedPage } from "../_shared/socle/pageService.ts";
 import { getBranding } from "../_shared/socle/brandingService.ts";
 import { getAccessibilityStatement } from "../_shared/socle/accessibiliteService.ts";
+import { getOrganismesInfo } from "../_shared/socle/organismeInfoService.ts";
 import { resolveTenant } from "../_shared/socle/tenantService.ts";
 import { createSocleClient } from "../_shared/socle/socleClient.ts";
 import { withCache } from "../_shared/socle/cachedSocleClient.ts";
@@ -907,6 +908,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
       loadDemarche: async (id) => {
         const result = await getPublicDemarche(tenant.id, id, socle, lang);
         return result.ok ? result.demarche : null;
+      },
+      loadOrganismes: async () => {
+        const result = await getOrganismesInfo(tenant.id, socle);
+        return result.ok ? result.organismes : null;
       },
       nowSeconds,
       newConversationId: () => crypto.randomUUID(),

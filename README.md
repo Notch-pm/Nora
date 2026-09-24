@@ -1298,6 +1298,17 @@ la porte n'existe pas et le portail dépose comme avant.
   fuir par là, et un test l'épingle. **Corpus strict** : sans texte de la
   collectivité, l'assistant dit qu'il ne sait pas. Conséquence voulue : le prompt
   peut être exfiltré en entier sans rien révéler.
+- **Horaires et informations des organismes** (2026-09-24, contrat Socle 1.30.0) :
+  hors recueil, le prompt reçoit ce que chaque organisme a écrit dans l'onglet
+  « Informations usagers » du Socle (`GET /v1/portal/organizations`,
+  `socle/organismeInfoService.ts` → `domain/organismeInfo.ts`) : descriptif, horaires
+  jour par jour, remarques, FAQ. La grille s'écrit sur **sept jours**, un jour absent
+  en toutes lettres « fermé » ; une grille **vide** s'écrit « non indiqués », jamais
+  « fermé ». Ses règles (`ORGANISMES_RULES`, hors de `BASE_RULES` et donc de la
+  console) : lire les remarques avant d'affirmer une ouverture, ne pas supposer la
+  date du jour, ne **jamais** prêter à un organisme les horaires d'un autre (pas
+  d'héritage). ⚠️ Jamais bloquant : un Socle muet sur cette route laisse l'assistant
+  répondre, sans horaires.
 - **Le portail ne parle jamais au fournisseur de modèle** : il compose son prompt
   et le confie au guichet IA du Socle (`ai-api`), avec une **clé à part** au scope
   `ai` seul, sous l'alias d'agent `assistant-usager`. Le Socle compte les jetons,

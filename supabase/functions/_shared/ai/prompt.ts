@@ -21,6 +21,8 @@
  * ici se recopie dans la console.
  */
 import type { Demarche, DemarcheDetail } from "../domain/demarche.ts";
+import type { DayOpeningHours, OrganismeInfo, Weekday } from "../domain/organismeInfo.ts";
+import { WEEKDAYS } from "../domain/organismeInfo.ts";
 import { allFields, type FieldOption } from "../domain/formSchema.ts";
 import type { ResponseDelayUnit } from "../domain/userCommunication.ts";
 import type { CityHint, PostalHint } from "./postalCity.ts";
@@ -127,6 +129,80 @@ const OFFER_RULES = [
   "- N'ouvre rien toi-même : c'est l'usager qui accepte, d'un bouton sous ton message. Ne propose pas deux fois ; s'il décline ou n'y répond pas, n'y reviens pas.",
   "- `offer_procedure_id` : \"\" partout ailleurs.",
 ].join("\n");
+
+/**
+ * Les règles des ORGANISMES — envoyées seulement quand le bloc du même nom
+ * figure dans le prompt, c'est-à-dire quand au moins un organisme a écrit
+ * quelque chose (contrat Socle 1.30.0).
+ *
+ * ⚠️ Hors de `BASE_RULES` à dessein : `BASE_RULES` est le jumeau de l'agent de
+ * la console Mistral, et ces règles ne valent que pour un bloc qui peut manquer.
+ * Elles lèvent, pour ce bloc seulement, l'interdit général sur les horaires et
+ * les adresses : ce sont des faits écrits par la collectivité, pas inventés.
+ */
+const ORGANISMES_RULES = [
+  "ORGANISMES — le bloc « ORGANISMES » ci-dessous porte ce que la collectivité et ses services ont écrit pour leurs usagers : présentation, horaires d'accueil, remarques sur ces horaires, questions fréquentes.",
+  "- Tu peux en citer un horaire ou une réponse, TEL QU'IL EST ÉCRIT, en nommant l'organisme concerné.",
+  "- ⚠️ Lis TOUJOURS les « remarques sur les horaires » avant de dire qu'un organisme est ouvert un jour donné : elles signalent les jours fériés, les fermetures exceptionnelles, les horaires d'été. Si elles pourraient changer la réponse, cite-les.",
+  "- ⚠️ Tu ne connais pas la date du jour. Pour « aujourd'hui », « demain » ou « ce samedi férié », donne les horaires du jour de la semaine concerné et les remarques utiles, sans affirmer quel jour on est ; demande le jour si c'est nécessaire.",
+  "- ⚠️ Un organisme absent du bloc, ou sans horaires indiqués, n'a rien dit : ne lui prête JAMAIS les horaires d'un autre, pas même ceux de la collectivité. Dis que tu n'en disposes pas.",
+].join("\n");
+
+const DAY_LABELS: Record<Weekday, string> = {
+  monday: "lundi",
+  tuesday: "mardi",
+  wednesday: "mercredi",
+  thursday: "jeudi",
+  friday: "vendredi",
+  saturday: "samedi",
+  sunday: "dimanche",
+};
+
+/**
+ * La grille, en toutes lettres, SEPT jours sur sept : un jour fermé est écrit
+ * « fermé ». Laisser le modèle déduire qu'un jour absent est fermé, c'est
+ * l'exposer à la lecture inverse — « pas d'horaire le samedi, donc je ne sais
+ * pas ». Une grille vide, elle, ne s'écrit pas du tout : c'est « non
+ * renseigné », pas « fermé toute la semaine » (règle du contrat).
+ */
+function openingHoursLines(hours: DayOpeningHours[]): string {
+  const byDay = new Map(hours.map((h) => [h.day, h]));
+  return WEEKDAYS.map((day) => {
+    const h = byDay.get(day);
+    if (h === undefined) return `- ${DAY_LABELS[day]} : fermé`;
+    const slots =
+      h.morningClose !== null && h.afternoonOpen !== null
+        ? `${h.morningOpen} – ${h.morningClose} et ${h.afternoonOpen} – ${h.afternoonClose}`
+        : `${h.morningOpen} – ${h.afternoonClose} sans interruption`;
+    return `- ${DAY_LABELS[day]} : ${slots}`;
+  }).join("\n");
+}
+
+/** Au-delà, un arbre d'organismes démesuré gonflerait chaque tour. */
+const MAX_ORGANISMES = 20;
+
+function organismeBlock(organisme: OrganismeInfo): string {
+  const lines = [`organisme: ${organisme.name}${organisme.isTenant ? " (la collectivité)" : ""}`];
+  if (organisme.description.trim() !== "") lines.push(`présentation:\n${clip(organisme.description, 800)}`);
+  lines.push(
+    organisme.openingHours.length > 0
+      ? `horaires d'accueil:\n${openingHoursLines(organisme.openingHours)}`
+      : "horaires d'accueil: non indiqués",
+  );
+  if (organisme.openingHoursNotes.trim() !== "") {
+    lines.push(`remarques sur les horaires:\n${clip(organisme.openingHoursNotes, 800)}`);
+  }
+  if (organisme.faq.length > 0) {
+    lines.push(
+      "questions fréquentes:\n" +
+        organisme.faq
+          .slice(0, 8)
+          .map((e) => `Q: ${clip(e.question, 300)}\nR: ${clip(e.answer, 600)}`)
+          .join("\n"),
+    );
+  }
+  return lines.join("\n");
+}
 
 /** Un champ à recueillir, tel que le modèle le voit : de quoi le reconnaître et y répondre. */
 export interface CollectableField {
@@ -282,6 +358,12 @@ export interface AssistantPromptInput {
   /** La démarche dont on parle, en entier — `null` en phase d'orientation. */
   focus: DemarcheDetail | null;
   /**
+   * Les organismes qui ont écrit quelque chose pour leurs usagers (descriptif,
+   * horaires, FAQ) — la collectivité en tête. Absent ou vide : pas de bloc, et
+   * l'assistant dit qu'il ne connaît pas les horaires. Ignoré en recueil.
+   */
+  organismes?: OrganismeInfo[];
+  /**
    * Le formulaire que l'usager remplit dans la conversation — absent hors
    * recueil. Il porte les réponses DÉJÀ données : c'est ce qui permet au modèle
    * d'accuser réception et de ne pas redemander deux fois la même chose.
@@ -320,10 +402,15 @@ export function buildAssistantPrompt(input: AssistantPromptInput): string {
   const collecting = input.collecting ?? null;
   // Une offre n'a de sens qu'AVANT le recueil : pendant, il est déjà ouvert.
   const offering = collecting === null && input.offering === true;
+  // ⚠️ EN RECUEIL, pas d'organismes non plus : même raison que le catalogue
+  // (voir plus bas) — l'usager remplit un formulaire, et chaque bloc retiré
+  // raccourcit une attente sans affichage progressif.
+  const organismes = collecting === null ? (input.organismes ?? []).slice(0, MAX_ORGANISMES) : [];
   const blocks = [
     BASE_RULES,
     collecting === null ? "" : COLLECT_RULES,
     offering ? OFFER_RULES : "",
+    organismes.length > 0 ? ORGANISMES_RULES : "",
     outputContract(input.lang, collecting !== null, offering),
     fenced("COLLECTIVITÉ", input.tenantName),
     // ⚠️ EN RECUEIL, ni catalogue ni candidats. La démarche est choisie — elle
@@ -346,6 +433,9 @@ export function buildAssistantPrompt(input: AssistantPromptInput): string {
           "DÉMARCHES LES PLUS PROCHES DE LA DEMANDE",
           input.candidates.map(candidateBlock).join("\n\n"),
         ),
+    organismes.length === 0
+      ? ""
+      : fenced("ORGANISMES — informations écrites pour les usagers", organismes.map(organismeBlock).join("\n\n")),
     // La démarche consultée, elle, RESTE en recueil : c'est d'elle que viennent
     // le descriptif, le délai, les pièces à prévoir et la FAQ — de quoi répondre
     // à « pourquoi vous me demandez ça ? » en plein remplissage. Seule sa liste

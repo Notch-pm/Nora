@@ -55,6 +55,7 @@ import {
   readCityName,
   readPostalCode,
 } from "./postalCity.ts";
+import type { OrganismeInfo } from "../domain/organismeInfo.ts";
 import { buildAssistantPrompt, type CollectableField } from "./prompt.ts";
 import { issueTicket, readTicket, signReply, verifyReply, type Ticket } from "./signing.ts";
 import type { SocleAiClient } from "./socleAi.ts";
@@ -77,6 +78,13 @@ export interface TurnDeps {
   loadCatalogue(): Promise<Demarche[] | null>;
   /** Détail PUBLIC d'une démarche — `null` si elle n'est pas (ou plus) au catalogue. */
   loadDemarche(id: string): Promise<DemarcheDetail | null>;
+  /**
+   * Ce que les organismes ont écrit pour leurs usagers (descriptif, horaires,
+   * FAQ) — `null` si le Socle ne répond pas. Facultatif, et ⚠️ jamais bloquant :
+   * sans lui, l'assistant oriente comme avant et dit qu'il ne connaît pas les
+   * horaires. Pas lu en recueil (le prompt ne l'enverrait pas).
+   */
+  loadOrganismes?(): Promise<OrganismeInfo[] | null>;
   nowSeconds(): number;
   newConversationId(): string;
   /**
@@ -368,6 +376,11 @@ export async function runAssistantTurn(
       ? sanitizeState(focus.form, focus.id, body.collection)
       : null;
 
+  // Les organismes : hors recueil seulement, et un Socle muet n'éteint pas
+  // l'assistant — il ne connaîtra simplement pas les horaires ce tour-ci.
+  const organismes =
+    collection === null && deps.loadOrganismes !== undefined ? (await deps.loadOrganismes()) ?? [] : [];
+
   const said = messages.filter((m) => m.role === "user").slice(-3).map((m) => m.content).join(" ");
   const lastSaid = messages[messages.length - 1].content;
   // ⚠️ TOUT ce que l'usager a écrit dans la fenêtre envoyée au modèle — pas
@@ -418,6 +431,7 @@ export async function runAssistantTurn(
     // `pickCandidates` balaie tout le catalogue pour rien.
     candidates: collection === null ? pickCandidates(catalogue, said) : [],
     focus,
+    organismes,
     collecting:
       collection === null || focus?.form == null
         ? null
