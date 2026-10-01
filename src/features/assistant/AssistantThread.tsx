@@ -272,12 +272,19 @@ export function AssistantThread({
     collect.session !== null && collect.step === "fields"
       ? viewOf(collect.session.demarche.form, collect.session.collection, asking)
       : null;
+  // ⚠️ Une carte de champ n'apparaît qu'une fois l'assistant AYANT RÉPONDU.
+  // Affichée pendant l'attente (le lieu d'intervention, dès l'ouverture),
+  // l'usager commençait à taper ; la réponse arrivait au-dessus, poussait la
+  // carte vers le bas, et le défilement partait n'importe où (SNA,
+  // 2026-10-01). La carte vient APRÈS la question, comme dans une
+  // conversation — et reçoit alors le focus (signature vide pendant l'envoi).
+  const showFieldCard = state.status !== "sending";
   const cardSignature =
     collect.session === null
       ? ""
       : collect.step !== "fields"
         ? collect.session.demarche.id + ":" + collect.step
-        : fieldView !== null && fieldView.controls.length > 0
+        : showFieldCard && fieldView !== null && fieldView.controls.length > 0
           ? collect.session.demarche.id + ":fields:" + fieldView.controls[0].id
           : "";
   useEffect(() => {
@@ -578,7 +585,7 @@ export function AssistantThread({
 
         {collect.session !== null && (
           <div ref={cardRef} className="flex flex-col gap-3">
-            {collect.step === "fields" && (
+            {collect.step === "fields" && showFieldCard && (
               <PendingFieldCard
                 session={collect.session}
                 asking={asking}

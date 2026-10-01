@@ -1236,6 +1236,12 @@ regarde ailleurs, une conversation non.
   se dit (« À indiquer à l'assistant ») et n'offre de contrôle que pour ce qui
   ne se dit pas (date, fichier, lieu). Le filet du serveur relance un modèle
   qui oublierait une question ;
+- ⚠️ **une carte de champ n'apparaît qu'APRÈS la réponse de l'assistant**
+  (jamais pendant l'attente), reçoit alors le focus, et sa validation relance
+  la conversation. Affichée pendant l'attente, l'usager y tapait, la réponse
+  arrivait au-dessus et le défilement partait n'importe où. Le repli
+  « Répondre avec le formulaire » sous les questions à choix est retiré
+  (décision PO du 2026-10-01) : un choix se dit ;
 - ⚠️ **une carte validée pendant que l'assistant répond** (le lieu
   d'intervention s'affiche dès l'ouverture) : sa relance attend la fin du tour
   au lieu d'être perdue, et la réponse du serveur, qui ne la connaît pas, ne

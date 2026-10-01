@@ -2945,21 +2945,6 @@ export const STRINGS = {
     uk: "Підтвердити",
     zh: "确认",
   },
-  // Le repli sous la question : depuis que tout se dit, le contrôle du
-  // formulaire n'est plus le geste principal, mais reste offert.
-  "assistant.collect.answerInForm": {
-    fr: "Répondre avec le formulaire",
-    en: "Answer using the form",
-    es: "Responder con el formulario",
-    de: "Mit dem Formular antworten",
-    it: "Rispondere con il modulo",
-    pt: "Responder com o formulário",
-    ar: "الإجابة عبر النموذج",
-    tr: "Formla yanıtlayın",
-    ru: "Ответить через форму",
-    uk: "Відповісти через форму",
-    zh: "使用表单填写",
-  },
   // Le modèle a proposé de remplir la démarche — l'usager accepte d'un geste.
   "assistant.collect.offerAccept": {
     fr: "Oui, remplissons-la ici",

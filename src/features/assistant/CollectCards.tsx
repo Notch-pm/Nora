@@ -122,23 +122,23 @@ export function ReceiptNoteView({ receipt, demarcheName }: { receipt: DemandeRec
  * récitait le libellé du champ avant le 2026-09-21, et deux voix demandaient
  * alors la même chose de deux façons.
  *
- * Elle ne s'affiche donc que s'il y a quelque chose à montrer : un calendrier
- * ou un dépôt de fichier (`controls` — on ne peut pas y répondre en parlant),
- * ou, replié, le contrôle d'un champ à options que le modèle vient de demander
- * (`assists` — pour qui préfère cliquer). Le reste du temps, elle disparaît et
- * la conversation suffit.
+ * Elle ne s'affiche donc que s'il y a quelque chose à montrer : un calendrier,
+ * un dépôt de fichier ou un lieu sur la carte (`controls` — on ne peut pas y
+ * répondre en parlant). Le reste du temps, elle disparaît et la conversation
+ * suffit.
+ *
+ * ⚠️ Plus de repli « Répondre avec le formulaire » sous une question à choix
+ * (`assists`) : retiré à la demande du PO le 2026-10-01 — un choix se dit, et
+ * ce bloc faisait reparaître le formulaire dans la conversation.
  */
 function FieldControl({
   session,
   field,
-  folded,
   onAnswer,
   onSkip,
 }: {
   session: CollectSession;
   field: Field;
-  /** Replié : un repli offert, pas la question. */
-  folded: boolean;
   onAnswer: (fieldId: string, value: unknown) => void;
   onSkip: (fieldId: string) => void;
 }) {
@@ -187,15 +187,7 @@ function FieldControl({
     </>
   );
 
-  if (!folded) return body;
-  return (
-    <details>
-      <summary className="cursor-pointer text-[length:var(--pt-small)] font-semibold text-[color:var(--brand-primary)]">
-        {t("assistant.collect.answerInForm")}
-      </summary>
-      {body}
-    </details>
-  );
+  return body;
 }
 
 /**
@@ -258,7 +250,6 @@ export function RemainingRequiredFields({
             <FieldControl
               session={session}
               field={field}
-              folded={false}
               onAnswer={onAnswer}
               onSkip={onSkip}
             />
@@ -283,7 +274,7 @@ export function PendingFieldCard({
 }) {
   const t = useT();
   const view = viewOf(session.demarche.form, session.collection, asking);
-  if (view.controls.length === 0 && view.assists.length === 0) return null;
+  if (view.controls.length === 0) return null;
 
   return (
     <section aria-labelledby="collect-field-heading" className={CARD_CLASS}>
@@ -296,17 +287,6 @@ export function PendingFieldCard({
             key={field.id}
             session={session}
             field={field}
-            folded={false}
-            onAnswer={onAnswer}
-            onSkip={onSkip}
-          />
-        ))}
-        {view.assists.map((field) => (
-          <FieldControl
-            key={field.id}
-            session={session}
-            field={field}
-            folded
             onAnswer={onAnswer}
             onSkip={onSkip}
           />
