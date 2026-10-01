@@ -482,6 +482,14 @@ describe("l'orientation parle à quelqu'un", () => {
     expect(await systemOf(opening)).toContain("TU PARLES À QUELQU'UN");
   });
 
+  it("⚠️ ne donne AUCUNE formule de compassion à recopier", async () => {
+    // L'exemple « c'est désagréable au quotidien, je comprends » était repris
+    // mot pour mot à presque chaque signalement (constaté le 2026-10-01).
+    const system = await systemOf(undefined);
+    expect(system).not.toContain("désagréable au quotidien");
+    expect(system).toContain("jamais une formule toute faite");
+  });
+
   it("⚠️ interdit d'INVENTER un délai pour rassurer", async () => {
     // Le risque direct d'un ton chaleureux : « nos agents passent sous
     // quelques jours » fait plus de mal qu'un silence, parce que l'usager
