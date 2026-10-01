@@ -2862,6 +2862,21 @@ export const STRINGS = {
     zh: "我想跳过「{label}」。",
   },
   // Il ne reste que du facultatif : tout passer d'un geste, et aller relire.
+  // Le repli « voir lesquelles » NOMME ce qui se dit, sans en faire un champ :
+  // c'est à l'assistant qu'on le dit.
+  "assistant.collect.remainingSpoken": {
+    fr: "À indiquer à l'assistant :",
+    en: "To tell the assistant:",
+    es: "Para indicar al asistente:",
+    de: "Dem Assistenten mitzuteilen:",
+    it: "Da indicare all'assistente:",
+    pt: "A indicar ao assistente:",
+    ar: "يُذكر للمساعد:",
+    tr: "Asistana belirtilecekler:",
+    ru: "Сообщите ассистенту:",
+    uk: "Повідомте асистенту:",
+    zh: "请告诉助手：",
+  },
   "assistant.collect.skipOptional": {
     fr: "Passer les questions facultatives",
     en: "Skip the optional questions",

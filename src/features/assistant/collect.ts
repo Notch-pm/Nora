@@ -161,13 +161,33 @@ export function skipOptional(session: CollectSession): CollectSession {
  * tour — remplace l'état local, nettoyé contre CE formulaire. Ignoré si la
  * réponse parle d'une autre démarche (la session a changé entre-temps) ou
  * s'il n'y a pas de recueil en cours.
+ *
+ * ⚠️ SAUF ce que l'usager a saisi PENDANT le tour. Le serveur répond à l'état
+ * qu'on lui a envoyé : une carte validée pendant l'attente (le lieu
+ * d'intervention, affiché dès l'ouverture du recueil) n'y figure pas, et
+ * remplacer tout l'état l'effaçait. Une réponse de l'usager — `touched` ou
+ * passée — que le serveur ignore l'emporte donc sur la sienne.
  */
 export function applyServerCollection(
   session: CollectSession | null,
   payload: CollectionPayload | null,
 ): CollectSession | null {
   if (session === null || payload === null || payload.demarcheId !== session.demarche.id) return session;
-  return { ...session, collection: sanitizeState(session.demarche.form, session.demarche.id, payload) };
+  const { form, id } = session.demarche;
+  const server = sanitizeState(form, id, payload);
+  const local = session.collection;
+  const values = { ...server.values };
+  const origins = { ...server.origins };
+  const touched = [...server.touched];
+  for (const fieldId of local.touched) {
+    if (touched.includes(fieldId)) continue;
+    touched.push(fieldId);
+    delete origins[fieldId];
+    if (fieldId in local.values) values[fieldId] = local.values[fieldId];
+    else delete values[fieldId];
+  }
+  const skipped = [...server.skipped, ...local.skipped.filter((fieldId) => !server.skipped.includes(fieldId))];
+  return { ...session, collection: sanitizeState(form, id, { values, skipped, origins, touched }) };
 }
 
 export function chooseOrganization(session: CollectSession, organizationId: string): CollectSession {

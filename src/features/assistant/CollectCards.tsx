@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { viewOf } from "@fn/_shared/ai/collection.ts";
+import { isConversationField, viewOf } from "@fn/_shared/ai/collection.ts";
 import type { DemandeReceipt } from "@fn/_shared/domain/demande.ts";
 import type { Field } from "@fn/_shared/domain/formSchema.ts";
 import type { ConsentKind } from "@fn/_shared/domain/consents.ts";
@@ -199,9 +199,9 @@ function FieldControl({
 }
 
 /**
- * Ce qu'il reste d'obligatoire — replié, mais REMPLISSABLE.
+ * Ce qu'il reste d'obligatoire — replié.
  *
- * ⚠️ C'est la sortie de secours, et elle a manqué. Constaté en test : le modèle
+ * Historique : c'était la sortie de secours, et elle a manqué. Constaté en test : le modèle
  * demande « code postal et ville », l'usager répond « 44000 », le serveur retient
  * le code postal et la ville reste vide. Le modèle passe à la question suivante
  * sans y revenir, puis annonce que tout est là. L'écran, lui, affichait « Encore
@@ -214,42 +214,46 @@ function FieldControl({
  * Mais elle existe désormais à tout moment, sans dépendre de ce que le modèle
  * veut bien demander — c'est justement quand il s'égare qu'on en a besoin.
  *
- * ⚠️ `startOpen` : la porte S'OUVRE SEULE quand l'assistant ne demande plus rien
- * alors qu'il manque encore de l'obligatoire. Repliée, elle existait — et
- * l'usager, sous un « Votre signalement est complet », ne l'a pas vue : un lien
- * discret ne pèse rien contre une phrase qui dit que c'est fini. Elle reste
- * repliée tant que le modèle pose une question, et l'usager peut la refermer.
+ * ⚠️ Elle ne s'ouvre JAMAIS seule, et ne propose un CONTRÔLE que pour ce qui
+ * ne se dit pas (une date, un fichier, un lieu sur la carte) — décision PO du
+ * 2026-10-01. Ouverte d'office avec un menu « Type de dépôt » et une zone
+ * « Description », elle remplaçait la conversation par un formulaire, alors
+ * que l'assistant venait justement de poser sa question. Ce qui se dit est
+ * seulement NOMMÉ : c'est à l'assistant qu'on le dit. Le filet du serveur
+ * (`runAssistantTurn`) relance un modèle qui oublierait de le demander.
  */
 export function RemainingRequiredFields({
   session,
   fields,
-  startOpen,
   onAnswer,
   onSkip,
 }: {
   session: CollectSession;
   fields: readonly Field[];
-  startOpen: boolean;
   onAnswer: (fieldId: string, value: unknown) => void;
   onSkip: (fieldId: string) => void;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(startOpen);
-  useEffect(() => {
-    if (startOpen) setOpen(true);
-  }, [startOpen]);
   if (fields.length === 0) return null;
+  const spoken = fields.filter((field) => isConversationField(field));
+  const controls = fields.filter((field) => !isConversationField(field));
   return (
-    <details
-      open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-      className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]"
-    >
+    <details className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
       <summary className="cursor-pointer text-[color:var(--brand-primary)]">
         {t("assistant.collect.remainingSee")}
       </summary>
       <div className="mt-2 flex flex-col gap-5">
-        {fields.map((field) => (
+        {spoken.length > 0 && (
+          <div>
+            <p>{t("assistant.collect.remainingSpoken")}</p>
+            <ul className="mt-1 list-disc ps-5">
+              {spoken.map((field) => (
+                <li key={field.id}>{field.label}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {controls.map((field) => (
           <div key={field.id}>
             <FieldControl
               session={session}

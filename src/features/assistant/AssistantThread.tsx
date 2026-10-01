@@ -32,7 +32,14 @@ import {
   RecapCard,
   StartedNoteView,
 } from "./CollectCards.tsx";
-import { collectionPayload, mergeTimeline, stepOf, type CollectSession, type CollectStep } from "./collect.ts";
+import {
+  applyServerCollection,
+  collectionPayload,
+  mergeTimeline,
+  stepOf,
+  type CollectSession,
+  type CollectStep,
+} from "./collect.ts";
 import type { AssistantMessageView } from "./conversation.ts";
 import { assistantErrorMessage } from "./errorMessages.ts";
 import { useAssistantCollect } from "./useAssistantCollect.ts";
@@ -207,6 +214,9 @@ function MessageBubble({
   );
 }
 
+/** Ce qu'une carte validée, ou passée, fait dire à l'usager pour relancer l'assistant. */
+type RelaunchKey = "assistant.collect.cardAnsweredSaid" | "assistant.collect.cardSkippedSaid";
+
 export function AssistantThread({
   demarches,
   lang,
@@ -288,7 +298,11 @@ export function AssistantThread({
 
   function submit(event?: { preventDefault(): void }) {
     event?.preventDefault();
-    if (sendMessage(draft, collect.turnCollectionPayload)) setDraft("");
+    if (sendMessage(draft, collect.turnCollectionPayload)) {
+      setDraft("");
+      // L'usager a repris la parole : son message porte déjà la carte validée.
+      pendingRelaunchRef.current = null;
+    }
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -337,18 +351,49 @@ export function AssistantThread({
    * Pas de relance quand il n'y a plus rien à demander (étape suivante), ni
    * quand une autre carte demandée au même tour attend encore — on la laisse
    * remplir d'abord, sans payer un appel pour rien.
+   *
+   * ⚠️ Une carte validée PENDANT une réponse en cours (le lieu d'intervention
+   * s'affiche dès l'ouverture, avant que l'assistant ait parlé) ne peut pas
+   * relancer tout de suite : `sendMessage` refuse pendant un envoi. La relance
+   * était perdue, l'assistant demandait l'adresse déjà donnée, et l'écran
+   * retombait sur les champs (SNA, 2026-10-01). Elle ATTEND donc la fin du
+   * tour — voir l'effet juste en dessous.
    */
   function relaunchAfterCard(
     next: CollectSession | null,
-    saidKey: "assistant.collect.cardAnsweredSaid" | "assistant.collect.cardSkippedSaid",
+    saidKey: RelaunchKey,
     fieldId: string,
   ): void {
-    if (next === null || stepOf(next) !== "fields") return;
+    if (next === null) return;
+    if (state.status === "sending") {
+      pendingRelaunchRef.current = { saidKey, fieldId };
+      return;
+    }
+    sendRelaunch(next, saidKey, fieldId);
+  }
+
+  function sendRelaunch(next: CollectSession, saidKey: RelaunchKey, fieldId: string): void {
+    if (stepOf(next) !== "fields") return;
     if (viewOf(next.demarche.form, next.collection, asking).controls.length > 0) return;
     const label = allFields(next.demarche.form).find((field) => field.id === fieldId)?.label;
     if (label === undefined) return;
     sendMessage(t(saidKey, { label }), collectionPayload(next));
   }
+
+  const pendingRelaunchRef = useRef<{ saidKey: RelaunchKey; fieldId: string } | null>(null);
+  useEffect(() => {
+    const pending = pendingRelaunchRef.current;
+    // Après un échec, on attend : « Réessayer » rejoue le tour, et la relance
+    // partira à sa suite.
+    if (pending === null || state.status !== "ready" || state.failure !== null) return;
+    pendingRelaunchRef.current = null;
+    // La réponse vient d'arriver : la session n'a peut-être pas encore absorbé
+    // ce que le serveur a retenu. On le fait ici, purement — sans quoi la
+    // relance renverrait un état d'avant ce tour.
+    const session = applyServerCollection(collect.session, collectionReply);
+    if (session !== null) sendRelaunch(session, pending.saidKey, pending.fieldId);
+    // Dépendances volontairement réduites : seule la FIN du tour déclenche.
+  }, [state.status, state.failure]);
 
   function answerFromCard(fieldId: string, value: unknown): void {
     relaunchAfterCard(collect.answerField(fieldId, value), "assistant.collect.cardAnsweredSaid", fieldId);
@@ -483,15 +528,6 @@ export function AssistantThread({
           <RemainingRequiredFields
             session={collect.session}
             fields={remaining}
-            // L'assistant a parlé et ne demande rien de ce qui reste : sans
-            // question à laquelle répondre, les contrôles sont le seul chemin.
-            // ⚠️ Borné à deux champs : au-delà (fil restauré, premier tour sans
-            // `asking`), ouvrir reviendrait à réafficher le formulaire.
-            startOpen={
-              remaining.length <= 2 &&
-              state.messages.at(-1)?.role === "assistant" &&
-              !(fieldView?.remainingFields ?? []).some((field) => asking.includes(field.id))
-            }
             onAnswer={answerFromCard}
             onSkip={skipFromCard}
           />

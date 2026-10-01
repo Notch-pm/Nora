@@ -217,6 +217,25 @@ describe("applyServerCollection", () => {
     expect(next).toBe(session);
   });
 
+  it("⚠️ garde ce que l'usager a saisi PENDANT le tour — une carte validée en attendant la réponse", () => {
+    // SNA, 2026-10-01 : le lieu validé sur sa carte pendant que l'assistant
+    // répondait au message d'ouverture était effacé par sa réponse.
+    let session = startSession(demarche());
+    session = answerField(session, "f-lieu", "12 rue de la Paix");
+    session = skipField(session, "f-precisions");
+    const next = applyServerCollection(session, {
+      demarcheId: "d1",
+      values: { "f-nature": "gravats" },
+      skipped: [],
+      origins: { "f-nature": { origin: "inferred" } },
+      touched: [],
+    });
+    expect(next?.collection.values).toEqual({ "f-lieu": "12 rue de la Paix", "f-nature": "gravats" });
+    expect(next?.collection.touched).toEqual(["f-lieu"]);
+    expect(next?.collection.skipped).toEqual(["f-precisions"]);
+    expect(next?.collection.origins).toEqual({ "f-nature": { origin: "inferred" } });
+  });
+
   it("ne plante pas sans session", () => {
     expect(applyServerCollection(null, { demarcheId: "d1", values: {}, skipped: [] })).toBeNull();
   });

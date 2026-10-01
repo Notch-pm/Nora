@@ -1228,18 +1228,19 @@ regarde ailleurs, une conversation non.
 - **un champ facultatif refusé se passe** (`skip`, posé par le modèle sur
   « non », « je ne sais pas », « rien à ajouter », ou par le bouton « Passer »
   d'une carte) : il cesse d'être proposé, et compte comme réglé ;
-- ⚠️ **le repli « voir lesquelles » est REMPLISSABLE**, et c'est la sortie de
-  secours. Le modèle demande « code postal et ville », l'usager répond
-  « 44000 », la ville reste vide, le modèle passe à la suite et n'y revient
-  pas : l'écran annonçait « Encore une information à préciser » **sans rien
-  offrir pour la préciser** — la carte de champ ne paraît que pour ce qui ne se
-  dit pas, et le récapitulatif n'ouvre pas tant qu'un obligatoire manque.
-  Conversation sans issue. Le repli porte désormais les contrôles eux-mêmes :
-  replié par défaut, disponible à tout moment, sans dépendre de ce que le modèle
-  veut bien demander — c'est quand il s'égare qu'on en a besoin. **Il s'ouvre
-  seul** quand l'assistant ne demande plus rien alors qu'il manque un ou deux
-  obligatoires : replié, il existait, et l'usager ne l'a pas vu sous un « Votre
-  signalement est complet » ;
+- ⚠️ **le repli « voir lesquelles » ne remplace pas la conversation** (décision
+  PO du 2026-10-01). Il a été une sortie de secours remplissable qui s'ouvrait
+  seule quand l'assistant semblait ne plus rien demander — et c'était
+  parasite : un menu et une zone de texte à remplir à la place de la question
+  que l'assistant venait de poser. Il ne s'ouvre plus jamais seul, NOMME ce qui
+  se dit (« À indiquer à l'assistant ») et n'offre de contrôle que pour ce qui
+  ne se dit pas (date, fichier, lieu). Le filet du serveur relance un modèle
+  qui oublierait une question ;
+- ⚠️ **une carte validée pendant que l'assistant répond** (le lieu
+  d'intervention s'affiche dès l'ouverture) : sa relance attend la fin du tour
+  au lieu d'être perdue, et la réponse du serveur, qui ne la connaît pas, ne
+  l'efface plus (`applyServerCollection` garde ce que l'usager a saisi —
+  `touched` ou passé) ;
 - ⚠️ **ce n'est pas le modèle qui décide que c'est complet**, mais la ligne
   « INFORMATIONS À RECUEILLIR » du prompt, à trois états (obligatoires
   restantes / plus que des facultatives, à proposer / plus aucune). Il lui est interdit de
