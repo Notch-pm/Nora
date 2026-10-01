@@ -110,8 +110,8 @@ export interface UseAssistantCollect {
    */
   answerField: (fieldId: string, value: unknown) => CollectSession | null;
   skipField: (fieldId: string) => CollectSession | null;
-  /** « Passer les questions facultatives » — sans effet tant qu'il manque de l'obligatoire. */
-  skipOptional: () => void;
+  /** « Passer les questions facultatives » — sans effet tant qu'il manque de l'obligatoire. Rend la session après. */
+  skipOptional: () => CollectSession | null;
   chooseOrganization: (organizationId: string) => void;
   confirmOrganization: () => void;
   reopenOrganization: () => void;
@@ -270,10 +270,12 @@ export function useAssistantCollect(params: {
     return next;
   }
 
-  function skipOptionalAction(): void {
-    if (session === null) return;
-    setSession(skipOptional(session));
+  function skipOptionalAction(): CollectSession | null {
+    if (session === null) return null;
+    const next = skipOptional(session);
+    setSession(next);
     setPurgedCount(null);
+    return next;
   }
 
   function chooseOrganizationAction(organizationId: string): void {

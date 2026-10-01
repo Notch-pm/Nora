@@ -563,6 +563,20 @@ describe("la fin d'un recueil ne se bloque plus sur des facultatifs", () => {
     expect(complete).toHaveBeenCalledTimes(1);
   });
 
+  it("⚠️ formulaire complet : il CONFIRME et annonce « Vos informations », pas le récapitulatif", async () => {
+    // Demande du PO (2026-10-01) : le cadre d'identité surgissait sans un mot,
+    // et l'annonce parlait d'un récapitulatif qui n'était pas encore là.
+    const { deps, complete } = setup({ reply: "Tout est noté." });
+    const fini = { ...obligatoiresFaits, skipped: ["f-precisions", "f-photo"] };
+    await runAssistantTurn(tenant(true), "fr", await body("Je n'ai rien à ajouter.", fini), deps);
+    const system = complete.mock.calls[0][0].system;
+    expect(system).toContain("INFORMATIONS À RECUEILLIR : plus aucune. Le formulaire de la démarche est complet");
+    expect(system).toContain("confirme clairement, en une phrase, que tout ce qu'il faut pour la démarche est noté");
+    expect(system).toContain("dans le cadre « Vos informations » affiché sous ton message");
+    expect(system).not.toContain("le récapitulatif s'affiche sous ton message");
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
   it("ne dit rien de tel tant qu'un obligatoire manque", async () => {
     const { deps, complete } = setup({});
     await runAssistantTurn(tenant(true), "fr", await body("Bonjour", opening), deps);

@@ -1242,6 +1242,13 @@ regarde ailleurs, une conversation non.
   arrivait au-dessus et le défilement partait n'importe où. Le repli
   « Répondre avec le formulaire » sous les questions à choix est retiré
   (décision PO du 2026-10-01) : un choix se dit ;
+- ⚠️ **formulaire complet : l'assistant le CONFIRME avant « Vos informations »**
+  (demande PO du 2026-10-01). Il dit que tout est noté et qu'il ne reste que
+  les coordonnées et les accords (`CLOSING` dans `prompt.ts` ; l'annonce
+  parlait à tort du récapitulatif). La carte qui termine le formulaire relance
+  aussi la conversation, « Passer les questions facultatives » fait dire « Je
+  n'ai rien à ajouter », et le cadre « Vos informations » (comme l'organisme)
+  n'apparaît qu'après la réponse ;
 - ⚠️ **le panneau de la bulle ne défile jamais, seul le fil défile**
   (`overflow: clip`). En `overflow: hidden`, il restait défilable par
   programme : le focus donné à une carte de champ le décalait, l'en-tête

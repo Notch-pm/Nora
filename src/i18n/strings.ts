@@ -2877,6 +2877,21 @@ export const STRINGS = {
     uk: "Повідомте асистенту:",
     zh: "请告诉助手：",
   },
+  // Ce que « Passer les questions facultatives » fait dire à l'usager : le
+  // tour qui suit laisse l'assistant confirmer que tout est noté.
+  "assistant.collect.skipOptionalSaid": {
+    fr: "Je n'ai rien à ajouter.",
+    en: "I have nothing to add.",
+    es: "No tengo nada que añadir.",
+    de: "Ich habe nichts hinzuzufügen.",
+    it: "Non ho nulla da aggiungere.",
+    pt: "Não tenho nada a acrescentar.",
+    ar: "ليس لديّ ما أضيفه.",
+    tr: "Ekleyecek bir şeyim yok.",
+    ru: "Мне нечего добавить.",
+    uk: "Мені нічого додати.",
+    zh: "我没有要补充的了。",
+  },
   "assistant.collect.skipOptional": {
     fr: "Passer les questions facultatives",
     en: "Skip the optional questions",

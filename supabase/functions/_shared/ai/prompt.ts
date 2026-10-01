@@ -88,6 +88,18 @@ const UNIT_LABELS: Record<ResponseDelayUnit, [string, string]> = {
  * qu'il prétend demander (`viewOf(…, asking)`). L'écran ne montre un contrôle
  * que pour ce à quoi on ne peut pas répondre en parlant.
  */
+/**
+ * Ce que l'assistant dit quand le formulaire de la démarche est COMPLET.
+ *
+ * ⚠️ Ce qui suit n'est pas le récapitulatif mais « Vos informations »
+ * (coordonnées et accords, jamais montrés au modèle), puis le récapitulatif.
+ * L'annonce disait « le récapitulatif s'affiche » : l'usager voyait autre
+ * chose. Et elle doit CONFIRMER que tout est là (demande du PO, 2026-10-01) —
+ * sans quoi le cadre d'identité surgit sans qu'on sache pourquoi.
+ */
+const CLOSING =
+  "confirme clairement, en une phrase, que tout ce qu'il faut pour la démarche est noté ; puis dis qu'il ne lui reste plus qu'à indiquer ses coordonnées et ses accords dans le cadre « Vos informations » affiché sous ton message, et qu'il relira tout avant de l'envoyer lui-même";
+
 const COLLECT_RULES = [
   "MODE RECUEIL — l'usager remplit la démarche consultée EN TE PARLANT. Ces règles complètent les règles générales et l'emportent sur elles.",
   "- LA DÉMARCHE EST CHOISIE : tu n'orientes plus. Ne propose aucune démarche, ne cite pas le nom de celle-ci comme une suggestion, et ne redis pas ta phrase de compassion à chaque message. Quand l'usager décrit son problème (« des déchets », « un trou dans la chaussée »), ce n'est pas une nouvelle demande à orienter : c'est une RÉPONSE au formulaire — retiens-la dans `field_updates` et pose la question suivante.",
@@ -106,12 +118,12 @@ const COLLECT_RULES = [
   "- Ne demande ni nom, ni adresse personnelle, ni téléphone, ni courriel du demandeur : une carte dédiée s'en charge à la fin. Les informations de la liste, elles, font partie du formulaire : tu peux les recevoir, et les redire pour accuser réception.",
   "- SOIS ACCOMPAGNANT. Tu aides quelqu'un à remplir un dossier administratif, pas un questionnaire : accuse réception en VALIDANT ce qu'il vient de faire (« c'est noté », « parfait, ça me suffit »), PUIS POSE LA QUESTION SUIVANTE dans la même réponse. Dis à quoi sert l'information que tu demandes quand ce n'est pas évident, et rassure sur la suite — rien ne part avant qu'il ait tout relu. Chaleureux et bref à la fois : 100 mots au plus, pas de flagornerie, pas de phrase creuse.",
   "- AU PREMIER MESSAGE DU RECUEIL, accueille l'usager avant de demander quoi que ce soit : dis en une phrase ce que vous allez remplir ensemble, RETIENS dans `field_updates` tout ce qu'il a déjà dit plus haut et accuse-en réception (« j'ai noté la rue de la République et un problème de propreté »), puis pose la première question sur ce qui MANQUE — jamais sur ce qu'il vient de dire. N'attaque pas par une question sèche.",
-  "- ⚠️ NE DÉCRIS JAMAIS L'ÉCRAN. Tu ne le vois pas. Ne parle ni de bouton, ni d'étape suivante, ni de ce sur quoi l'usager devrait cliquer — sauf pour annoncer un calendrier ou un dépôt de fichier, que tu viens de réclamer dans `asking`. Inventer un bouton qui n'existe pas laisse l'usager à chercher ce que tu lui as promis.",
+  "- ⚠️ NE DÉCRIS JAMAIS L'ÉCRAN. Tu ne le vois pas. Ne parle ni de bouton, ni d'étape suivante, ni de ce sur quoi l'usager devrait cliquer — sauf pour annoncer un calendrier ou un dépôt de fichier, que tu viens de réclamer dans `asking`, et le cadre « Vos informations » quand le formulaire est complet. Inventer un bouton qui n'existe pas laisse l'usager à chercher ce que tu lui as promis.",
   "- CODE POSTAL ET VILLE : c'est le référentiel officiel qui fait le lien entre les deux, jamais toi. Quand un bloc « COMMUNES DU CODE POSTAL » figure ci-dessous, il en vient. S'il ne cite qu'UNE commune et que l'usager a bien donné ce code postal, ne demande pas la ville et ne la mets pas dans `field_updates` : le serveur la renseigne lui-même — dis simplement que tu as noté cette commune, et passe à la suite. S'il en cite PLUSIEURS, demande laquelle, en citant leurs noms. Dans l'autre sens, si l'usager donne la VILLE sans le code postal, retiens la ville et NE DEMANDE PAS le code postal : le serveur le retrouve lui-même quand la commune n'en a qu'un. Quand un bloc « CODES POSTAUX DE LA COMMUNE » figure ci-dessous, elle en a plusieurs : demande lequel, en les citant. ⚠️ N'écris JAMAIS de toi-même un code postal ni une ville que l'usager n'a pas dits — « 93110 » sorti de ta mémoire est juste ici et faux ailleurs, et une adresse fausse envoie une équipe au mauvais endroit.",
   "- ⚠️ NE DÉCLARE JAMAIS QUE C'EST COMPLET de ta propre autorité. C'est la ligne « INFORMATIONS À RECUEILLIR » ci-dessous qui le dit, et elle seule. Tant qu'elle compte des informations obligatoires — elles sont marquées « À OBTENIR » dans la liste —, la demande n'est PAS complète, même si elle te paraît déjà suffisante : continue de demander.",
-  "- ⚠️ LA DERNIÈRE RÉPONSE FERME LE RECUEIL. La liste décrit l'état AVANT le dernier message de l'usager. Si ce que tu retiens dans `field_updates` (valeurs et informations passées) couvre TOUTES les informations « À OBTENIR » ET « À PROPOSER », la demande devient complète avec ta réponse : l'écran passe aussitôt à la suite, et une question posée à ce moment-là resterait sans réponse possible. Ne demande donc PLUS RIEN — aucune précision, aucun « depuis quand ? » sur une information que tu viens de retenir : dis que le récapitulatif s'affiche sous ton message, que l'usager peut tout relire et corriger, puis envoyer lui-même.",
+  `- ⚠️ LA DERNIÈRE RÉPONSE FERME LE RECUEIL. La liste décrit l'état AVANT le dernier message de l'usager. Si ce que tu retiens dans \`field_updates\` (valeurs et informations passées) couvre TOUTES les informations « À OBTENIR » ET « À PROPOSER », la demande devient complète avec ta réponse : l'écran passe aussitôt à la suite, et une question posée à ce moment-là resterait sans réponse possible. Ne demande donc PLUS RIEN — aucune précision, aucun « depuis quand ? » sur une information que tu viens de retenir : ${CLOSING}.`,
   "- NE CREUSE PAS une information déjà retenue. Une description courte est une description : l'aide entre parenthèses (« Depuis quand ? ») sert à formuler TA question, pas à en poser d'autres ensuite. Ce que l'usager répondrait ne pourrait être rangé nulle part.",
-  "- QUAND LA LIGNE DIT QU'IL N'EN RESTE AUCUNE, ne demande plus rien : dis que le récapitulatif s'affiche sous ton message, que l'usager peut tout relire, corriger chaque ligne, puis envoyer lui-même. `asking` vide.",
+  `- QUAND LA LIGNE DIT QU'IL N'EN RESTE AUCUNE, ne demande plus rien. Si l'usager vient de donner, de passer la dernière information ou de dire qu'il n'a rien à ajouter, ${CLOSING}. S'il pose une autre question, réponds-y simplement. \`asking\` vide.`,
   "- QUAND ELLE DIT QU'IL NE RESTE QUE DES FACULTATIVES (« À PROPOSER »), l'essentiel est là, mais l'usager doit avoir l'occasion d'y répondre : POSE-LES, une à la fois, dans l'ordre de la liste, comme les autres — en disant qu'elle est facultative (« si vous le souhaitez », « ce n'est pas obligatoire »). Ne dis pas que le récapitulatif est affiché : il ne l'est pas encore. Une pièce à joindre ou une date se propose de même, en annonçant le contrôle et en mettant son id dans `asking`.",
 ].join("\n");
 
@@ -459,7 +471,7 @@ export function buildAssistantPrompt(input: AssistantPromptInput): string {
     collecting === null
       ? ""
       : collecting.every((field) => !field.pending)
-        ? "INFORMATIONS À RECUEILLIR : plus aucune. L'usager peut relire et envoyer sa demande avec le récapitulatif affiché."
+        ? "INFORMATIONS À RECUEILLIR : plus aucune. Le formulaire de la démarche est complet ; restent ses coordonnées et ses accords (« Vos informations »), puis la relecture avant l'envoi."
         : collecting.some((field) => field.pending && field.required)
           // ⚠️ Cet état était MUET, et c'était la cause : la règle renvoyait le
           // modèle à « la ligne INFORMATIONS À RECUEILLIR », qui n'existait que
@@ -483,7 +495,7 @@ export function buildAssistantPrompt(input: AssistantPromptInput): string {
           input.postalHint.codes.join("\n"),
         ),
     collecting !== null && input.correcting === "complete"
-      ? "⚠️ CORRECTION — ta réponse précédente à ce même message se terminait par une question, alors que ce que tu venais de retenir a rendu la demande complète : l'écran est déjà passé à la suite, et l'usager ne pourrait pas te répondre. Ce que tu avais compris est déjà retenu dans la liste. Réécris ta réponse SANS AUCUNE QUESTION : accuse réception en une phrase, puis dis que le récapitulatif s'affiche sous ton message, qu'il peut tout relire et corriger, puis envoyer lui-même. `asking` vide, `field_updates` vide."
+      ? `⚠️ CORRECTION — ta réponse précédente à ce même message se terminait par une question, alors que ce que tu venais de retenir a rendu la demande complète : l'écran est déjà passé à la suite, et l'usager ne pourrait pas te répondre. Ce que tu avais compris est déjà retenu dans la liste. Réécris ta réponse SANS AUCUNE QUESTION : ${CLOSING}. \`asking\` vide, \`field_updates\` vide.`
       : "",
     collecting !== null && input.correcting === "missing"
       ? "⚠️ CORRECTION — ta réponse précédente à ce même message ne demandait rien, alors qu'il reste des informations marquées « À OBTENIR » ou « À PROPOSER ». Ce que tu avais compris est déjà retenu dans la liste. Réécris ta réponse : ne dis pas que la demande est complète, accuse réception en une phrase, et termine par la question qui obtient la première information « À OBTENIR » — ou, s'il n'y en a plus, qui propose la première « À PROPOSER », en disant qu'elle est facultative. Mets son id dans `asking`."

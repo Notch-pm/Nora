@@ -278,12 +278,18 @@ export function AssistantThread({
   // carte vers le bas, et le défilement partait n'importe où (SNA,
   // 2026-10-01). La carte vient APRÈS la question, comme dans une
   // conversation — et reçoit alors le focus (signature vide pendant l'envoi).
+  // Même règle pour l'organisme et « Vos informations » : l'assistant
+  // confirme d'abord que le formulaire est complet, le cadre vient ensuite. Le
+  // récapitulatif, lui, reste affiché pendant qu'on discute dessous.
   const showFieldCard = state.status !== "sending";
+  const showStepCard = showFieldCard || collect.step === "recap";
   const cardSignature =
     collect.session === null
       ? ""
       : collect.step !== "fields"
-        ? collect.session.demarche.id + ":" + collect.step
+        ? showStepCard
+          ? collect.session.demarche.id + ":" + collect.step
+          : ""
         : showFieldCard && fieldView !== null && fieldView.controls.length > 0
           ? collect.session.demarche.id + ":fields:" + fieldView.controls[0].id
           : "";
@@ -380,7 +386,11 @@ export function AssistantThread({
   }
 
   function sendRelaunch(next: CollectSession, saidKey: RelaunchKey, fieldId: string): void {
-    if (stepOf(next) !== "fields") return;
+    // ⚠️ La carte qui TERMINE le formulaire relance aussi : l'assistant
+    // confirme que tout est noté et annonce « Vos informations » (demande du
+    // PO, 2026-10-01) — le cadre surgissait sans un mot. Pas depuis le
+    // récapitulatif : une correction n'appelle pas d'annonce.
+    if (stepOf(next) === "recap") return;
     // Seule une carte que l'assistant a DEMANDÉE retient la relance. Le repli
     // de `viewOf` (prochain champ « carte » affiché d'office) ne compte pas :
     // la photo passée faisait surgir la date sans un mot de l'assistant.
@@ -555,7 +565,17 @@ export function AssistantThread({
             sortie qui garantit que la demande reste envoyable même si le
             modèle cesse de poser ses questions. */}
         {fieldView !== null && fieldView.complete && !fieldView.settled && state.status !== "sending" && (
-          <button type="button" onClick={collect.skipOptional} className={SECONDARY_BUTTON_CLASS + " w-fit"}>
+          <button
+            type="button"
+            onClick={() => {
+              const next = collect.skipOptional();
+              // Le geste se dit, et l'assistant confirme — même motif qu'une carte.
+              if (next !== null && sendMessage(t("assistant.collect.skipOptionalSaid"), collectionPayload(next))) {
+                pendingRelaunchRef.current = null;
+              }
+            }}
+            className={SECONDARY_BUTTON_CLASS + " w-fit"}
+          >
             {t("assistant.collect.skipOptional")}
           </button>
         )}
@@ -603,7 +623,7 @@ export function AssistantThread({
                 onSkip={skipFromCard}
               />
             )}
-            {collect.step === "organization" && (
+            {collect.step === "organization" && showStepCard && (
               <OrganizationCard
                 session={collect.session}
                 onChoose={collect.chooseOrganization}
@@ -614,7 +634,7 @@ export function AssistantThread({
                 }}
               />
             )}
-            {collect.step === "identity" && (
+            {collect.step === "identity" && showStepCard && (
               <IdentityCard
                 session={collect.session}
                 dense={variant === "panel"}
