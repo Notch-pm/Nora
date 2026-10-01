@@ -1242,6 +1242,10 @@ regarde ailleurs, une conversation non.
   arrivait au-dessus et le défilement partait n'importe où. Le repli
   « Répondre avec le formulaire » sous les questions à choix est retiré
   (décision PO du 2026-10-01) : un choix se dit ;
+- ⚠️ **le panneau de la bulle ne défile jamais, seul le fil défile**
+  (`overflow: clip`). En `overflow: hidden`, il restait défilable par
+  programme : le focus donné à une carte de champ le décalait, l'en-tête
+  sortait par le haut et le panneau paraissait vide (SNA, 2026-10-01) ;
 - ⚠️ **une carte validée pendant que l'assistant répond** (le lieu
   d'intervention s'affiche dès l'ouverture) : sa relance attend la fin du tour
   au lieu d'être perdue, et la réponse du serveur, qui ne la connaît pas, ne

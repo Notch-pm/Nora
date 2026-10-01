@@ -13,7 +13,7 @@
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
-import { viewOf } from "@fn/_shared/ai/collection.ts";
+import { isConversationField, pendingFields, viewOf } from "@fn/_shared/ai/collection.ts";
 import { MAX_USER_MESSAGE_CHARS } from "@fn/_shared/domain/assistantTurn.ts";
 import { allFields } from "@fn/_shared/domain/formSchema.ts";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
@@ -381,7 +381,13 @@ export function AssistantThread({
 
   function sendRelaunch(next: CollectSession, saidKey: RelaunchKey, fieldId: string): void {
     if (stepOf(next) !== "fields") return;
-    if (viewOf(next.demarche.form, next.collection, asking).controls.length > 0) return;
+    // Seule une carte que l'assistant a DEMANDÉE retient la relance. Le repli
+    // de `viewOf` (prochain champ « carte » affiché d'office) ne compte pas :
+    // la photo passée faisait surgir la date sans un mot de l'assistant.
+    const askedCardPending = pendingFields(next.demarche.form, next.collection).some(
+      (field) => asking.includes(field.id) && !isConversationField(field),
+    );
+    if (askedCardPending) return;
     const label = allFields(next.demarche.form).find((field) => field.id === fieldId)?.label;
     if (label === undefined) return;
     sendMessage(t(saidKey, { label }), collectionPayload(next));
@@ -534,7 +540,11 @@ export function AssistantThread({
         {remaining !== null && collect.session !== null && state.status !== "sending" && (
           <RemainingRequiredFields
             session={collect.session}
-            fields={remaining}
+            // Une carte déjà affichée plus bas n'est pas répétée ici : deux
+            // contrôles du même champ portaient le même `id`.
+            fields={remaining.filter(
+              (field) => !(showFieldCard && (fieldView?.controls ?? []).some((shown) => shown.id === field.id)),
+            )}
             onAnswer={answerFromCard}
             onSkip={skipFromCard}
           />

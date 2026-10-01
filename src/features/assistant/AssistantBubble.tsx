@@ -237,6 +237,13 @@ export function AssistantBubble({ children }: { children: ReactNode }) {
             ...theme,
             color: "var(--pt-ink)",
             background: "var(--pt-surface)",
+            // ⚠️ `clip`, pas seulement `hidden` (la classe, gardée en repli
+            // pour un navigateur qui ignorerait `clip`) : un cadre « hidden »
+            // reste défilable PAR PROGRAMME. Donner le focus à une carte de
+            // champ faisait défiler le panneau lui-même — l'en-tête sortait
+            // par le haut et le bas restait vide, « l'assistant devenu blanc »
+            // (SNA, 2026-10-01). Seule la zone du fil défile.
+            overflow: "clip",
             // ⚠️ Aucune hauteur en pixels, jamais : en `dvh` seulement, pour
             // qu'un zoom agrandisse le contenu au lieu de le couper.
             ...(floats
@@ -280,7 +287,7 @@ export function AssistantBubble({ children }: { children: ReactNode }) {
           </div>
 
           {/* Un SEUL défilement vertical, jamais horizontal (RGAA 10.11). */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
             <AssistantThread
               demarches={demarches}
               lang={lang}
