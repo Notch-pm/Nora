@@ -15,7 +15,13 @@
  * construit ce qui part en tour de conversation, et il ne lit que
  * `session.collection`. Un consentement se coche, il ne se dicte pas.
  */
-import { answerField as answerCollectionField, sanitizeState, skipField as skipCollectionField, viewOf } from "@fn/_shared/ai/collection.ts";
+import {
+  answerField as answerCollectionField,
+  sanitizeState,
+  skipField as skipCollectionField,
+  skipOptional as skipOptionalFields,
+  viewOf,
+} from "@fn/_shared/ai/collection.ts";
 import type { CollectionState } from "@fn/_shared/ai/collection.ts";
 import type { CollectionPayload } from "@fn/_shared/domain/assistantTurn.ts";
 import type { AttachmentRef, DemandeReceipt, DemandeSubmission } from "@fn/_shared/domain/demande.ts";
@@ -124,13 +130,14 @@ export function startSession(demarche: CollectDemarche): CollectSession {
  * champ « conversation » (texte, nombre…) n'est accepté, ici comme au serveur
  * (`applyUpdates`), qu'après avoir passé `validateForm` — jamais avant.
  *
- * ⚠️ Des champs FACULTATIFS peuvent donc rester en attente alors que l'étape
- * est déjà « recap », et c'est voulu : voir `complete` dans `collection.ts`.
- * Le récapitulatif les montre vides, avec leur « Modifier ».
+ * ⚠️ On ne quitte les champs qu'une fois les FACULTATIFS répondus ou passés
+ * (`settled`, voir `collection.ts`) : chacun doit avoir été proposé à
+ * l'usager. Pour ne pas l'y retenir, « Passer les questions facultatives »
+ * (`skipOptional`) les écarte d'un geste dès que l'obligatoire est là.
  */
 export function stepOf(session: CollectSession): CollectStep {
   const view = viewOf(session.demarche.form, session.collection);
-  if (!view.complete) return "fields";
+  if (!view.settled) return "fields";
   if (!session.organizationConfirmed) return "organization";
   if (!session.identityConfirmed) return "identity";
   return "recap";
@@ -142,6 +149,11 @@ export function answerField(session: CollectSession, fieldId: string, value: unk
 
 export function skipField(session: CollectSession, fieldId: string): CollectSession {
   return { ...session, collection: skipCollectionField(session.demarche.form, session.collection, fieldId) };
+}
+
+/** Passer tous les facultatifs restants — sans effet tant qu'il manque de l'obligatoire. */
+export function skipOptional(session: CollectSession): CollectSession {
+  return { ...session, collection: skipOptionalFields(session.demarche.form, session.collection) };
 }
 
 /**

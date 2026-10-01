@@ -2832,6 +2832,49 @@ export const STRINGS = {
     uk: "Я хотів би заповнити «{name}» разом з вами.",
     zh: "我想和您一起填写「{name}」。",
   },
+  // ⚠️ Ce qu'une CARTE validée veut dire, écrit dans le fil comme un message de
+  // l'usager — même motif que `openingSaid`. Sans lui, la carte ne relançait
+  // pas l'assistant, et la question suivante n'était jamais posée.
+  "assistant.collect.cardAnsweredSaid": {
+    fr: "C'est fait : j'ai renseigné « {label} ».",
+    en: "Done: I've filled in “{label}”.",
+    es: "Hecho: he rellenado «{label}».",
+    de: "Erledigt: Ich habe „{label}“ ausgefüllt.",
+    it: "Fatto: ho compilato «{label}».",
+    pt: "Feito: preenchi «{label}».",
+    ar: "تمّ: لقد ملأتُ «{label}».",
+    tr: "Tamam: «{label}» alanını doldurdum.",
+    ru: "Готово: я заполнил «{label}».",
+    uk: "Готово: я заповнив «{label}».",
+    zh: "好了：我已填写「{label}」。",
+  },
+  "assistant.collect.cardSkippedSaid": {
+    fr: "Je préfère passer « {label} ».",
+    en: "I'd rather skip “{label}”.",
+    es: "Prefiero omitir «{label}».",
+    de: "Ich möchte „{label}“ lieber überspringen.",
+    it: "Preferisco saltare «{label}».",
+    pt: "Prefiro ignorar «{label}».",
+    ar: "أفضّل تخطّي «{label}».",
+    tr: "«{label}» alanını geçmeyi tercih ediyorum.",
+    ru: "Я предпочту пропустить «{label}».",
+    uk: "Я волію пропустити «{label}».",
+    zh: "我想跳过「{label}」。",
+  },
+  // Il ne reste que du facultatif : tout passer d'un geste, et aller relire.
+  "assistant.collect.skipOptional": {
+    fr: "Passer les questions facultatives",
+    en: "Skip the optional questions",
+    es: "Omitir las preguntas opcionales",
+    de: "Optionale Fragen überspringen",
+    it: "Salta le domande facoltative",
+    pt: "Ignorar as perguntas opcionais",
+    ar: "تخطّي الأسئلة الاختيارية",
+    tr: "İsteğe bağlı soruları geç",
+    ru: "Пропустить необязательные вопросы",
+    uk: "Пропустити необов’язкові питання",
+    zh: "跳过选填问题",
+  },
   // La liste des champs restants est REPLIÉE : sur un bloc adresse, elle
   // afficherait « Numéro, BTQ, Voie, Complément d'adresse, Code postal » entre
   // chaque question — le formulaire reparaîtrait, sous une autre forme.

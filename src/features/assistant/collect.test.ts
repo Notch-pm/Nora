@@ -26,6 +26,7 @@ import {
   setConsent,
   setRequesterValue,
   skipField,
+  skipOptional,
   startedNote,
   startSession,
   stepOf,
@@ -137,27 +138,32 @@ describe("stepOf — la machine d'étapes", () => {
     session = answerField(session, "f-lieu", "12 rue de la Paix");
     expect(stepOf(session)).toBe("fields");
     session = answerField(session, "f-nature", "gravats");
-    // ⚠️ « f-precisions » est FACULTATIF : il ne retient plus les champs.
-    // Il les a retenus, et c'était un blocage — un facultatif que personne
-    // n'évoque n'est jamais ni répondu ni passé, donc éternellement en attente,
-    // et le bouton d'envoi n'apparaissait jamais.
-    expect(stepOf(session)).toBe("identity");
+    // ⚠️ « f-precisions » est FACULTATIF, mais il doit être PROPOSÉ (décision
+    // PO du 2026-10-01) : sortir dès l'obligatoire le faisait disparaître sans
+    // qu'on le demande. On reste aux champs tant qu'il n'est ni répondu ni passé.
+    expect(stepOf(session)).toBe("fields");
+    expect(stepOf(answerField(session, "f-precisions", "Des sacs"))).toBe("identity");
   });
 
-  it("⚠️ un facultatif passé explicitement ne change rien à l'étape", () => {
-    // « Passer » reste utile — il retire le champ de ce que le modèle voit en
-    // attente, donc il cesse de le proposer — mais il n'est plus la condition
-    // de sortie des champs.
+  it("un facultatif passé — un à un, ou tous d'un geste — fait avancer", () => {
     let session = startSession(demarche());
     session = answerField(session, "f-lieu", "12 rue de la Paix");
     session = answerField(session, "f-nature", "gravats");
     expect(stepOf(skipField(session, "f-precisions"))).toBe("identity");
+    expect(stepOf(skipOptional(session))).toBe("identity");
+  });
+
+  it("⚠️ « Passer les questions facultatives » ne saute jamais un obligatoire", () => {
+    const session = answerField(startSession(demarche()), "f-lieu", "12 rue de la Paix");
+    expect(stepOf(skipOptional(session))).toBe("fields");
+    expect(skipOptional(session).collection.skipped).toEqual([]);
   });
 
   it("passe TOUJOURS par « identity » avant « recap », même sans public ouvert : les consentements y sont", () => {
     let session = startSession(demarche());
     session = answerField(session, "f-lieu", "12 rue de la Paix");
     session = answerField(session, "f-nature", "gravats");
+    session = skipField(session, "f-precisions");
     expect(stepOf(session)).toBe("identity");
     session = setConsent(session, "traitement", true);
     expect(stepOf(session)).toBe("identity"); // coché, mais pas encore confirmé

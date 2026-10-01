@@ -1209,18 +1209,25 @@ regarde ailleurs, une conversation non.
   revalidé au catalogue publié) : c'est un bouton sous sa bulle que l'usager
   presse. Un recueil qui démarrerait seul embarquerait dans un formulaire celui
   qui voulait juste poser une question ;
-- ⚠️ **un champ FACULTATIF vide n'empêche RIEN.** `view.complete` vaut
-  `validateForm(...) === {}` — les obligatoires renseignés, les valeurs bien
-  formées — et rien d'autre. Il a exigé que tout champ visible soit répondu ou
-  passé, et c'était un blocage : personne ne demande « quel est votre indice de
-  répétition ? », donc un « BTQ » n'est ni répondu ni décliné, donc
-  éternellement en attente. Le modèle jugeait la demande complète et cessait de
-  demander ; l'écran n'ouvrait jamais le récapitulatif. **Conversation finie,
-  formulaire valide, aucun bouton pour l'envoyer.** Les facultatifs restants
-  apparaissent vides au récapitulatif, avec leur « Modifier » ;
-- **un champ facultatif refusé se passe quand même** (`skip`) : cela le retire
-  de ce que le modèle voit en attente, donc il cesse de le proposer. C'est une
-  commodité de conversation, plus une condition de sortie ;
+- ⚠️ **un champ FACULTATIF se PROPOSE, mais ne bloque jamais l'envoi**
+  (décision PO du 2026-10-01). Deux notions : `view.complete` (envoyable :
+  `validateForm(...) === {}`) et `view.settled` (envoyable ET chaque facultatif
+  répondu ou passé). C'est `settled` qui fait quitter les champs pour « Vos
+  informations ». Historique : on a d'abord exigé que tout soit répondu ou passé
+  sans dire au modèle de le demander — blocage, conversation finie et aucun
+  bouton d'envoi ; puis on est sorti dès `complete` — et les facultatifs
+  disparaissaient sans avoir été posés (l'adresse validée sur sa carte,
+  « Vos informations » s'affichait aussitôt). Ce qui empêche le blocage
+  d'origine de revenir : chaque facultatif en attente est marqué « À PROPOSER »
+  dans le prompt et le modèle doit le poser ; le filet relance un modèle muet
+  devant des facultatives ; **une carte validée ou passée relance la
+  conversation** (`relaunchAfterCard`, message « C'est fait : j'ai renseigné
+  … ») ; et le bouton **« Passer les questions facultatives »** (`skipOptional`,
+  sans effet tant qu'il manque de l'obligatoire) est affiché dès que seul du
+  facultatif reste ;
+- **un champ facultatif refusé se passe** (`skip`, posé par le modèle sur
+  « non », « je ne sais pas », « rien à ajouter », ou par le bouton « Passer »
+  d'une carte) : il cesse d'être proposé, et compte comme réglé ;
 - ⚠️ **le repli « voir lesquelles » est REMPLISSABLE**, et c'est la sortie de
   secours. Le modèle demande « code postal et ville », l'usager répond
   « 44000 », la ville reste vide, le modèle passe à la suite et n'y revient
@@ -1235,7 +1242,7 @@ regarde ailleurs, une conversation non.
   signalement est complet » ;
 - ⚠️ **ce n'est pas le modèle qui décide que c'est complet**, mais la ligne
   « INFORMATIONS À RECUEILLIR » du prompt, à trois états (obligatoires
-  restantes / plus que des facultatives / plus aucune). Il lui est interdit de
+  restantes / plus que des facultatives, à proposer / plus aucune). Il lui est interdit de
   le décréter — et de **décrire l'écran** : il ne le voit pas, et il inventait
   des boutons (« passez à l'étape suivante ») que l'usager cherchait ensuite.
   ⚠️ Le premier état était **muet** (aucune ligne), alors que la règle y

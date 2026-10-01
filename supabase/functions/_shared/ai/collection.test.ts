@@ -9,6 +9,7 @@ import {
   readFieldUpdates,
   sanitizeState,
   skipField,
+  skipOptional,
   viewOf,
   type CollectionState,
   type FieldUpdate,
@@ -83,6 +84,27 @@ describe("viewOf — quoi demander, et comment", () => {
     // les proposer, et le récapitulatif les montre vides avec leur « Modifier ».
     expect(view.remainingFields.map((f) => f.id)).toEqual(["f-photo", "f-courriel"]);
     expect(view.remainingRequired).toEqual([]);
+    // ⚠️ Envoyable, mais pas RÉGLÉ : les facultatifs restent à proposer
+    // (décision PO du 2026-10-01) — c'est `settled` qui fait quitter les champs.
+    expect(view.settled).toBe(false);
+  });
+
+  it("⚠️ `settled` : chaque facultatif répondu OU passé", () => {
+    let state = answerField(SCHEMA, empty, "f-lieu", "12 rue de la Paix");
+    state = answerField(SCHEMA, state, "f-nature", "depot");
+    state = skipField(SCHEMA, state, "f-photo");
+    expect(viewOf(SCHEMA, state).settled).toBe(false);
+    state = answerField(SCHEMA, state, "f-courriel", "a@b.fr");
+    expect(viewOf(SCHEMA, state).settled).toBe(true);
+  });
+
+  it("skipOptional passe tous les facultatifs restants — jamais avant l'obligatoire", () => {
+    const partial = answerField(SCHEMA, empty, "f-lieu", "12 rue de la Paix");
+    expect(skipOptional(SCHEMA, partial)).toBe(partial);
+    const ready = answerField(SCHEMA, partial, "f-nature", "depot");
+    const skipped = skipOptional(SCHEMA, ready);
+    expect(skipped.skipped).toEqual(["f-photo", "f-courriel"]);
+    expect(viewOf(SCHEMA, skipped).settled).toBe(true);
   });
 
   it("un obligatoire masqué puis démasqué rend la demande à nouveau incomplète", () => {
@@ -110,6 +132,7 @@ describe("viewOf — quoi demander, et comment", () => {
       remainingFields: [],
       remainingRequired: [],
       complete: true,
+      settled: true,
     });
   });
 

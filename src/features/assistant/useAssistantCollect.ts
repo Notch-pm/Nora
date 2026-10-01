@@ -50,6 +50,7 @@ import {
   setConsent as setConsentPure,
   setRequesterValue as setRequesterValuePure,
   skipField,
+  skipOptional,
   startedNote,
   startSession,
   stepOf,
@@ -102,8 +103,15 @@ export interface UseAssistantCollect {
    * écrit le premier. On lui demandait de parler à quelqu'un qui se taisait.
    */
   start: (demarcheId: string, messagesLength: number) => Promise<OpenedCollect | null>;
-  answerField: (fieldId: string, value: unknown) => void;
-  skipField: (fieldId: string) => void;
+  /**
+   * Rend la session APRÈS la réponse (ou `null` hors recueil) — de quoi
+   * relancer la conversation tout de suite avec le bon état, sans attendre le
+   * prochain rendu (même motif que `start`).
+   */
+  answerField: (fieldId: string, value: unknown) => CollectSession | null;
+  skipField: (fieldId: string) => CollectSession | null;
+  /** « Passer les questions facultatives » — sans effet tant qu'il manque de l'obligatoire. */
+  skipOptional: () => void;
   chooseOrganization: (organizationId: string) => void;
   confirmOrganization: () => void;
   reopenOrganization: () => void;
@@ -244,17 +252,27 @@ export function useAssistantCollect(params: {
       ? () => void start(lastStart.demarcheId, lastStart.messagesLength)
       : null;
 
-  function answerFieldAction(fieldId: string, value: unknown): void {
-    if (session === null) return;
-    setSession(answerField(session, fieldId, value));
+  function answerFieldAction(fieldId: string, value: unknown): CollectSession | null {
+    if (session === null) return null;
+    const next = answerField(session, fieldId, value);
+    setSession(next);
     // Un champ répondu de nouveau referme l'avertissement d'une purge
     // précédente — il ne désigne plus la situation courante.
     setPurgedCount(null);
+    return next;
   }
 
-  function skipFieldAction(fieldId: string): void {
+  function skipFieldAction(fieldId: string): CollectSession | null {
+    if (session === null) return null;
+    const next = skipField(session, fieldId);
+    setSession(next);
+    setPurgedCount(null);
+    return next;
+  }
+
+  function skipOptionalAction(): void {
     if (session === null) return;
-    setSession(skipField(session, fieldId));
+    setSession(skipOptional(session));
     setPurgedCount(null);
   }
 
@@ -395,6 +413,7 @@ export function useAssistantCollect(params: {
     start,
     answerField: answerFieldAction,
     skipField: skipFieldAction,
+    skipOptional: skipOptionalAction,
     chooseOrganization: chooseOrganizationAction,
     confirmOrganization: confirmOrganizationAction,
     reopenOrganization: reopenOrganizationAction,

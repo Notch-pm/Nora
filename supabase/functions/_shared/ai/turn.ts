@@ -414,13 +414,13 @@ export async function runAssistantTurn(
     collection = fillPostal(focus.form, collection, postalHint, lang);
   }
 
-  // Restait-il de l'obligatoire AVANT ce tour ? C'est ce qui dit, plus bas, si
-  // ce tour est celui qui ferme le recueil.
+  // Restait-il quelque chose à demander AVANT ce tour — obligatoire ou
+  // facultatif ? C'est ce qui dit, plus bas, si ce tour est celui qui ferme le
+  // recueil (l'écran ne quitte les champs qu'une fois les facultatifs répondus
+  // ou passés : `settled`, dans `collection.ts`).
   const before = collection;
-  const hadRequired =
-    before !== null && focus?.form != null
-      ? pendingFields(focus.form, before).some((field) => isFieldRequired(field, before.values))
-      : false;
+  const hadPending =
+    before !== null && focus?.form != null ? pendingFields(focus.form, before).length > 0 : false;
 
   const system = buildAssistantPrompt({
     tenantName: tenant.name,
@@ -514,7 +514,12 @@ export async function runAssistantTurn(
       const left = pendingFields(form, state);
       if (left.some((field) => wanted.includes(field.id))) return null;
       if (left.some((field) => isFieldRequired(field, state.values))) return "missing";
-      return hadRequired && ENDS_WITH_QUESTION.test(text) ? "complete" : null;
+      // Il ne reste que du facultatif : il doit être PROPOSÉ, sinon l'écran
+      // attend une réponse que personne n'a demandée. Une réponse qui se finit
+      // par une question suffit — le modèle oublie parfois `asking` sur une
+      // question facultative, et ce n'est pas une raison de payer un second appel.
+      if (left.length > 0) return ENDS_WITH_QUESTION.test(text) ? null : "missing";
+      return hadPending && ENDS_WITH_QUESTION.test(text) ? "complete" : null;
     };
     const fault = strayed(collection, asked, reply);
     if (fault !== null) {

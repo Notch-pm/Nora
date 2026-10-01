@@ -528,14 +528,31 @@ describe("la fin d'un recueil ne se bloque plus sur des facultatifs", () => {
     skipped: [],
   };
 
-  it("⚠️ dit au modèle qu'il ne reste QUE des facultatives — il ne le décide plus seul", async () => {
+  it("⚠️ dit au modèle qu'il ne reste QUE des facultatives — et qu'il doit les PROPOSER", async () => {
     const { deps, complete } = setup({});
     await runAssistantTurn(tenant(true), "fr", await body("Et donc ?", obligatoiresFaits), deps);
     const system = complete.mock.calls[0][0].system;
-    expect(system).toContain("INFORMATIONS À RECUEILLIR : plus aucune OBLIGATOIRE");
-    expect(system).toContain("La demande est envoyable telle quelle");
+    expect(system).toContain("INFORMATIONS À RECUEILLIR : plus aucune OBLIGATOIRE, mais il reste 2 FACULTATIVE(S)");
+    expect(system).toContain("| facultatif | [écrit] | À PROPOSER");
+    expect(system).toContain("termine ta réponse en proposant la première");
     // Et l'interdiction qui va avec : c'est la ligne qui tranche, pas lui.
     expect(system).toContain("NE DÉCLARE JAMAIS QUE C'EST COMPLET de ta propre autorité");
+  });
+
+  it("⚠️ facultatives en attente et réponse SANS question → relancé une fois pour les proposer", async () => {
+    // Le défaut du 2026-10-01 : l'adresse validée, « Vos informations »
+    // s'affichait et plus rien n'était demandé. Un modèle qui se tait devant
+    // des facultatives laisserait l'écran attendre une réponse jamais demandée.
+    const { deps, complete } = setup({ reply: "C'est noté." });
+    await runAssistantTurn(tenant(true), "fr", await body("Et donc ?", obligatoiresFaits), deps);
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(complete.mock.calls[1][0].system).toContain("propose la première « À PROPOSER »");
+  });
+
+  it("facultatives en attente et réponse qui se finit par une question → un seul appel", async () => {
+    const { deps, complete } = setup({ reply: "Voulez-vous ajouter une précision ? C'est facultatif ?" });
+    await runAssistantTurn(tenant(true), "fr", await body("Et donc ?", obligatoiresFaits), deps);
+    expect(complete).toHaveBeenCalledTimes(1);
   });
 
   it("ne dit rien de tel tant qu'un obligatoire manque", async () => {

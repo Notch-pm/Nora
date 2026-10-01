@@ -293,6 +293,22 @@ export interface CollectionView {
    * les montre avec leur « Modifier ».
    */
   complete: boolean;
+  /**
+   * Plus RIEN à demander : la demande est envoyable (`complete`) ET chaque
+   * facultatif a été répondu ou passé. C'est lui, pas `complete`, qui fait
+   * quitter les champs pour « Vos informations » (`stepOf`).
+   *
+   * ⚠️ Retour sur la décision ci-dessus, demandé par le PO le 2026-10-01 :
+   * sortir dès `complete` faisait disparaître les facultatifs sans qu'on les
+   * pose — l'usager validait l'adresse sur sa carte, et « Vos informations »
+   * s'affichait aussitôt, la description et la photo jamais demandées. Le
+   * blocage d'origine ne revient pas pour autant, parce que trois choses ont
+   * changé : le modèle a l'ordre de POSER chaque facultatif (« À PROPOSER »
+   * dans `collectBlock`, filet `missing` dans `runAssistantTurn`) ; une carte
+   * validée relance la conversation au lieu de la laisser muette ; et l'écran
+   * offre à tout moment « Passer les questions facultatives » (`skipOptional`).
+   */
+  settled: boolean;
 }
 
 /**
@@ -327,6 +343,7 @@ export function viewOf(schema: FormSchema, state: CollectionState, asking?: read
       ? [next]
       : [];
 
+  const complete = Object.keys(validateForm(schema, state.values)).length === 0;
   return {
     pending: next,
     mode: next === null ? null : isConversationField(next) ? "conversation" : "card",
@@ -336,7 +353,8 @@ export function viewOf(schema: FormSchema, state: CollectionState, asking?: read
     remaining: pending.length,
     remainingFields: pending,
     remainingRequired: pending.filter((field) => isFieldRequired(field, state.values)),
-    complete: Object.keys(validateForm(schema, state.values)).length === 0,
+    complete,
+    settled: complete && pending.length === 0,
   };
 }
 
@@ -379,6 +397,17 @@ export function answerField(
     touched,
   });
   return { ...next, skipped: next.skipped.filter((id) => id !== fieldId) };
+}
+
+/**
+ * Passer d'un coup tous les facultatifs restants — la sortie de secours quand
+ * l'usager ne veut plus rien ajouter, ou que le modèle ne pose plus la
+ * question. Sans effet tant qu'il manque de l'obligatoire : ce geste ne doit
+ * jamais faire croire qu'une demande incomplète est prête.
+ */
+export function skipOptional(schema: FormSchema, state: CollectionState): CollectionState {
+  if (!viewOf(schema, state).complete) return state;
+  return pendingFields(schema, state).reduce((current, field) => skipField(schema, current, field.id), state);
 }
 
 export interface FieldUpdate {

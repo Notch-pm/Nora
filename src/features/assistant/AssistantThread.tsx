@@ -15,12 +15,13 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { viewOf } from "@fn/_shared/ai/collection.ts";
 import { MAX_USER_MESSAGE_CHARS } from "@fn/_shared/domain/assistantTurn.ts";
+import { allFields } from "@fn/_shared/domain/formSchema.ts";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import { errorMessageFor } from "@/features/portal/errorMessages.ts";
 import { Markdown } from "@/features/portal/Markdown.tsx";
 import { useT, useTn } from "@/i18n/LanguageLayout.tsx";
 import { localizedPath } from "@/i18n/localizedPath.ts";
-import { BUTTON_CLASS, CARD_CLASS } from "./cardStyles.ts";
+import { BUTTON_CLASS, CARD_CLASS, SECONDARY_BUTTON_CLASS } from "./cardStyles.ts";
 import {
   ClassicFormLink,
   IdentityCard,
@@ -31,7 +32,7 @@ import {
   RecapCard,
   StartedNoteView,
 } from "./CollectCards.tsx";
-import { mergeTimeline, type CollectStep } from "./collect.ts";
+import { collectionPayload, mergeTimeline, stepOf, type CollectSession, type CollectStep } from "./collect.ts";
 import type { AssistantMessageView } from "./conversation.ts";
 import { assistantErrorMessage } from "./errorMessages.ts";
 import { useAssistantCollect } from "./useAssistantCollect.ts";
@@ -323,6 +324,40 @@ export function AssistantThread({
     sendMessage(t("assistant.collect.openingSaid", { name: opened.name }), opened.payload);
   }
 
+  /**
+   * Une carte validée (ou passée) REDONNE LA PAROLE à l'assistant.
+   *
+   * ⚠️ Une carte ne coûtait aucun appel au modèle, et c'était un silence :
+   * l'usager validait l'adresse sur la carte, et plus personne ne lui posait la
+   * question suivante — l'écran ne pouvait que sauter à « Vos informations »,
+   * les facultatifs jamais demandés (constaté le 2026-10-01). Comme pour
+   * `startCollect`, le message dit ce que le geste VEUT DIRE, dans les mots de
+   * l'usager, et déclenche le tour qui pose la suite.
+   *
+   * Pas de relance quand il n'y a plus rien à demander (étape suivante), ni
+   * quand une autre carte demandée au même tour attend encore — on la laisse
+   * remplir d'abord, sans payer un appel pour rien.
+   */
+  function relaunchAfterCard(
+    next: CollectSession | null,
+    saidKey: "assistant.collect.cardAnsweredSaid" | "assistant.collect.cardSkippedSaid",
+    fieldId: string,
+  ): void {
+    if (next === null || stepOf(next) !== "fields") return;
+    if (viewOf(next.demarche.form, next.collection, asking).controls.length > 0) return;
+    const label = allFields(next.demarche.form).find((field) => field.id === fieldId)?.label;
+    if (label === undefined) return;
+    sendMessage(t(saidKey, { label }), collectionPayload(next));
+  }
+
+  function answerFromCard(fieldId: string, value: unknown): void {
+    relaunchAfterCard(collect.answerField(fieldId, value), "assistant.collect.cardAnsweredSaid", fieldId);
+  }
+
+  function skipFromCard(fieldId: string): void {
+    relaunchAfterCard(collect.skipField(fieldId), "assistant.collect.cardSkippedSaid", fieldId);
+  }
+
   function endConversation(): void {
     newConversation();
     collect.reset();
@@ -457,9 +492,19 @@ export function AssistantThread({
               state.messages.at(-1)?.role === "assistant" &&
               !(fieldView?.remainingFields ?? []).some((field) => asking.includes(field.id))
             }
-            onAnswer={collect.answerField}
-            onSkip={collect.skipField}
+            onAnswer={answerFromCard}
+            onSkip={skipFromCard}
           />
+        )}
+
+        {/* Il ne reste que du facultatif : l'assistant le propose, une question
+            à la fois — et ce bouton permet de tout passer d'un geste. C'est la
+            sortie qui garantit que la demande reste envoyable même si le
+            modèle cesse de poser ses questions. */}
+        {fieldView !== null && fieldView.complete && !fieldView.settled && state.status !== "sending" && (
+          <button type="button" onClick={collect.skipOptional} className={SECONDARY_BUTTON_CLASS + " w-fit"}>
+            {t("assistant.collect.skipOptional")}
+          </button>
         )}
 
         {collect.loading && (
@@ -501,8 +546,8 @@ export function AssistantThread({
               <PendingFieldCard
                 session={collect.session}
                 asking={asking}
-                onAnswer={collect.answerField}
-                onSkip={collect.skipField}
+                onAnswer={answerFromCard}
+                onSkip={skipFromCard}
               />
             )}
             {collect.step === "organization" && (
