@@ -203,6 +203,36 @@ export function reduceConversation(
 export type MessageProblem = "empty" | "tooLong";
 
 /** Le message tel que l'usager va l'envoyer — vide et trop long refusés AVANT le réseau. */
+/** Ce qu'il faut savoir de l'élément qui a le focus — de quoi trancher sans DOM. */
+export interface FocusedElement {
+  tagName: string;
+  isContentEditable?: boolean;
+}
+
+/**
+ * Le focus doit-il revenir à la zone de saisie quand une réponse arrive ?
+ *
+ * ⚠️ PAS si l'usager est déjà en train de saisir AILLEURS. Constaté sur SNA le
+ * 2026-10-01 : pendant que l'assistant prépare sa réponse, la carte du lieu
+ * d'intervention s'affiche déjà (repli de `viewOf`) et prend le focus ;
+ * l'usager commence à taper l'adresse, la réponse arrive, et le focus était
+ * arraché vers la conversation au milieu d'un mot. Difficile à reproduire,
+ * parce que cela ne se voit que si l'on tape avant la fin de la réponse.
+ *
+ * Rendre le focus reste la règle (RGAA 10.7) quand il s'est PERDU — sur le
+ * corps de la page, ou sur le bouton d'envoi désactivé pendant l'attente — ou
+ * qu'il est déjà dans la zone de saisie.
+ */
+export function shouldReturnFocusToInput(
+  active: FocusedElement | null,
+  input: FocusedElement | null,
+): boolean {
+  if (active === null || active === input) return true;
+  if (active.isContentEditable === true) return false;
+  const tag = active.tagName.toUpperCase();
+  return tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT";
+}
+
 export function validateMessage(
   raw: string,
 ): { ok: true; content: string } | { ok: false; problem: MessageProblem } {

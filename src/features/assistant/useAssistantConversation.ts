@@ -24,6 +24,7 @@ import {
   loadConversation,
   reduceConversation,
   saveConversation,
+  shouldReturnFocusToInput,
   validateMessage,
   type AssistantMessageView,
   type MessageProblem,
@@ -141,7 +142,9 @@ export function useAssistantConversation(
     previousStatusRef.current = state.status;
     if (previous !== "sending" || state.status === "sending") return;
     if (state.status === "ended") newConversationButtonRef.current?.focus();
-    else textareaRef.current?.focus();
+    // ⚠️ Sauf si l'usager saisit déjà ailleurs — une carte de champ, ouverte
+    // pendant l'attente : voir `shouldReturnFocusToInput`.
+    else if (shouldReturnFocusToInput(document.activeElement, textareaRef.current)) textareaRef.current?.focus();
   }, [state.status]);
 
   /**

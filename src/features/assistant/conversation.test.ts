@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MAX_TURNS, MAX_USER_MESSAGE_CHARS } from "@fn/_shared/domain/assistantTurn.ts";
 import {
+  shouldReturnFocusToInput,
   ASSISTANT_STORAGE_KEY,
   type AssistantMessageView,
   buildTurnRequest,
@@ -394,5 +395,23 @@ describe("loadConversation / saveConversation / clearConversation", () => {
     saveConversation(storage, READY);
     clearConversation(storage);
     expect(loadConversation(storage)).toBeNull();
+  });
+});
+
+describe("shouldReturnFocusToInput — ne pas arracher le focus d'une carte", () => {
+  const textarea = { tagName: "TEXTAREA" };
+
+  it("rend le focus quand il s'est perdu, ou qu'il est déjà dans la saisie", () => {
+    expect(shouldReturnFocusToInput(null, textarea)).toBe(true);
+    expect(shouldReturnFocusToInput({ tagName: "BODY" }, textarea)).toBe(true);
+    expect(shouldReturnFocusToInput({ tagName: "BUTTON" }, textarea)).toBe(true);
+    expect(shouldReturnFocusToInput(textarea, textarea)).toBe(true);
+  });
+
+  it("⚠️ le laisse à l'usager qui tape ailleurs — le lieu d'intervention, pendant l'attente", () => {
+    expect(shouldReturnFocusToInput({ tagName: "input" }, textarea)).toBe(false);
+    expect(shouldReturnFocusToInput({ tagName: "TEXTAREA" }, textarea)).toBe(false);
+    expect(shouldReturnFocusToInput({ tagName: "SELECT" }, textarea)).toBe(false);
+    expect(shouldReturnFocusToInput({ tagName: "DIV", isContentEditable: true }, textarea)).toBe(false);
   });
 });
