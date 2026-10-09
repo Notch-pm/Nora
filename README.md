@@ -1397,7 +1397,8 @@ routes `POST /v1/assistant/defi` et `POST /v1/assistant` de `portal-api`,
 Depuis le 2026-10-09 (serveur ; l'écran suit), l'assistant peut **parler** et
 **entendre**, si la collectivité l'a ouvert (`tenant.assistant.voiceEnabled`,
 interrupteur du super administrateur au Socle, contrat **1.37.0** — à part de
-l'assistant, parce que la voix coûte plusieurs fois le texte et fait traiter la
+l'assistant, parce que la voix coûte davantage que le texte — ≈ 1,5 fois par tour,
+mesuré le 2026-10-09 — et fait traiter la
 voix de l'usager par le fournisseur). Rien de nouveau ne se conserve : le
 navigateur enregistre, `portal-api` vérifie et relaie au guichet IA du Socle
 (`ai-api` **1.4.0** : `/v1/transcriptions`, `/v1/speech`), qui compte la dépense

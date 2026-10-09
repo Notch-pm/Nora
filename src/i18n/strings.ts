@@ -2312,17 +2312,20 @@ export const STRINGS = {
     zh: "返回文字",
   },
   "assistant.voice.notice": {
-    fr: "Votre voix est transcrite par le service d'intelligence artificielle de la collectivité. Rien n'est enregistré.",
-    en: "Your voice is transcribed by the local authority's artificial intelligence service. Nothing is recorded.",
-    es: "Su voz es transcrita por el servicio de inteligencia artificial de la administración. No se guarda nada.",
-    de: "Ihre Stimme wird vom KI-Dienst der Kommune transkribiert. Es wird nichts gespeichert.",
-    it: "La sua voce viene trascritta dal servizio di intelligenza artificiale dell'ente. Nulla viene registrato.",
-    pt: "A sua voz é transcrita pelo serviço de inteligência artificial da autarquia. Nada é guardado.",
-    ar: "يتم تحويل صوتك إلى نص بواسطة خدمة الذكاء الاصطناعي التابعة للجماعة. لا يتم حفظ أي شيء.",
-    tr: "Sesiniz yerel yönetimin yapay zekâ hizmeti tarafından yazıya dökülür. Hiçbir şey kaydedilmez.",
-    ru: "Ваш голос расшифровывается сервисом искусственного интеллекта администрации. Ничего не сохраняется.",
-    uk: "Ваш голос розшифровується сервісом штучного інтелекту громади. Нічого не зберігається.",
-    zh: "您的语音由地方政府的人工智能服务转写为文字，不会保存任何内容。",
+    // ⚠️ « Rien n'est enregistré » était trop fort : le fournisseur peut garder
+    // les entrées jusqu'à 30 jours (lutte contre les abus), sauf conservation
+    // nulle. On dit ce qui est vrai : ni la collectivité ni le site.
+    fr: "Votre voix est transcrite par le prestataire d'intelligence artificielle de la collectivité. Ni la collectivité ni ce site ne l'enregistrent.",
+    en: "Your voice is transcribed by the local authority's artificial intelligence provider. Neither the authority nor this site records it.",
+    es: "Su voz es transcrita por el proveedor de inteligencia artificial de la administración. Ni la administración ni este sitio la graban.",
+    de: "Ihre Stimme wird vom KI-Anbieter der Kommune transkribiert. Weder die Kommune noch diese Website speichern sie.",
+    it: "La sua voce viene trascritta dal fornitore di intelligenza artificiale dell'ente. Né l'ente né questo sito la registrano.",
+    pt: "A sua voz é transcrita pelo fornecedor de inteligência artificial da autarquia. Nem a autarquia nem este site a guardam.",
+    ar: "يتم تحويل صوتك إلى نص بواسطة مزوّد الذكاء الاصطناعي التابع للجماعة. لا تحتفظ به الجماعة ولا هذا الموقع.",
+    tr: "Sesiniz yerel yönetimin yapay zekâ sağlayıcısı tarafından yazıya dökülür. Ne yerel yönetim ne de bu site onu kaydeder.",
+    ru: "Ваш голос расшифровывается поставщиком искусственного интеллекта администрации. Ни администрация, ни этот сайт его не сохраняют.",
+    uk: "Ваш голос розшифровується постачальником штучного інтелекту громади. Ні громада, ні цей сайт його не зберігають.",
+    zh: "您的语音由地方政府的人工智能服务商转写为文字。地方政府和本网站均不保存您的语音。",
   },
   "assistant.voice.dictationHint": {
     fr: "Dans cette langue, l'assistant vous répond par écrit.",
