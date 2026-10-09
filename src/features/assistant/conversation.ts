@@ -306,9 +306,15 @@ export function buildTurnRequest(params: {
   focusDemarcheId: string | null;
   lang: string;
   collection?: CollectionPayload | null;
+  /** `voice` : la réponse sera lue à voix haute (mode dialogue). Absent : texte. */
+  mode?: "text" | "voice";
 }): AssistantTurnRequest | null {
   const { ticket, challenge, messages, focusDemarcheId, lang, collection } = params;
-  const collectionField = collection === undefined ? {} : { collection };
+  const collectionField = {
+    ...(collection === undefined ? {} : { collection }),
+    // Absent en mode texte : la requête d'un tour ordinaire ne change pas d'un octet.
+    ...(params.mode === "voice" ? { mode: "voice" as const } : {}),
+  };
   if (ticket === null) {
     if (challenge === null) return null;
     const last = messages.length > 0 ? messages[messages.length - 1] : undefined;

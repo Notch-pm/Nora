@@ -125,6 +125,7 @@ export function AssistantPage() {
               lang={lang}
               focusDemarcheId={focusDemarcheId}
               depositEnabled={tenant.assistant.depositEnabled}
+              voiceEnabled={tenant.assistant.voiceEnabled}
               variant="page"
             />
           </div>

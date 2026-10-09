@@ -61,7 +61,15 @@ export interface UseAssistantConversation {
    * automatique d'un ticket périmé et pour `retry()`, qui doivent porter EXACTEMENT
    * ce qui a été envoyé la première fois.
    */
-  sendMessage: (raw: string, collection?: CollectionPayload | null) => boolean;
+  sendMessage: (
+    raw: string,
+    collection?: CollectionPayload | null,
+    /**
+     * Le défi DÉJÀ résolu pour transcrire la première prise de parole (mode
+     * dialogue) : il ouvre aussi la conversation, sans second calcul.
+     */
+    options?: { challenge?: SolvedChallenge | null },
+  ) => boolean;
   /** Rejoue le DERNIER message déjà dans le fil — celui qui a échoué. */
   retry: () => void;
   newConversation: () => void;
@@ -88,6 +96,13 @@ export interface UseAssistantConversation {
 export function useAssistantConversation(
   focusDemarcheId: string | null,
   lang: string,
+  /**
+   * Le mode du PROCHAIN tour, lu au moment de l'envoyer : `voice` quand le
+   * dialogue vocal est actif (la réponse sera dite). Une fonction plutôt
+   * qu'une valeur : une carte validée ou un « Réessayer » partent eux aussi
+   * dans le mode du moment.
+   */
+  turnMode: () => "text" | "voice" = () => "text",
 ): UseAssistantConversation {
   const [state, dispatch] = useReducer(reduceConversation, undefined, initialConversation);
   const [stillWaiting, setStillWaiting] = useState(false);
@@ -163,9 +178,10 @@ export function useAssistantConversation(
     ticket: string | null,
     generation: number,
     collection: CollectionPayload | null,
+    solved: SolvedChallenge | null = null,
   ): Promise<void> {
-    let challenge: SolvedChallenge | null = null;
-    if (ticket === null) {
+    let challenge: SolvedChallenge | null = ticket === null ? solved : null;
+    if (ticket === null && challenge === null) {
       const challengeLoad = await fetchAssistantChallenge();
       if (generationRef.current !== generation) return; // Périmé : l'usager a bougé entre-temps.
       if (!challengeLoad.ok) {
@@ -187,6 +203,7 @@ export function useAssistantConversation(
       focusDemarcheId: focusDemarcheOf(messagesForRequest, fromAddress),
       lang: currentLang,
       collection,
+      mode: turnMode(),
     });
     if (request === null) {
       dispatch({ type: "failed", reason: "bad_request" });
@@ -217,7 +234,11 @@ export function useAssistantConversation(
     setCollectOffer(result.reply.collectOffer);
   }
 
-  function sendMessage(raw: string, collection: CollectionPayload | null = null): boolean {
+  function sendMessage(
+    raw: string,
+    collection: CollectionPayload | null = null,
+    options: { challenge?: SolvedChallenge | null } = {},
+  ): boolean {
     if (state.status === "sending" || state.status === "ended") return false;
     const validation = validateMessage(raw);
     if (!validation.ok) {
@@ -232,7 +253,7 @@ export function useAssistantConversation(
     // même action.
     const prospective = reduceConversation(state, { type: "sent", content: validation.content });
     dispatch({ type: "sent", content: validation.content });
-    void runTurn(prospective.messages, state.ticket, generation, collection);
+    void runTurn(prospective.messages, state.ticket, generation, collection, options.challenge ?? null);
     return true;
   }
 

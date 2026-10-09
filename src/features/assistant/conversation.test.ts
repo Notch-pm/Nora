@@ -135,6 +135,16 @@ describe("focusDemarcheOf — la démarche dont on parle", () => {
 describe("buildTurnRequest", () => {
   const CHALLENGE = { salt: "s", bits: 15, expires: 100, signature: "sig", nonce: "0" };
 
+  // La réponse sera lue à voix haute : le serveur la veut courte. En mode
+  // texte, la requête ne change pas d'un octet.
+  it("porte le mode « voix » seulement quand le dialogue parlé est actif", () => {
+    const messages: AssistantMessageView[] = [{ id: "m1", role: "user", content: "Bonjour" }];
+    const base = { ticket: null, challenge: CHALLENGE, messages, focusDemarcheId: null, lang: "fr" };
+    expect(buildTurnRequest({ ...base, mode: "voice" })).toMatchObject({ mode: "voice" });
+    expect(buildTurnRequest({ ...base, mode: "text" })).not.toHaveProperty("mode");
+    expect(buildTurnRequest(base)).not.toHaveProperty("mode");
+  });
+
   it("premier tour : un seul message usager, avec le défi résolu", () => {
     const messages: AssistantMessageView[] = [{ id: "m1", role: "user", content: "Bonjour" }];
     expect(

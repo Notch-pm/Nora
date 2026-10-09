@@ -44,6 +44,9 @@ import type { AssistantMessageView } from "./conversation.ts";
 import { assistantErrorMessage } from "./errorMessages.ts";
 import { useAssistantCollect } from "./useAssistantCollect.ts";
 import { useAssistantConversation } from "./useAssistantConversation.ts";
+import { voiceModeFor } from "@fn/_shared/domain/voice.ts";
+import { useVoiceDialogue } from "./voice/useVoiceDialogue.ts";
+import { VoiceControls } from "./voice/VoiceControls.tsx";
 
 /**
  * La mention permanente : obligation de transparence, jamais reléguée au
@@ -222,6 +225,7 @@ export function AssistantThread({
   lang,
   focusDemarcheId,
   depositEnabled,
+  voiceEnabled = false,
   variant,
   onStepChange,
 }: {
@@ -230,6 +234,8 @@ export function AssistantThread({
   focusDemarcheId: string | null;
   /** La collectivité a ouvert le recueil dans la conversation (lot 2). */
   depositEnabled: boolean;
+  /** La collectivité a ouvert le MODE DIALOGUE (la voix, Socle 1.37.0). */
+  voiceEnabled?: boolean;
   /** Ne décide QUE de la mise en page — jamais d'une règle. */
   variant: "panel" | "page";
   /** Pour que la bulle sache s'élargir : le récapitulatif et l'identité ne tiennent pas en étroit. */
@@ -237,6 +243,11 @@ export function AssistantThread({
 }) {
   const t = useT();
   const tn = useTn();
+  // Les tours partent en mode « voix » tant que le dialogue parlé est actif :
+  // la réponse sera dite, le serveur la veut courte. Une `ref`, parce que le
+  // hook de conversation la lit au moment d'envoyer — y compris une relance de
+  // carte ou un « Réessayer ».
+  const voiceTurnsRef = useRef(false);
   const {
     state,
     stillWaiting,
@@ -250,7 +261,7 @@ export function AssistantThread({
     collectionReply,
     asking,
     collectOffer,
-  } = useAssistantConversation(focusDemarcheId, lang);
+  } = useAssistantConversation(focusDemarcheId, lang, () => (voiceTurnsRef.current ? "voice" : "text"));
   const collect = useAssistantCollect({ lang, depositEnabled, collectionReply });
   const [draft, setDraft] = useState("");
   const inputId = useId();
@@ -293,6 +304,29 @@ export function AssistantThread({
         : showFieldCard && fieldView !== null && fieldView.controls.length > 0
           ? collect.session.demarche.id + ":fields:" + fieldView.controls[0].id
           : "";
+  // Le dialogue vocal (lot 4 du mode dialogue). Il se tait dès qu'une carte
+  // attend un geste à l'écran — date, pièce, organisme, identité, récapitulatif.
+  const voiceMode = voiceModeFor({ enabled: true, depositEnabled, voiceEnabled }, lang);
+  const cardWaiting =
+    collect.session !== null && (collect.step !== "fields" || (fieldView?.controls.length ?? 0) > 0);
+  const voice = useVoiceDialogue({
+    mode: voiceMode,
+    lang,
+    conversation: state,
+    cardWaiting,
+    send: (text, challenge) => {
+      const sent = sendMessage(text, collect.turnCollectionPayload, { challenge });
+      // L'usager a repris la parole : son message porte déjà la carte validée.
+      if (sent) pendingRelaunchRef.current = null;
+      return sent;
+    },
+    onCorrect: (text) => {
+      setDraft(text);
+      textareaRef.current?.focus();
+    },
+  });
+  voiceTurnsRef.current = voiceMode === "dialogue" && voice.state.phase !== "off";
+
   useEffect(() => {
     if (cardSignature === "") return;
     const focusable = cardRef.current?.querySelector<HTMLElement>(
@@ -793,6 +827,7 @@ export function AssistantThread({
                 </p>
               )}
             </div>
+            <VoiceControls mode={voiceMode} voice={voice} />
           </form>
         )}
 

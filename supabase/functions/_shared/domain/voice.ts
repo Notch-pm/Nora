@@ -162,3 +162,28 @@ export function encodeWav(samples: Float32Array, sampleRate = RECORDING_SAMPLE_R
   }
   return bytes;
 }
+
+/**
+ * Ramène des échantillons à `RECORDING_SAMPLE_RATE` — côté navigateur.
+ *
+ * ⚠️ On ne demande PAS au navigateur un `AudioContext` à 16 kHz : Firefox
+ * refuse de brancher le micro (à sa fréquence propre, 44,1 ou 48 kHz) sur un
+ * contexte d'une autre fréquence. On capte à la fréquence native, et on réduit
+ * ici : chaque échantillon de sortie est la MOYENNE de ceux qu'il recouvre —
+ * un filtre passe-bas grossier, suffisant pour la voix, qui évite le
+ * repliement qu'une simple décimation ferait entendre.
+ */
+export function downsample(input: Float32Array, fromRate: number, toRate = RECORDING_SAMPLE_RATE): Float32Array {
+  if (fromRate === toRate) return input.slice();
+  if (fromRate < toRate || fromRate <= 0) throw new Error("downsample : fréquence d'entrée inattendue.");
+  const ratio = fromRate / toRate;
+  const output = new Float32Array(Math.floor(input.length / ratio));
+  for (let i = 0; i < output.length; i++) {
+    const start = Math.floor(i * ratio);
+    const end = Math.min(input.length, Math.floor((i + 1) * ratio));
+    let sum = 0;
+    for (let j = start; j < end; j++) sum += input[j];
+    output[i] = end > start ? sum / (end - start) : 0;
+  }
+  return output;
+}

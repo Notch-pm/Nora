@@ -878,3 +878,92 @@ export async function sendAssistantTurn(request: AssistantTurnRequest): Promise<
   if (reply === null) return { ok: false, reason: "assistant_unavailable" };
   return { ok: true, reply };
 }
+
+// ── La voix (mode dialogue) ───────────────────────────────────────────────────
+//
+// ⚠️ Même chaîne de délais que la conversation : le navigateur attend plus
+// longtemps que `portal-api`, qui attend plus longtemps que le Socle.
+
+export type AssistantTranscription =
+  | { ok: true; text: string }
+  | { ok: false; reason: AssistantClientFailure; retryAfterSeconds?: number };
+
+/**
+ * Fait transcrire une prise de parole. `auth` : le ticket de la conversation,
+ * ou — pour la toute première — le défi résolu qui l'ouvrira. L'enregistrement
+ * part tel quel (WAV 16 kHz mono) et n'est gardé nulle part.
+ */
+export async function transcribeRecording(params: {
+  wav: Blob;
+  auth: { ticket: string } | { challenge: SolvedChallenge };
+  lang: string;
+}): Promise<AssistantTranscription> {
+  const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
+  if (!baseUrl) return { ok: false, reason: "not_configured" };
+
+  const form = new FormData();
+  form.append("file", params.wav, "tour.wav");
+  if ("ticket" in params.auth) form.append("ticket", params.auth.ticket);
+  else form.append("challenge", JSON.stringify(params.auth.challenge));
+  form.append("lang", params.lang);
+
+  let response: Response;
+  try {
+    response = await fetch(baseUrl.replace(/\/+$/, "") + "/v1/assistant/transcription", {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(ASSISTANT_TURN_TIMEOUT_MS),
+    });
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const { reason, retryAfterSeconds } = readAssistantFailure(body);
+    return { ok: false, reason, retryAfterSeconds };
+  }
+  const text = (body as { text?: unknown } | null)?.text;
+  return typeof text === "string" ? { ok: true, text } : { ok: false, reason: "assistant_unavailable" };
+}
+
+export type AssistantSpeech =
+  | { ok: true; audio: Blob }
+  | { ok: false; reason: AssistantClientFailure; retryAfterSeconds?: number };
+
+/**
+ * La voix d'une réponse de l'assistant — la réponse TELLE QUE le serveur l'a
+ * rendue, signature comprise : le serveur ne prononce rien d'autre.
+ */
+export async function fetchAssistantSpeech(params: {
+  ticket: string;
+  content: string;
+  signature: string;
+  lang: string;
+}): Promise<AssistantSpeech> {
+  const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
+  if (!baseUrl) return { ok: false, reason: "not_configured" };
+
+  let response: Response;
+  try {
+    response = await fetch(baseUrl.replace(/\/+$/, "") + "/v1/assistant/voix", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+      signal: AbortSignal.timeout(ASSISTANT_TURN_TIMEOUT_MS),
+    });
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+  if (!response.ok) {
+    const { reason, retryAfterSeconds } = readAssistantFailure(await response.json().catch(() => null));
+    return { ok: false, reason, retryAfterSeconds };
+  }
+  if (!(response.headers.get("Content-Type") ?? "").startsWith("audio/")) {
+    return { ok: false, reason: "assistant_unavailable" };
+  }
+  try {
+    return { ok: true, audio: await response.blob() };
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+}

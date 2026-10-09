@@ -1431,6 +1431,49 @@ sur le même plafond et la même part que la conversation.
 Code : `_shared/ai/{voice,speakable}.ts`, `socleAi.ts` (`transcribe`, `speak`),
 `_shared/domain/voice.ts`. Aucun secret nouveau.
 
+**L'écran** (`src/features/assistant/voice/`) — sous la zone de saisie, un bouton
+« Passer en mode dialogue » (ou « Dicter mon message » en dictée), proposé
+seulement si la collectivité a ouvert la voix, que la langue s'y prête et que le
+navigateur sait le faire (`voiceSupported`). Puis, **mains libres** (décision PO
+du 2026-10-09) : écoute → fin de parole détectée → transcription → **relecture**
+de 2,5 s (« Envoyer », « Corriger » qui rend le texte au clavier) → envoi
+automatique → réponse affichée **et dite** → le micro se rouvre.
+
+- **La règle** est dans deux modules purs, testés : `dialogue.ts` (l'automate —
+  quelles phases, quoi après quoi) et `endpointer.ts` (la fin de parole).
+  `useVoiceDialogue.ts` exécute, `devices.ts` tient le micro et le haut-parleur,
+  `VoiceControls.tsx` affiche.
+- ⚠️ **Fin de parole par seuil d'énergie, pas par modèle** : Silero en
+  WebAssembly pèserait plusieurs mégaoctets pour un portail qui n'a que React.
+  Le seuil suit le bruit ambiant (étalonnage de 250 ms à l'ouverture, plancher
+  adaptatif, hystérésis) ; 1,2 s de silence clôt une phrase, 8 s sans parole
+  mettent en pause. Sa limite est connue — une télévision passe pour une voix —,
+  d'où la relecture avant envoi.
+- ⚠️ **Semi-duplex** : le micro n'écoute jamais pendant que l'assistant parle.
+  Pour reprendre la parole : « Couper la parole », ou Espace hors d'un champ.
+- ⚠️ **Une carte arrête la boucle** (date, pièce, organisme, identité,
+  récapitulatif) : l'assistant l'annonce, le micro se ferme — son témoin
+  s'éteint — et c'est la carte validée qui relance l'assistant, comme au clavier.
+- ⚠️ **Le format** : le micro est capté à sa fréquence native (Firefox refuse un
+  contexte à 16 kHz), ramené à 16 kHz (`downsample`) puis écrit en WAV
+  (`encodeWav`). Le processeur AudioWorklet est une **chaîne** chargée par URL
+  `blob:` (`recorderWorklet.ts`) : un petit fichier serait intégré par Vite en
+  URL `data:`, que Safari refuse pour un worklet.
+- ⚠️ **Safari** : le son n'est autorisé que s'il part d'un geste. Le clic qui
+  ouvre le dialogue démarre l'`AudioContext` et joue un silence dans l'élément
+  `<audio>` qui servira ensuite (`createSpeaker().unlock`).
+- Au premier tour, le **défi** qui ouvrira la conversation se résout pendant que
+  l'usager parle, puis sert à la transcription ET au tour (`sendMessage(…, {
+  challenge })`) — un seul calcul.
+- **Rien n'est stocké** : la phrase enregistrée vit en mémoire le temps de partir.
+  Les trois clés de `sessionStorage` restent les seules.
+
+Vérifié dans Chromium (micro simulé par un fichier, `--use-file-for-fake-audio-capture`)
+contre `portal-api` en production, le 2026-10-09 : un tour complet, la coupure,
+la pause après 8 s de silence. De la fin de la phrase au début de la voix :
+≈ 12 s (fin de parole 1,2 s, transcription 1,7 s, relecture 2,5 s, réponse 3,7 s,
+synthèse 3,5 s). ⚠️ **Pas encore vérifié à l'oreille sur iPhone ni sur Android.**
+
 ## Ce qui n'est pas encore fait
 
 Dans l'ordre prévu — le détail, les prérequis côté Socle et les questions

@@ -293,6 +293,7 @@ export function AssistantBubble({ children }: { children: ReactNode }) {
               lang={lang}
               focusDemarcheId={ui.focusDemarcheId}
               depositEnabled={tenant.assistant.depositEnabled}
+              voiceEnabled={tenant.assistant.voiceEnabled}
               variant="panel"
               onStepChange={setStep}
             />
