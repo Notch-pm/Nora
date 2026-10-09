@@ -44,7 +44,13 @@ export interface FieldError {
     | "validation.number"
     | "validation.maxLength"
     | "validation.maxFiles"
-    | "validation.consentRequired";
+    | "validation.consentRequired"
+    // Le courrier libre (`courrier.ts`) : un moyen de répondre, un téléphone
+    // lisible, et ses pièces jointes, vérifiées avant l'envoi.
+    | "validation.contactRequired"
+    | "validation.phone"
+    | "validation.fileTooLarge"
+    | "validation.fileUnsupported";
   params?: Record<string, string | number>;
 }
 

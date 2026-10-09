@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   accessibiliteTitle,
   assistantTitle,
+  courrierSentTitle,
+  courrierTitle,
   demarcheTitle,
   errorPageTitle,
   formulaireTitle,
@@ -9,6 +11,28 @@ import {
   organismeTitle,
   receiptTitle,
 } from "./pageTitle.ts";
+
+describe("courrierTitle", () => {
+  it("l'intitulé par défaut, l'organisme, puis la collectivité", () => {
+    expect(courrierTitle("fr", null, "Mairie d'Arles", "ACCM")).toBe(
+      "Envoyer un courrier libre — Mairie d'Arles — ACCM",
+    );
+    expect(courrierTitle("en", null, "Mairie d'Arles", "ACCM")).toBe("Send a free-form letter — Mairie d'Arles — ACCM");
+  });
+
+  it("le titre choisi au Socle, sans répéter la collectivité quand c'est à elle qu'on écrit", () => {
+    expect(courrierTitle("fr", "Écrire au maire", "ACCM", "ACCM")).toBe("Écrire au maire — ACCM");
+  });
+
+  it("préfixé du nombre d'erreurs après un envoi refusé", () => {
+    expect(courrierTitle("fr", null, "ACCM", "ACCM", 2)).toMatch(/^2 .+ — Envoyer un courrier libre — ACCM$/);
+  });
+
+  it("l'accusé dit si le courrier vient d'arriver ou l'était déjà", () => {
+    expect(courrierSentTitle("fr", false, "ACCM")).toBe("Votre courrier a été envoyé — ACCM");
+    expect(courrierSentTitle("fr", true, "ACCM")).toBe("Ce courrier avait déjà été reçu — ACCM");
+  });
+});
 
 describe("homeTitle", () => {
   it("nomme la collectivité, puis le site", () => {

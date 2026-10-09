@@ -20,6 +20,7 @@ import { useEffect, useState } from "react";
 import type { Demarche, Ville } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
+import type { FreeMail } from "@fn/_shared/domain/courrier.ts";
 import type { PortalLoadFailure } from "@/services/portal/portalClient.ts";
 import { PortalUnavailableError } from "@/services/portal/portalService.ts";
 import { getOrganismeSnapshot } from "@/services/portal/organismeService.ts";
@@ -48,6 +49,8 @@ export type OrganismeState =
      * celle qui peint la page. Voir `PortalSnapshot.tenantBranding`.
      */
     tenantBranding: Branding | null;
+    /** Le courrier libre de cet organisme — la page propose alors d'écrire. */
+    freeMail: FreeMail;
   }
   | { status: "error"; reason: PortalLoadFailure };
 
@@ -81,6 +84,7 @@ export function useOrganisme(
             demarches: snapshot.demarches,
             branding: snapshot.branding,
             tenantBranding: snapshot.tenantBranding,
+            freeMail: snapshot.freeMail,
           });
         }
       })

@@ -16,6 +16,7 @@
  * Les clés (`courriel`, `nom_usuel`, `siret`…) sont celles du Socle et partent
  * telles quelles : Iris les rapproche du référentiel usagers sans traduction.
  */
+import type { ReactNode } from "react";
 import type { Audience, RequesterField } from "@fn/_shared/domain/requesterConfig.ts";
 import { AUDIENCES } from "@fn/_shared/domain/requesterConfig.ts";
 import type { ConsentAnswers, ConsentKind } from "@fn/_shared/domain/consents.ts";
@@ -145,6 +146,7 @@ export function RequesterSection({
   onConsentChange,
   organismName,
   dense = false,
+  note,
 }: {
   /** Les publics ouverts par la collectivité. Aucun = pas d'identité demandée, le bloc le dit. */
   audiences: Audience[];
@@ -162,6 +164,12 @@ export function RequesterSection({
   organismName: string;
   /** Une seule colonne de champs — pour un conteneur étroit (le panneau de la bulle). */
   dense?: boolean;
+  /**
+   * Une consigne sous le sous-titre, DANS le `fieldset` — pour qu'un lecteur
+   * d'écran l'entende avec le bloc. Le courrier libre y dit « au moins un
+   * courriel ou un téléphone ».
+   */
+  note?: ReactNode;
 }) {
   const { lang } = useLanguage();
   const t = useT();
@@ -199,6 +207,8 @@ export function RequesterSection({
         {asksIdentity && (
           <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("requester.subtitle")}</p>
         )}
+
+        {asksIdentity && note}
 
         {/* Un seul public ouvert : pas de question à poser, la réponse est faite. */}
         {asksIdentity && audiences.length > 1 && (

@@ -26,6 +26,7 @@ import type { Demarche, Ville } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
+import type { FreeMail } from "@fn/_shared/domain/courrier.ts";
 import { fetchPortal, type PortalLoad, type PortalLoadFailure } from "./portalClient.ts";
 
 /**
@@ -141,6 +142,11 @@ export async function getHomePage(lang: string): Promise<HomePage | null> {
  */
 export async function getVilles(lang: string): Promise<Ville[]> {
   return (await snapshot(lang)).villes;
+}
+
+/** Le courrier libre de la collectivité elle-même (`/courrier`) — fermé au doute. */
+export async function getFreeMail(lang: string): Promise<FreeMail> {
+  return (await snapshot(lang)).freeMail;
 }
 
 /** La charte graphique de la collectivité, ou `null` — couleurs par défaut. */

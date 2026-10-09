@@ -153,6 +153,9 @@ supabase/functions/
       demarcheService.ts   getPublicDemarches(tenantId) / getPublicDemarche(tenantId, id)
       pageService.ts       getPublishedPage(tenantId) — traduit, filtre, valide les couleurs
       brandingService.ts   getBranding(tenantId) — décoratif, se dégrade en null
+    clara/               Le seul code qui parle à Clara (le courrier libre).
+      claraClient.ts       port HTTP + implémentation
+      courrierService.ts   depositCourrier() — lecture, garde, organisme, relais
     iris/                Le seul code qui connaisse la forme de l'API d'ingestion d'Iris.
       irisClient.ts        port HTTP + implémentation
       demandeService.ts    submitDemande() — l'enveloppe, et rien d'autre
@@ -1474,6 +1477,77 @@ contre `portal-api` en production, le 2026-10-09 : un tour complet, la coupure,
 la pause après 8 s de silence. De la fin de la phrase au début de la voix :
 ≈ 12 s (fin de parole 1,2 s, transcription 1,7 s, relecture 2,5 s, réponse 3,7 s,
 synthèse 3,5 s). ⚠️ **Pas encore vérifié à l'oreille sur iPhone ni sur Android.**
+
+## Le courrier libre
+
+Depuis le 2026-10-09, un usager peut **écrire librement** à un organisme, sans passer par une
+démarche : un objet, un message, qui il est, de quoi lui répondre, jusqu'à trois pièces jointes,
+et les deux consentements RGPD. Le courrier arrive dans **Clara**, la gestion du courrier de
+l'organisme ; le portail n'en garde rien.
+
+| Adresse | Ce qu'elle sert |
+|---|---|
+| `/courrier` · `/en/courrier` | Écrire à la **collectivité** du domaine |
+| `/mairie-d-arles/courrier` · `/en/mairie-d-arles/courrier` | Écrire à **cet organisme** |
+
+`courrier` est un segment de route (`ROUTE_SEGMENTS`) : il ne peut pas être le slug d'un
+organisme. ⚠️ À interdire aussi comme slug au Socle, sur le modèle d'`accessibilite`.
+
+**Qui reçoit du courrier : le Socle, et lui seul.** Chaque organisme de
+`GET /v1/portal/organizations?tenant_id=` porte `free_mail: { enabled, title }` (public-api
+**1.38.0**). `enabled` est LA décision, déjà conditionnée au Socle à l'abonnement Clara de la
+collectivité ; `title` est le libellé choisi (« Écrire au maire »), `null` = « Envoyer un courrier
+libre », traduit. Un champ absent (Socle d'avant 1.38.0), abîmé ou autre que `true` vaut
+**fermé** (`parseFreeMail`, `domain/courrier.ts`) — même parti que l'assistant.
+
+- **Les pages.** L'accueil et la page d'un organisme proposent d'écrire quand le courrier est
+  ouvert (`CourrierLibreCallout`, après les démarches ; sur l'accueil composé, après les
+  sections — ce n'est pas un bloc de la composition). ⚠️ **Un organisme qui reçoit du courrier a
+  une page et une entrée « Ma ville » même sans démarche publiée** : `villesOf` prend un
+  troisième argument (`courrierPages`), et la page d'organisme retombe sur le courrier libre quand
+  le catalogue ne connaît pas le slug (`courrierPageBySlug`). Sans `free_mail`, rien ne change.
+- **La page.** `src/features/courrier/CourrierLibrePage.tsx`, dans `DemarcheShell`, servie par
+  `GET /v1/courrier?organisme=<slug>` (sans `organisme` : la collectivité). Un organisme fermé,
+  inconnu ou d'une autre collectivité rend `404 courrier_unavailable`, et la page le dit. « Vos
+  informations » est le bloc des démarches (`RequesterSection`), aux champs fixés par le portail
+  (prénom et nom d'un citoyen, raison sociale d'une entreprise ou d'une association, **au moins un
+  courriel ou un téléphone**), avec ses consentements.
+- **Le dépôt.** `POST /v1/courriers`, `multipart/form-data`, calqué sur `/v1/demandes` : la
+  collectivité vient de `Origin`, jamais du corps ; l'organisme (par slug) doit être des siens et
+  ouvert ; preuve de travail (mêmes règles que les démarches, `DEPOSIT_CHALLENGE_REQUIRED`) ;
+  frein de 5 envois par minute et par adresse hachée ; consentements du catalogue fermé
+  (`normalizeConsents`) ; les mêmes règles de saisie que l'écran (`validateCourrier`).
+  ⚠️ **Les pièces partent AVEC le courrier**, pas à la sélection comme pour Iris : 3 fichiers
+  au plus, 5 Mo chacun, extensions fermées (PDF, JPG/JPEG, PNG, HEIC, DOC/DOCX, ODT), vérifiées
+  côté serveur avant le relais — `Content-Length` d'abord, sans charger le corps.
+- **Le relais.** `_shared/clara/` : `claraClient.ts` (le port, testable contre un Clara simulé) et
+  `courrierService.ts` (`depositCourrier`, l'ordre complet). Vers `CLARA_INTAKE_URL` (l'edge
+  function `nora-courrier` de Clara), `Authorization: Bearer CLARA_INTAKE_KEY`, champs du contrat
+  (`socle_organization_id` = UUID **Socle** de l'organisme, `submission_id`, `subject`, `body`,
+  `sender_*`, `consent_traitement`/`consent_partage`, `files`). Un champ vide ne part pas.
+- **Le rejeu est inoffensif** : `submission_id` est un UUID tiré une fois par l'écran ; Clara rend
+  le même courrier (`duplicate: true`) et l'écran dit « Ce courrier avait déjà été reçu ».
+- **Les réponses de Clara sont traduites**, jamais recopiées : `400` → `courrier_rejected` (écart
+  de contrat, message au journal), `401` → `clara_misconfigured`, `404 organisme_inconnu` /
+  `409 organisme_ambigu` → `courrier_undeliverable` (« contactez-le directement »), `5xx`, réseau,
+  réponse illisible → `clara_unavailable` (« réessayez »). Un `404` **sans** `organisme_inconnu`
+  (fonction non déployée) n'est pas lu comme un organisme inconnu. Rien du contenu n'est
+  journalisé.
+- ⚠️ **La phrase de consentement nomme l'organisme destinataire**, pas la collectivité : c'est
+  l'organisation Clara rattachée à cet UUID Socle qui la consigne. À vérifier avec Clara.
+
+Sans les deux secrets `CLARA_*`, l'envoi répond `503 courrier_not_configured` et tout le reste du
+portail sert comme avant.
+
+**Ordre de déploiement** — chaque étape est inoffensive sans la suivante :
+
+1. **Les secrets** sur `portal-api` :
+   `supabase secrets set CLARA_INTAKE_URL=https://<ref-clara>.supabase.co/functions/v1/nora-courrier CLARA_INTAKE_KEY=<clé>`
+   (Clara doit avoir déployé `nora-courrier` et délivré la clé) ;
+2. **L'interface** (push sur `main`, Cloudflare) : face à l'ancienne fonction, aucun `freeMail`
+   n'est servi — courrier fermé partout, rien ne casse ;
+3. **`portal-api`** (`npx supabase functions deploy portal-api`) : le courrier s'ouvre là où le
+   Socle (≥ 1.38.0) l'a ouvert.
 
 ## Ce qui n'est pas encore fait
 

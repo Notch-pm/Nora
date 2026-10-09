@@ -48,6 +48,8 @@ const RETRYABLE: Record<PortalLoadFailure, boolean> = {
   // que de lui afficher ce message : une adresse d'organisme périmée doit
   // rendre le portail, pas une explication.
   organisme_unavailable: false,
+  // Le courrier libre fermé pour cet organisme : réessayer ne l'ouvrira pas.
+  courrier_unavailable: false,
   // Renvoyer à l'identique serait refusé de la même façon.
   submission_rejected: false,
   iris_unavailable: true,

@@ -26,6 +26,11 @@ export type PortalFailure =
    * (dont la page est l'accueil).
    */
   | "organisme_unavailable"
+  /**
+   * L'organisme visé ne reçoit pas de courrier libre ici : inconnu, fermé au
+   * Socle (`free_mail.enabled`), ou d'une autre collectivité.
+   */
+  | "courrier_unavailable"
   /** Le dépôt a été refusé : l'enveloppe est invalide, ou la démarche fermée. */
   | "submission_rejected"
   /** Iris est injoignable, ou a répondu quelque chose d'inattendu. */
@@ -52,6 +57,7 @@ export function httpStatusForFailure(failure: PortalFailure): number {
       return 404;
     case "demarche_unavailable":
     case "organisme_unavailable":
+    case "courrier_unavailable":
       // Même refus, et pour la même raison : « pas ici ». Distinguer
       // « existe mais fermé » de « n'existe pas » renseignerait un curieux sur
       // l'organigramme d'une collectivité sans rien apporter à un usager.

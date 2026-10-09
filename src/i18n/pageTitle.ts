@@ -63,6 +63,30 @@ export function assistantTitle(lang: string, tenantName: string): string {
   return t(lang, "assistant.title") + SEPARATOR + tenantName;
 }
 
+/**
+ * La page « Envoyer un courrier libre » : son intitulé — celui que la
+ * collectivité a choisi, sinon le défaut traduit —, l'organisme à qui l'on
+ * écrit, puis la collectivité. Préfixé du nombre d'erreurs après un envoi
+ * refusé, comme le formulaire d'une démarche.
+ */
+export function courrierTitle(
+  lang: string,
+  title: string | null,
+  organismeName: string,
+  tenantName: string,
+  errorCount = 0,
+): string {
+  const parts = [title ?? t(lang, "courrierLibre.title"), organismeName];
+  if (organismeName !== tenantName) parts.push(tenantName);
+  const base = parts.join(SEPARATOR);
+  return errorCount > 0 ? tn(lang, "page.errorsPrefix", errorCount) + SEPARATOR + base : base;
+}
+
+/** L'accusé d'un courrier libre : l'intitulé de l'écran, puis l'organisme destinataire. */
+export function courrierSentTitle(lang: string, duplicate: boolean, organismeName: string): string {
+  return t(lang, duplicate ? "courrierLibre.sent.titleAgain" : "courrierLibre.sent.title") + SEPARATOR + organismeName;
+}
+
 /** Un écran d'erreur : son message, puis le nom générique du site. */
 export function errorPageTitle(lang: string, errorTitle: string): string {
   return errorTitle + SEPARATOR + t(lang, "page.title");

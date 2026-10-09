@@ -5,7 +5,8 @@
  * organisme, la présentation d'une démarche, son formulaire, la déclaration
  * d'accessibilité (`/accessibilite`, où mène la mention du pied de page), et
  * l'assistant conversationnel (`/assistant`, réglé par le super administrateur
- * du Socle — `tenant.assistant.enabled`, fermé au doute). Le découpage en
+ * du Socle — `tenant.assistant.enabled`, fermé au doute), et le courrier libre
+ * (`/courrier`, `/{organisme}/courrier` — `free_mail.enabled` au Socle). Le découpage en
  * deux pages pour une même démarche est délibéré — l'usager lit ce qu'on va lui
  * demander avant de s'engager dans la saisie, comme sur les portails de service
  * public.
@@ -27,6 +28,7 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AccessibilitePage } from "@/features/accessibilite/AccessibilitePage.tsx";
 import { AssistantPage } from "@/features/assistant/AssistantPage.tsx";
+import { CourrierLibrePage } from "@/features/courrier/CourrierLibrePage.tsx";
 import { DemarchePage } from "@/features/demarche/DemarchePage.tsx";
 import { FormulairePage } from "@/features/demarche/FormulairePage.tsx";
 import { OrganismePage } from "@/features/organisme/OrganismePage.tsx";
@@ -77,6 +79,15 @@ export function App() {
           <Route path="/assistant" element={<AssistantPage />} />
           <Route path=":scopeA/assistant" element={<AssistantPage />} />
           <Route path=":scopeA/:scopeB/assistant" element={<AssistantPage />} />
+
+          {/* ⚠️ `courrier` aussi est un segment STATIQUE (`ROUTE_SEGMENTS`),
+              aux mêmes trois formes — mais ici le périmètre COMPTE : nu (ou
+              sous une langue), on écrit à la collectivité ; sous un organisme,
+              à cet organisme. `CourrierLibrePage` le relit dans l'adresse
+              (`splitScopedPath`), comme les autres écrans. */}
+          <Route path="/courrier" element={<CourrierLibrePage />} />
+          <Route path=":scopeA/courrier" element={<CourrierLibrePage />} />
+          <Route path=":scopeA/:scopeB/courrier" element={<CourrierLibrePage />} />
 
           {/* Un segment libre, ou deux : une langue, un organisme, ou les deux.
               ⚠️ `demarches` étant un segment STATIQUE, react-router le classe

@@ -156,3 +156,30 @@ describe("villesOf — la liste du menu « Ma ville »", () => {
     ]);
   });
 });
+
+describe("villesOf — les organismes qui reçoivent du courrier libre", () => {
+  it("⚠️ ajoute un organisme SANS démarche publiée, sans logo propre", () => {
+    const villes = villesOf(CATALOGUE, "accm", [{ id: "fontvieille", name: "Fontvieille", slug: "mairie-de-fontvieille" }]);
+    expect(villes.map((v) => v.id)).toEqual(["fontvieille", "arles", "crau"]);
+    expect(villes[0].logoUrl).toBeNull();
+  });
+
+  it("le catalogue passe d'abord : un organisme qui publie garde son logo", () => {
+    const villes = villesOf(CATALOGUE, "accm", [{ id: "arles", name: "Arles (doublon)", slug: "mairie-d-arles" }]);
+    expect(villes.find((v) => v.id === "arles")).toEqual({
+      id: "arles",
+      name: "Mairie d'Arles",
+      slug: "mairie-d-arles",
+      logoUrl: "https://exemple.fr/arles.png",
+    });
+  });
+
+  it("mêmes exclusions : ni la collectivité, ni un organisme sans slug", () => {
+    expect(
+      villesOf([], "accm", [
+        { id: "accm", name: "ACCM", slug: "laurentville" },
+        { id: "x", name: "Sans adresse", slug: null },
+      ]),
+    ).toEqual([]);
+  });
+});

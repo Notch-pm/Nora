@@ -12,7 +12,7 @@
  * Aucun réseau, aucun Deno : le Socle est remplacé par une table de routes.
  * C'est tout l'intérêt d'avoir fait de `SocleClient` un port.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { hostnameForRequest } from "./http/requestHostname.ts";
 import { getPublicDemarche, getPublicDemarches } from "./socle/demarcheService.ts";
 import { resolveLang } from "./domain/languages.ts";
@@ -22,6 +22,16 @@ import { resolveTenant } from "./socle/tenantService.ts";
 import { closedAssistant } from "./domain/assistant.ts";
 import { defaultTheme } from "./domain/theme.ts";
 import type { SocleClient, SocleReply } from "./socle/socleClient.ts";
+import { getCourrierOrganismes } from "./socle/organismeInfoService.ts";
+import { createClaraClient } from "./clara/claraClient.ts";
+import { depositCourrier } from "./clara/courrierService.ts";
+import {
+  COURRIER_MESSAGES,
+  courrierPageBySlug,
+  courrierPages,
+  httpStatusForCourrierFailure,
+} from "./domain/courrier.ts";
+import { organizationBySlug, villesOf } from "./domain/demarche.ts";
 
 const NANTES = "8f1e0d3a-0000-4000-8000-000000000001";
 const ANGERS = "8f1e0d3a-0000-4000-8000-000000000002";
@@ -579,5 +589,262 @@ describe("9. la langue du visiteur", () => {
     if (!result.ok) return;
     expect(result.tenant.languages).toEqual(["fr"]);
     expect(result.lang).toBe("fr");
+  });
+});
+
+// ── 10. Le courrier libre — Socle simulé (`free_mail`), Clara simulé ─────────
+//
+// Le dépôt suit l'ordre de `POST /v1/courriers` (`depositCourrier`) : la
+// collectivité a été résolue par `Origin`, l'organisme visé est cherché parmi
+// les SIENS au Socle, et le courrier part à Clara en multipart, avec la clé du
+// portail. Clara est un vrai client (`createClaraClient`) devant un `fetch`
+// simulé : c'est ce qui part réellement sur le fil qu'on relit.
+
+const NANTES_ORGANIZATIONS = "/v1/portal/organizations?tenant_id=" + NANTES;
+const CHANTENAY_ID = "q-chantenay";
+const ROCHE_ID = "8f1e0d3a-0000-4000-8000-0000000000aa";
+
+/** `GET /v1/portal/organizations` du Socle 1.38.0, avec `free_mail`. */
+const ORGANISMES_NANTES = [
+  { id: NANTES, name: "Ville de Nantes", slug: "nantes", is_tenant: true, info: {}, free_mail: { enabled: true, title: null } },
+  {
+    id: CHANTENAY_ID,
+    name: "Mairie de quartier de Chantenay",
+    slug: "mairie-de-chantenay",
+    is_tenant: false,
+    info: {},
+    free_mail: { enabled: true, title: "Écrire à votre mairie de quartier" },
+  },
+  // Reçoit du courrier, mais ne publie AUCUNE démarche : il a quand même une page.
+  { id: ROCHE_ID, name: "Mairie de quartier de la Roche", slug: "mairie-de-la-roche", is_tenant: false, info: {}, free_mail: { enabled: true, title: null } },
+  // Fermé au Socle (ou collectivité non abonnée à Clara).
+  { id: "q-doulon", name: "Mairie de quartier de Doulon", slug: "mairie-de-doulon", is_tenant: false, info: {}, free_mail: { enabled: false, title: null } },
+];
+
+const CONSENTS_OK = JSON.stringify([
+  { kind: "traitement", granted: true },
+  { kind: "partage", granted: false },
+]);
+
+/** L'envoi du navigateur, tel que `sendCourrier` le compose. */
+function courrierForm(overrides: Record<string, string | null> = {}, files: File[] = []): FormData {
+  const fields: Record<string, string | null> = {
+    organisme: "mairie-de-chantenay",
+    submission_id: "6f1c1d2e-3b4a-4c5d-8e6f-7a8b9c0d1e2f",
+    subject: "Banc cassé square Maurice-Schwob",
+    body: "Bonjour, un banc est cassé depuis dix jours.",
+    sender_category: "citoyen",
+    sender_civilite: "madame",
+    sender_first_name: "Camille",
+    sender_last_name: "Martin",
+    sender_email: "camille@example.org",
+    sender_phone: "",
+    consents: CONSENTS_OK,
+    ...overrides,
+  };
+  const form = new FormData();
+  for (const [name, value] of Object.entries(fields)) if (value !== null) form.append(name, value);
+  for (const file of files) form.append("files", file, file.name);
+  return form;
+}
+
+/** Clara simulé : enregistre ce qu'il reçoit, répond ce qu'on lui dit. */
+function fakeClara(status = 200, body: unknown = { ok: true, courier_id: "c-1", reference: "COU-2026-00042" }) {
+  const received: { url: string; authorization: string | null; form: Promise<FormData> }[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init: RequestInit) => {
+      const request = new Request(url, init);
+      received.push({ url, authorization: request.headers.get("authorization"), form: request.formData() });
+      return new Response(JSON.stringify(body), { status });
+    }),
+  );
+  return {
+    client: createClaraClient({ url: "https://clara.test/functions/v1/nora-courrier", apiKey: "clara_cle" }),
+    received,
+  };
+}
+
+const OPEN_GATE = async () => "open" as const;
+
+function socleWithOrganismes(organismes: unknown = ORGANISMES_NANTES): SocleClient {
+  return fakeSocle({ [NANTES_ORGANIZATIONS]: { kind: "ok", body: organismes } });
+}
+
+describe("10. le courrier libre", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("relaie le courrier à Clara : Bearer, champs du contrat, UUID Socle, consentements, fichiers", async () => {
+    const clara = fakeClara();
+    const pdf = new File(["%PDF-1.7 contenu"], "photo-du-banc.pdf", { type: "application/pdf" });
+    const outcome = await depositCourrier({
+      form: courrierForm({}, [pdf]),
+      tenantId: NANTES,
+      socle: socleWithOrganismes(),
+      clara: clara.client,
+      checkChallenge: OPEN_GATE,
+    });
+
+    expect(outcome).toEqual({
+      ok: true,
+      receipt: { reference: "COU-2026-00042", duplicate: false, organismeName: "Mairie de quartier de Chantenay" },
+    });
+    expect(clara.received).toHaveLength(1);
+    expect(clara.received[0].url).toBe("https://clara.test/functions/v1/nora-courrier");
+    expect(clara.received[0].authorization).toBe("Bearer clara_cle");
+    const sent = await clara.received[0].form;
+    expect(sent.get("socle_organization_id")).toBe(CHANTENAY_ID);
+    expect(sent.get("submission_id")).toBe("6f1c1d2e-3b4a-4c5d-8e6f-7a8b9c0d1e2f");
+    expect(sent.get("subject")).toBe("Banc cassé square Maurice-Schwob");
+    expect(sent.get("body")).toBe("Bonjour, un banc est cassé depuis dix jours.");
+    expect(sent.get("sender_category")).toBe("citoyen");
+    expect(sent.get("sender_civilite")).toBe("madame");
+    expect(sent.get("sender_first_name")).toBe("Camille");
+    expect(sent.get("sender_last_name")).toBe("Martin");
+    expect(sent.get("sender_email")).toBe("camille@example.org");
+    // Un champ vide ne part pas : il écraserait une information par un blanc.
+    expect(sent.has("sender_phone")).toBe(false);
+    expect(sent.get("consent_traitement")).toBe("true");
+    expect(sent.get("consent_partage")).toBe("false");
+    // Rien du protocole du portail ne fuit vers Clara.
+    expect(sent.has("organisme")).toBe(false);
+    expect(sent.has("consents")).toBe(false);
+    const files = sent.getAll("files") as File[];
+    expect(files.map((f) => f.name)).toEqual(["photo-du-banc.pdf"]);
+    expect(await files[0].text()).toBe("%PDF-1.7 contenu");
+  });
+
+  it("sans slug, le courrier va à la collectivité ; un rejeu rend le même courrier", async () => {
+    const clara = fakeClara(200, { ok: true, courier_id: "c-1", reference: null, duplicate: true });
+    const outcome = await depositCourrier({
+      form: courrierForm({ organisme: null }),
+      tenantId: NANTES,
+      socle: socleWithOrganismes(),
+      clara: clara.client,
+      checkChallenge: OPEN_GATE,
+    });
+    expect(outcome).toEqual({ ok: true, receipt: { reference: null, duplicate: true, organismeName: "Ville de Nantes" } });
+    expect((await clara.received[0].form).get("socle_organization_id")).toBe(NANTES);
+  });
+
+  it("⚠️ organisme fermé, inconnu, ou Socle sans `free_mail` → 404, et Clara n'est jamais appelée", async () => {
+    const clara = fakeClara();
+    const avant138 = ORGANISMES_NANTES.map(({ free_mail: _ignore, ...rest }) => rest);
+    const cases: [FormData, SocleClient][] = [
+      [courrierForm({ organisme: "mairie-de-doulon" }), socleWithOrganismes()],
+      [courrierForm({ organisme: "mairie-d-ailleurs" }), socleWithOrganismes()],
+      [courrierForm(), socleWithOrganismes(avant138)],
+      // Route absente (Socle d'avant 1.30.0) : personne ne reçoit de courrier.
+      [courrierForm(), fakeSocle()],
+    ];
+    for (const [form, socle] of cases) {
+      const outcome = await depositCourrier({ form, tenantId: NANTES, socle, clara: clara.client, checkChallenge: OPEN_GATE });
+      expect(outcome).toEqual({ ok: false, failure: "courrier_unavailable" });
+    }
+    expect(httpStatusForCourrierFailure("courrier_unavailable")).toBe(404);
+    expect(clara.received).toHaveLength(0);
+  });
+
+  it("refuse avant tout relais : champ manquant, consentement, identifiant, fichier trop gros ou hors format", async () => {
+    const clara = fakeClara();
+    const run = (form: FormData) =>
+      depositCourrier({ form, tenantId: NANTES, socle: socleWithOrganismes(), clara: clara.client, checkChallenge: OPEN_GATE });
+
+    expect(await run(courrierForm({ subject: " " }))).toMatchObject({ failure: "invalid_courrier" });
+    expect(await run(courrierForm({ sender_email: "", sender_phone: "" }))).toMatchObject({ failure: "invalid_courrier" });
+    expect(await run(courrierForm({ consents: null }))).toMatchObject({ failure: "invalid_courrier" });
+    expect(
+      await run(courrierForm({ consents: JSON.stringify([{ kind: "traitement", granted: false }]) })),
+    ).toMatchObject({ failure: "invalid_courrier" });
+    // Un `statement` envoyé du navigateur est refusé : seuls `kind` et `granted`.
+    expect(
+      await run(courrierForm({ consents: JSON.stringify([{ kind: "traitement", granted: true, statement: "x" }]) })),
+    ).toMatchObject({ failure: "invalid_courrier" });
+    expect(await run(courrierForm({ submission_id: "pas-un-uuid" }))).toMatchObject({ failure: "invalid_courrier" });
+    expect(await run(courrierForm({ sender_category: "collectivite" }))).toMatchObject({ failure: "invalid_courrier" });
+    const gros = new File([new Uint8Array(5 * 1_048_576 + 1)], "scan.pdf");
+    expect(await run(courrierForm({}, [gros]))).toMatchObject({ failure: "file_too_large" });
+    expect(await run(courrierForm({}, [new File(["MZ"], "setup.exe")]))).toMatchObject({ failure: "file_unsupported" });
+    const png = new File(["x"], "a.png");
+    expect(await run(courrierForm({}, [png, png, png, png]))).toMatchObject({ failure: "invalid_courrier" });
+    expect(clara.received).toHaveLength(0);
+  });
+
+  it("la porte anti-robot passe avant le Socle et Clara", async () => {
+    const clara = fakeClara();
+    const seen: string[] = [];
+    const outcome = await depositCourrier({
+      form: courrierForm(),
+      tenantId: NANTES,
+      socle: {
+        get: async (path) => {
+          seen.push(path);
+          return { kind: "ok", body: ORGANISMES_NANTES };
+        },
+      },
+      clara: clara.client,
+      checkChallenge: async () => "challenge_required",
+    });
+    expect(outcome).toEqual({ ok: false, failure: "challenge_required" });
+    expect(seen).toEqual([]);
+    expect(clara.received).toHaveLength(0);
+  });
+
+  it("traduit chaque réponse de Clara — jamais son message brut vers l'usager", async () => {
+    const cases: [number, unknown, string][] = [
+      [400, { error: "validation", message: "body trop long" }, "courrier_rejected"],
+      [401, { error: "unauthorized" }, "clara_misconfigured"],
+      [404, { error: "organisme_inconnu" }, "courrier_undeliverable"],
+      [409, { error: "organisme_ambigu" }, "courrier_undeliverable"],
+      [500, { error: "internal", message: "relation couriers does not exist" }, "clara_unavailable"],
+      // 200 sans preuve de courrier : on n'annonce pas un envoi réussi.
+      [200, { ok: true }, "clara_unavailable"],
+    ];
+    for (const [status, body, failure] of cases) {
+      const clara = fakeClara(status, body);
+      const outcome = await depositCourrier({
+        form: courrierForm(),
+        tenantId: NANTES,
+        socle: socleWithOrganismes(),
+        clara: clara.client,
+        checkChallenge: OPEN_GATE,
+      });
+      expect(outcome.ok, String(status)).toBe(false);
+      if (outcome.ok) continue;
+      expect(outcome.failure, String(status)).toBe(failure);
+      // Ce que l'usager lira : la phrase du portail, pas celle de Clara.
+      expect(COURRIER_MESSAGES[outcome.failure]).not.toMatch(/couriers|trop long/);
+    }
+  });
+
+  it("un Socle muet est une panne, pas un organisme fermé", async () => {
+    const clara = fakeClara();
+    const outcome = await depositCourrier({
+      form: courrierForm(),
+      tenantId: NANTES,
+      socle: downSocle,
+      clara: clara.client,
+      checkChallenge: OPEN_GATE,
+    });
+    expect(outcome).toMatchObject({ ok: false, failure: "socle_unavailable" });
+    expect(clara.received).toHaveLength(0);
+  });
+
+  it("⚠️ un organisme qui reçoit du courrier a une page et une entrée « Ma ville », même sans démarche", async () => {
+    // Ce que fait `GET /v1/bootstrap` : le catalogue, puis le courrier libre.
+    const socle = socleWithOrganismes();
+    const catalogue = await getPublicDemarches(NANTES, socle, "fr");
+    const courrier = await getCourrierOrganismes(NANTES, socle);
+    if (!catalogue.ok || !courrier.ok) throw new Error("lecture attendue");
+
+    const villes = villesOf(catalogue.demarches, NANTES, courrierPages(courrier.organismes));
+    expect(villes.map((v) => v.slug)).toEqual(["mairie-de-chantenay", "mairie-de-la-roche"]);
+    // Chantenay publie : il vient du catalogue. La Roche ne publie rien : il
+    // vient du courrier libre. Doulon (fermé) n'apparaît pas.
+    expect(organizationBySlug(catalogue.demarches, "mairie-de-la-roche", NANTES)).toBeNull();
+    expect(courrierPageBySlug(courrier.organismes, "mairie-de-la-roche")).toMatchObject({ id: ROCHE_ID });
+    expect(courrierPageBySlug(courrier.organismes, "mairie-de-doulon")).toBeNull();
+    // Sans `free_mail` (Socle d'avant 1.38.0), rien ne change.
+    expect(villesOf(catalogue.demarches, NANTES).map((v) => v.slug)).toEqual(["mairie-de-chantenay"]);
   });
 });

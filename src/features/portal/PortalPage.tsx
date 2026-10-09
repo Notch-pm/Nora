@@ -10,6 +10,8 @@ import { useEffect, useState } from "react";
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
+import type { FreeMail } from "@fn/_shared/domain/courrier.ts";
+import { CourrierLibreCallout } from "@/features/courrier/CourrierLibreCallout.tsx";
 import {
   emptyDemarchesKey,
   filterDemarchesByOrganization,
@@ -57,10 +59,13 @@ function DefaultCatalogue({
   tenant,
   demarches,
   branding,
+  freeMail,
 }: {
   tenant: Tenant;
   demarches: Demarche[];
   branding: Branding | null;
+  /** Le courrier libre de la collectivité — invitation sous la liste. */
+  freeMail: FreeMail;
 }) {
   const { lang } = useLanguage();
   const t = useT();
@@ -111,6 +116,7 @@ function DefaultCatalogue({
               ))}
             </ul>
           )}
+          <CourrierLibreCallout freeMail={freeMail} organisme={null} />
         </div>
       </Shell>
       <AccessibilityFooter theme={tenant.theme} />
@@ -181,6 +187,7 @@ export function PortalPage() {
         demarches={state.demarches}
         page={state.page}
         branding={state.branding}
+        freeMail={state.freeMail}
       />
     );
   }
@@ -190,6 +197,7 @@ export function PortalPage() {
       tenant={state.tenant}
       demarches={state.demarches}
       branding={state.branding}
+      freeMail={state.freeMail}
     />
   );
 }

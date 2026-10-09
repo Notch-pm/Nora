@@ -36,6 +36,7 @@ import { PageHeader } from "@/features/portal/PageHeader.tsx";
 import { PortalLoader } from "@/features/portal/PortalLoader.tsx";
 import { SkipLink } from "@/features/portal/SkipLink.tsx";
 import { AudienceFilter } from "@/features/portal/sections/AudienceFilter.tsx";
+import { CourrierLibreCallout } from "@/features/courrier/CourrierLibreCallout.tsx";
 import { DemarcheCard } from "@/features/portal/sections/DemarcheCard.tsx";
 import { SearchIcon } from "@/features/portal/sections/RechercheSection.tsx";
 import { headerLogoUrl, themeStyle } from "@/features/portal/themeStyle.ts";
@@ -133,7 +134,11 @@ export function OrganismePage() {
     );
   }
 
-  const { tenant, organisme, demarches, branding, tenantBranding } = state;
+  const { tenant, organisme, demarches, branding, tenantBranding, freeMail } = state;
+  // Un organisme peut avoir une page SANS démarche publiée, parce qu'il
+  // reçoit du courrier libre : la recherche et la grille n'auraient alors
+  // rien à montrer — seule l'invitation à écrire reste.
+  const courrierOnly = demarches.length === 0 && freeMail.enabled;
   // ⚠️ DEUX LOGOS, ET C'EST VOULU : celui de la COLLECTIVITÉ dans l'en-tête —
   // le bandeau du haut dit sur quel site on est — et celui de la VILLE dans le
   // bloc d'identification juste dessous, qui dit laquelle on visite. Les
@@ -209,6 +214,7 @@ export function OrganismePage() {
           {/* Les cartes sont des `h3` : sans ce `h2`, la page sautait du `h1` au
               `h3` (RGAA 9.1). Invisible — l'écran n'a pas de titre de liste à
               montrer, c'est la structure qui en a besoin. */}
+          {!courrierOnly && (<>
           <h2 className="sr-only">{t("header.demarches")}</h2>
           <div className="flex flex-wrap items-center gap-3">
             <div
@@ -244,6 +250,11 @@ export function OrganismePage() {
               ))}
             </ul>
           )}
+          </>)}
+
+          {/* Sous la grille : l'invitation à écrire ne passe pas devant les
+              démarches — sauf quand il n'y en a pas, où elle est seule. */}
+          <CourrierLibreCallout freeMail={freeMail} organisme={organisme.slug ?? slug} />
 
           <Link
             to={localizedPath(lang, "/")}

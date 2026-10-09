@@ -34,6 +34,14 @@ import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
 import type { AccessibilityStatement } from "@fn/_shared/domain/accessibilite.ts";
 import { emptyUserCommunication } from "@fn/_shared/domain/userCommunication.ts";
+import {
+  type CourrierDraft,
+  type CourrierFailure,
+  type CourrierReceipt,
+  type FreeMail,
+  parseFreeMail,
+} from "@fn/_shared/domain/courrier.ts";
+import type { ConsentAnswer } from "@fn/_shared/domain/consents.ts";
 
 /** Ce que le portail sait de la collectivité visitée, en un seul chargement. */
 export interface PortalSnapshot {
@@ -68,6 +76,11 @@ export interface PortalSnapshot {
    * Hors périmètre, les deux sont la même charte.
    */
   tenantBranding: Branding | null;
+  /**
+   * Le courrier libre de la COLLECTIVITÉ (`/courrier`). Fermé quand le
+   * serveur n'en dit rien (serveur d'avant, Socle d'avant 1.38.0).
+   */
+  freeMail: FreeMail;
 }
 
 /**
@@ -91,6 +104,7 @@ const KNOWN_FAILURES: readonly PortalLoadFailure[] = [
   "not_configured",
   "demarche_unavailable",
   "organisme_unavailable",
+  "courrier_unavailable",
   "submission_rejected",
   "iris_unavailable",
   "iris_misconfigured",
@@ -168,7 +182,9 @@ function readSnapshot(body: unknown): PortalSnapshot | null {
     typeof raw.tenantBranding === "object" && raw.tenantBranding !== null
       ? (raw.tenantBranding as Branding)
       : branding;
-  return { lang, tenant, villes, demarches, page, branding, tenantBranding };
+  // Fermé au doute : seul `enabled === true` ouvre (voir `parseFreeMail`).
+  const freeMail = parseFreeMail((body as { freeMail?: unknown }).freeMail);
+  return { lang, tenant, villes, demarches, page, branding, tenantBranding, freeMail };
 }
 
 /** Ce que la page d'un organisme reçoit, en un seul aller-retour. */
@@ -196,6 +212,8 @@ export interface OrganismeSnapshot {
    * Hors périmètre, les deux sont la même charte.
    */
   tenantBranding: Branding | null;
+  /** Le courrier libre de CET organisme — fermé au doute. */
+  freeMail: FreeMail;
 }
 
 export type OrganismeLoad =
@@ -229,6 +247,7 @@ function readOrganismeSnapshot(body: unknown): OrganismeSnapshot | null {
     demarches: base.demarches,
     branding: base.branding,
     tenantBranding: base.tenantBranding,
+    freeMail: base.freeMail,
   };
 }
 
@@ -664,6 +683,190 @@ export async function fetchDepositChallenge(): Promise<DepositChallengeLoad> {
   const body = await response.json().catch(() => null);
   const challenge = readChallenge(body);
   return challenge === null ? { ok: false } : { ok: true, challenge };
+}
+
+// ── Le courrier libre ────────────────────────────────────────────────────────
+//
+// Deux appels : la page (`GET /v1/courrier`) et l'envoi (`POST /v1/courriers`).
+// Comme partout, aucun ne nomme la collectivité : le domaine visité le dit.
+// L'organisme voyage par son SLUG — celui de l'adresse —, absent pour la
+// collectivité elle-même.
+
+/** L'organisme auquel on écrit, tel que la page le nomme. */
+export interface CourrierDestinataire {
+  id: string;
+  name: string;
+  slug: string | null;
+  /** La collectivité elle-même — sa page est l'accueil. */
+  isTenant: boolean;
+}
+
+/** Ce que la page « Envoyer un courrier libre » reçoit, en un chargement. */
+export interface CourrierSnapshot {
+  /** La langue réellement servie — voir `PortalSnapshot.lang`. */
+  lang: string;
+  tenant: Tenant;
+  villes: Ville[];
+  organisme: CourrierDestinataire;
+  /** Toujours ouvert ici : un organisme fermé rend `courrier_unavailable`. */
+  freeMail: FreeMail;
+  /** La charte de l'organisme (héritage résolu) — elle peint la page. */
+  branding: Branding | null;
+  /** La charte de la collectivité — la marque de l'en-tête. */
+  tenantBranding: Branding | null;
+}
+
+export type CourrierLoad =
+  | { ok: true; snapshot: CourrierSnapshot }
+  | { ok: false; reason: PortalLoadFailure };
+
+function readCourrierSnapshot(body: unknown): CourrierSnapshot | null {
+  if (typeof body !== "object" || body === null) return null;
+  const raw = body as Record<string, unknown>;
+  const tenant = readTenant(raw.tenant);
+  if (tenant === null) return null;
+  const org = raw.organisme as Partial<CourrierDestinataire> | undefined;
+  if (!org || typeof org.id !== "string" || typeof org.name !== "string") return null;
+  const freeMail = parseFreeMail(raw.freeMail);
+  // Une page servie sans courrier ouvert n'a rien à proposer : c'est un refus.
+  if (!freeMail.enabled) return null;
+  const branding =
+    typeof raw.branding === "object" && raw.branding !== null ? (raw.branding as Branding) : null;
+  const tenantBranding =
+    typeof raw.tenantBranding === "object" && raw.tenantBranding !== null
+      ? (raw.tenantBranding as Branding)
+      : branding;
+  return {
+    lang: typeof raw.lang === "string" && raw.lang !== "" ? raw.lang : "fr",
+    tenant,
+    villes: Array.isArray(raw.villes) ? (raw.villes as Ville[]) : [],
+    organisme: {
+      id: org.id,
+      name: org.name,
+      slug: typeof org.slug === "string" ? org.slug : null,
+      isTenant: org.isTenant === true,
+    },
+    freeMail,
+    branding,
+    tenantBranding,
+  };
+}
+
+/** Charge la page « Envoyer un courrier libre » d'un organisme (`null` = la collectivité). */
+export async function fetchCourrier(organisme: string | null, lang: string): Promise<CourrierLoad> {
+  const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
+  if (!baseUrl) return { ok: false, reason: "not_configured" };
+
+  let response: Response;
+  try {
+    response = await fetch(
+      baseUrl.replace(/\/+$/, "") +
+        "/v1/courrier?lang=" +
+        encodeURIComponent(lang) +
+        (organisme === null ? "" : "&organisme=" + encodeURIComponent(organisme)),
+    );
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) return { ok: false, reason: readFailure(body) };
+  const snapshot = readCourrierSnapshot(body);
+  if (snapshot === null) return { ok: false, reason: "courrier_unavailable" };
+  return { ok: true, snapshot };
+}
+
+/** Les refus d'un envoi de courrier, plus ceux que le serveur ne peut pas signaler. */
+export type CourrierSendFailure = CourrierFailure | "not_configured" | "network";
+
+export type CourrierSend =
+  | { ok: true; receipt: CourrierReceipt }
+  | { ok: false; reason: CourrierSendFailure };
+
+const KNOWN_COURRIER_FAILURES: readonly CourrierFailure[] = [
+  "invalid_courrier",
+  "file_too_large",
+  "file_unsupported",
+  "challenge_required",
+  "courrier_unavailable",
+  "too_many_courriers",
+  "courrier_not_configured",
+  "courrier_undeliverable",
+  "courrier_rejected",
+  "clara_unavailable",
+  "clara_misconfigured",
+  "socle_unavailable",
+];
+
+/** Ce que l'écran remet à `sendCourrier` — le courrier, et ce qui l'accompagne. */
+export interface CourrierEnvoiEcran {
+  /** Le slug de l'adresse ; `null` = la collectivité. */
+  organisme: string | null;
+  /** Tiré UNE fois par l'écran : un rejeu rend le même courrier (`duplicate`). */
+  submissionId: string;
+  courrier: CourrierDraft;
+  consents: ConsentAnswer[];
+  files: readonly File[];
+}
+
+/**
+ * Envoie un courrier libre. Les fichiers partent DANS cet envoi — pas avant,
+ * comme les pièces d'une démarche : Clara n'a pas de zone d'attente.
+ *
+ * `challenge` est la preuve de travail résolue pour CE dépôt (même porte que
+ * `sendDemande`) — absente, le serveur l'accepte tant qu'il ne l'exige pas.
+ */
+export async function sendCourrier(
+  envoi: CourrierEnvoiEcran,
+  challenge?: SolvedChallenge | null,
+): Promise<CourrierSend> {
+  const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
+  if (!baseUrl) return { ok: false, reason: "not_configured" };
+
+  const form = new FormData();
+  if (envoi.organisme !== null) form.append("organisme", envoi.organisme);
+  form.append("submission_id", envoi.submissionId);
+  form.append("subject", envoi.courrier.subject);
+  form.append("body", envoi.courrier.body);
+  form.append("sender_category", envoi.courrier.senderCategory);
+  form.append("sender_civilite", envoi.courrier.senderCivilite);
+  form.append("sender_first_name", envoi.courrier.senderFirstName);
+  form.append("sender_last_name", envoi.courrier.senderLastName);
+  form.append("sender_email", envoi.courrier.senderEmail);
+  form.append("sender_phone", envoi.courrier.senderPhone);
+  form.append("consents", JSON.stringify(envoi.consents));
+  if (challenge) form.append("challenge", JSON.stringify(challenge));
+  for (const file of envoi.files) form.append("files", file, file.name);
+
+  let response: Response;
+  try {
+    // Pas de Content-Type : le navigateur pose la frontière multipart lui-même.
+    response = await fetch(baseUrl.replace(/\/+$/, "") + "/v1/courriers", { method: "POST", body: form });
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const code = (body as { error?: { code?: unknown } } | null)?.error?.code;
+    return {
+      ok: false,
+      reason: KNOWN_COURRIER_FAILURES.includes(code as CourrierFailure)
+        ? (code as CourrierFailure)
+        : "clara_unavailable",
+    };
+  }
+  const receipt = (body as { receipt?: Partial<CourrierReceipt> } | null)?.receipt;
+  // Un envoi sans accusé lisible ne s'annonce pas comme reçu.
+  if (!receipt || typeof receipt.organismeName !== "string") return { ok: false, reason: "clara_unavailable" };
+  return {
+    ok: true,
+    receipt: {
+      reference: typeof receipt.reference === "string" && receipt.reference !== "" ? receipt.reference : null,
+      duplicate: receipt.duplicate === true,
+      organismeName: receipt.organismeName,
+    },
+  };
 }
 
 // ── L'assistant conversationnel ──────────────────────────────────────────────

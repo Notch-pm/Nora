@@ -43,6 +43,8 @@ import { RechercheSection } from "./sections/RechercheSection.tsx";
 import { TexteImageSection } from "./sections/TexteImageSection.tsx";
 import { TexteSection } from "./sections/TexteSection.tsx";
 import { useLanguage } from "@/i18n/LanguageLayout.tsx";
+import { CourrierLibreCallout } from "@/features/courrier/CourrierLibreCallout.tsx";
+import { closedFreeMail, type FreeMail } from "@fn/_shared/domain/courrier.ts";
 import { homeTitle } from "@/i18n/pageTitle.ts";
 import { useDocumentTitle } from "@/i18n/useDocumentTitle.ts";
 
@@ -52,6 +54,7 @@ export function HomeComposition({
   demarches,
   page,
   branding,
+  freeMail = closedFreeMail(),
 }: {
   tenant: Tenant;
   /** Les villes de la collectivité, pour le menu « Ma ville » de l'en-tête. */
@@ -59,6 +62,13 @@ export function HomeComposition({
   demarches: Demarche[];
   page: HomePage;
   branding: Branding | null;
+  /**
+   * Le courrier libre de la collectivité. ⚠️ Il n'est PAS un bloc de la
+   * composition — c'est le Socle (abonnement Clara) qui l'ouvre, pas
+   * l'éditeur de page : l'invitation se pose donc après les sections, comme
+   * la mention d'accessibilité se pose sous le pied.
+   */
+  freeMail?: FreeMail;
 }) {
   const { lang } = useLanguage();
   // RGAA 8.6 : le titre d'onglet identifie la page (ici, la collectivité)
@@ -211,6 +221,11 @@ export function HomeComposition({
             </div>
           );
         })}
+        {freeMail.enabled && (
+          <div className="mx-auto w-full max-w-5xl px-6">
+            <CourrierLibreCallout freeMail={freeMail} organisme={null} />
+          </div>
+        )}
       </main>
       {/* Le pied de page de premier niveau (`contentinfo`) : le pied composé
           quand il termine la page, puis la mention d'accessibilité — due sur

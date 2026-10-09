@@ -10,6 +10,7 @@ import type { Demarche, Ville } from "@fn/_shared/domain/demarche.ts";
 import type { Tenant } from "@fn/_shared/domain/tenant.ts";
 import type { HomePage } from "@fn/_shared/domain/page.ts";
 import type { Branding } from "@fn/_shared/domain/branding.ts";
+import type { FreeMail } from "@fn/_shared/domain/courrier.ts";
 import type { PortalLoadFailure } from "@/services/portal/portalClient.ts";
 import {
   getBranding,
@@ -17,6 +18,7 @@ import {
   getHomePage,
   getPublicDemarches,
   getServedLanguage,
+  getFreeMail,
   getVilles,
   PortalUnavailableError,
   resetPortalCache,
@@ -46,6 +48,8 @@ export type PortalState =
     demarches: Demarche[];
     page: HomePage | null;
     branding: Branding | null;
+    /** Le courrier libre de la collectivité — l'accueil propose alors d'écrire. */
+    freeMail: FreeMail;
   }
   | { status: "error"; reason: PortalLoadFailure };
 
@@ -66,8 +70,9 @@ export function usePortal(lang: string): { state: PortalState; retry: () => void
       getBranding(lang),
       getServedLanguage(lang),
       getVilles(lang),
+      getFreeMail(lang),
     ])
-      .then(([tenant, demarches, page, branding, served, villes]) => {
+      .then(([tenant, demarches, page, branding, served, villes, freeMail]) => {
         // Retenue même si ce chargement est périmé : c'est la charte de cette
         // collectivité, et elle sert à peindre l'attente de la prochaine visite.
         // L'icône de l'onglet se pose pour la même raison — elle appartient au
@@ -85,6 +90,7 @@ export function usePortal(lang: string): { state: PortalState; retry: () => void
             demarches,
             page,
             branding,
+            freeMail,
           });
         }
       })

@@ -25,13 +25,27 @@ import { getPublicDemarche, getPublicDemarches } from "../_shared/socle/demarche
 import { getPublishedPage } from "../_shared/socle/pageService.ts";
 import { getBranding } from "../_shared/socle/brandingService.ts";
 import { getAccessibilityStatement } from "../_shared/socle/accessibiliteService.ts";
-import { getOrganismesInfo } from "../_shared/socle/organismeInfoService.ts";
+import { getCourrierOrganismes, getOrganismesInfo } from "../_shared/socle/organismeInfoService.ts";
 import { resolveTenant } from "../_shared/socle/tenantService.ts";
 import { createSocleClient } from "../_shared/socle/socleClient.ts";
 import { withCache } from "../_shared/socle/cachedSocleClient.ts";
 import { createAudienceClient } from "../_shared/socle/audienceClient.ts";
 import { createIrisClient } from "../_shared/iris/irisClient.ts";
 import { submitDemande } from "../_shared/iris/demandeService.ts";
+import { createClaraClient } from "../_shared/clara/claraClient.ts";
+import { depositCourrier } from "../_shared/clara/courrierService.ts";
+import {
+  closedFreeMail,
+  COURRIER_MESSAGES,
+  type CourrierFailure,
+  type CourrierOrganisme,
+  courrierOrganismeOf,
+  courrierPageBySlug,
+  courrierPages,
+  httpStatusForCourrierFailure,
+  MAX_COURRIER_FILE_BYTES,
+  MAX_COURRIER_FILES,
+} from "../_shared/domain/courrier.ts";
 import { httpStatusForPieceFailure, uploadPiece } from "../_shared/iris/pieceService.ts";
 import { hostnameForRequest } from "../_shared/http/requestHostname.ts";
 import { clientAddress, createRateLimiter, hashKey } from "../_shared/http/rateLimit.ts";
@@ -144,6 +158,27 @@ const assistantLimiter = createRateLimiter({ windowMs: 60_000, max: 60 });
 const voiceLimiter = createRateLimiter({ windowMs: 60_000, max: 120 });
 
 /**
+ * Frein du COURRIER LIBRE — même nature que les autres (mémoire d'isolat),
+ * serré : écrire à sa mairie se fait une fois, pas dix par minute. Il coupe un
+ * script maladroit ; la porte qui compte est la preuve de travail liée au dépôt.
+ */
+const courrierLimiter = createRateLimiter({ windowMs: 60_000, max: 5 });
+
+/**
+ * Taille maximale d'un envoi de courrier, lue sur `Content-Length` AVANT de
+ * charger le corps : trois pièces de 5 Mo, le texte, et l'enrobage multipart.
+ */
+const MAX_COURRIER_REQUEST_BYTES = MAX_COURRIER_FILES * MAX_COURRIER_FILE_BYTES + 256 * 1024;
+
+function courrierFailure(reason: CourrierFailure): Response {
+  return json(
+    httpStatusForCourrierFailure(reason),
+    { error: { code: reason, message: COURRIER_MESSAGES[reason] } },
+    { "Cache-Control": "no-store" },
+  );
+}
+
+/**
  * Messages de l'assistant adressés au visiteur — l'écran les traduit par CODE,
  * ceci n'est que le repli en français. Aucun ne ferme une porte : le formulaire
  * de chaque démarche reste le chemin garanti.
@@ -225,6 +260,7 @@ const FAILURE_MESSAGES: Record<PortalFailure, string> = {
   not_configured: "Le portail n'est pas configuré.",
   demarche_unavailable: "Cette démarche n'est plus proposée en ligne.",
   organisme_unavailable: "Cet organisme ne propose pas de démarche en ligne.",
+  courrier_unavailable: "Cet organisme ne reçoit pas de courrier en ligne.",
   submission_rejected:
     "Votre demande n'a pas pu être enregistrée. Merci de contacter votre collectivité.",
   iris_unavailable:
@@ -289,6 +325,21 @@ async function tenantOf(
   return { ok: true, tenant: resolution.tenant };
 }
 
+/**
+ * Les organismes vus du courrier libre — qui le reçoit, sous quel libellé.
+ *
+ * ⚠️ JAMAIS BLOQUANT, comme les villes : un Socle muet sur cette lecture
+ * ferme le courrier libre (personne ne le reçoit) sans faire tomber la page.
+ * Le dépôt, lui, relit la même chose avec ses propres règles d'échec.
+ */
+async function courrierOrganismes(
+  tenantId: string,
+  socle: ReturnType<typeof socleClient>,
+): Promise<CourrierOrganisme[]> {
+  const result = await getCourrierOrganismes(tenantId, socle);
+  return result.ok ? result.organismes : [];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -347,12 +398,24 @@ Deno.serve(async (request: Request): Promise<Response> => {
     // plus, et les deux pages se réchauffent l'une l'autre. Demander au Socle
     // le catalogue restreint à l'organisme aurait doublé les entrées de cache
     // pour servir un sous-ensemble de ce qu'on tient déjà.
+    // Qui reçoit du courrier libre : de quoi ouvrir une page (et une entrée
+    // « Ma ville ») à un organisme sans démarche publiée, et dire à la page
+    // affichée si elle propose d'écrire. Même chemin que l'assistant au Socle,
+    // donc la même entrée de cache.
+    const courrier = await courrierOrganismes(tenant.id, socle);
+    const villes = villesOf(demarches.demarches, tenant.id, courrierPages(courrier));
+
     const askedOrganisme = url.searchParams.get("organisme");
     if (askedOrganisme !== null) {
-      const organisme = organizationBySlug(demarches.demarches, askedOrganisme, tenant.id);
-      // Slug inventé, organisme qui ne publie rien, ou slug de la collectivité
-      // elle-même : même refus que pour une démarche non publiée — « pas
-      // ici ». C'est l'interface qui ramène alors le visiteur à l'accueil.
+      // Le catalogue d'abord (il porte le logo propre de l'organisme), puis
+      // le courrier libre : un organisme qui reçoit du courrier a une page,
+      // même sans démarche publiée.
+      const organisme = organizationBySlug(demarches.demarches, askedOrganisme, tenant.id)
+        ?? courrierPageBySlug(courrier, askedOrganisme);
+      // Slug inventé, organisme qui ne publie rien et ne reçoit pas de
+      // courrier, ou slug de la collectivité elle-même : même refus que pour
+      // une démarche non publiée — « pas ici ». C'est l'interface qui ramène
+      // alors le visiteur à l'accueil.
       if (organisme === null) return failure("organisme_unavailable");
 
       // La charte de l'organisme VISITÉ. Le Socle résout l'héritage : un
@@ -382,9 +445,11 @@ Deno.serve(async (request: Request): Promise<Response> => {
           // ⚠️ TOUTES les villes, pas seulement celle-ci : le menu « Ma ville »
           // de l'en-tête sert précisément à en changer. Une liste réduite au
           // périmètre courant enfermerait le visiteur sur la page où il est.
-          villes: villesOf(demarches.demarches, tenant.id),
+          villes,
           organisme,
           demarches: demarchesOfOrganization(demarches.demarches, organisme.id),
+          // Le courrier libre de CET organisme — fermé s'il ne le reçoit pas.
+          freeMail: courrierOrganismeOf(courrier, organisme.slug)?.freeMail ?? closedFreeMail(),
           tenantBranding: tenantBranding.ok ? tenantBranding.branding : null,
           // ⚠️ AUCUNE PAGE COMPOSÉE ICI, et ce n'est pas un manque : le Socle
           // réserve `portal_pages` aux collectivités racines, et le portail
@@ -412,9 +477,11 @@ Deno.serve(async (request: Request): Promise<Response> => {
       {
         lang,
         tenant,
-        villes: villesOf(demarches.demarches, tenant.id),
+        villes,
         demarches: demarches.demarches,
         page: page.page,
+        // Le courrier libre de la COLLECTIVITÉ elle-même (`/courrier`).
+        freeMail: courrierOrganismeOf(courrier, null)?.freeMail ?? closedFreeMail(),
         branding: branding.branding,
         // Ici les deux ne font qu'une : la page peinte est celle de la
         // collectivité. Le champ existe quand même, pour que l'en-tête lise
@@ -449,7 +516,11 @@ Deno.serve(async (request: Request): Promise<Response> => {
     if (!statement.ok) return failure(statement.reason);
 
     const catalogue = await getPublicDemarches(tenant.id, socle, lang);
-    const villes = catalogue.ok ? villesOf(catalogue.demarches, tenant.id) : [];
+    const villes = villesOf(
+      catalogue.ok ? catalogue.demarches : [],
+      tenant.id,
+      courrierPages(await courrierOrganismes(tenant.id, socle)),
+    );
     const branding = await getBranding(tenant.id, socle);
     const painted = branding.ok ? branding.branding : null;
 
@@ -507,7 +578,11 @@ Deno.serve(async (request: Request): Promise<Response> => {
     // déjà réchauffé. Un échec ne bloque rien : la liste est vide, le menu ne
     // s'affiche pas, la démarche se lit quand même.
     const catalogue = await getPublicDemarches(resolved.tenant.id, socle, lang);
-    const villes = catalogue.ok ? villesOf(catalogue.demarches, resolved.tenant.id) : [];
+    const villes = villesOf(
+      catalogue.ok ? catalogue.demarches : [],
+      resolved.tenant.id,
+      courrierPages(await courrierOrganismes(resolved.tenant.id, socle)),
+    );
 
     // La charte voyage avec la démarche : la page doit être aux couleurs de la
     // collectivité même quand l'usager y arrive par un lien direct, sans être
@@ -832,6 +907,138 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return json(201, { receipt: submission.receipt }, { "Cache-Control": "no-store" });
   }
 
+  // ── GET /v1/courrier — la page « Envoyer un courrier libre ».
+  //
+  // `?organisme=<slug>` désigne un organisme de la collectivité ; sans lui,
+  // c'est la collectivité elle-même (`/courrier`). Le Socle décide seul qui
+  // reçoit du courrier (`free_mail.enabled`, contrat 1.38.0, déjà conditionné
+  // à l'abonnement Clara) : un organisme fermé, inconnu, ou d'une autre
+  // collectivité rend le même 404 `courrier_unavailable`.
+  //
+  // Même chrome que les autres écrans : villes (menu « Ma ville »), charte de
+  // l'organisme pour peindre, charte de la collectivité pour la marque.
+  if (request.method === "GET" && path === "/v1/courrier") {
+    const resolved = await tenantOf(request, socle);
+    if (!resolved.ok) return resolved.response;
+    const tenant = resolved.tenant;
+    const lang = resolveLang(askedLang, tenant.languages);
+
+    const organismes = await getCourrierOrganismes(tenant.id, socle);
+    if (!organismes.ok) return failure(organismes.reason);
+    const askedOrganisme = url.searchParams.get("organisme");
+    const organisme = courrierOrganismeOf(
+      organismes.organismes,
+      askedOrganisme === null || askedOrganisme.trim() === "" ? null : askedOrganisme,
+    );
+    if (organisme === null) return failure("courrier_unavailable");
+
+    const catalogue = await getPublicDemarches(tenant.id, socle, lang);
+    const villes = villesOf(
+      catalogue.ok ? catalogue.demarches : [],
+      tenant.id,
+      courrierPages(organismes.organismes),
+    );
+    const tenantBranding = await getBranding(tenant.id, socle);
+    const branding = organisme.isTenant ? tenantBranding : await getBranding(organisme.id, socle);
+
+    return json(
+      200,
+      {
+        lang,
+        tenant,
+        villes,
+        organisme: { id: organisme.id, name: organisme.name, slug: organisme.slug, isTenant: organisme.isTenant },
+        freeMail: organisme.freeMail,
+        branding: branding.ok ? branding.branding : null,
+        tenantBranding: tenantBranding.ok ? tenantBranding.branding : null,
+      },
+      { "Cache-Control": "public, max-age=60" },
+    );
+  }
+
+  // ── POST /v1/courriers — le dépôt d'un courrier libre, relayé à Clara.
+  //
+  // Calqué sur `/v1/demandes` : la collectivité vient du domaine visité
+  // (`Origin`), jamais du corps ; l'organisme visé doit être des siens et
+  // recevoir du courrier libre ; preuve de travail, frein par adresse hachée,
+  // consentements du catalogue fermé. Les fichiers partent AVEC le courrier
+  // (`multipart/form-data`), vérifiés ici en taille et en extension avant le
+  // relais. Toute la règle est dans `_shared/clara/courrierService.ts`.
+  //
+  // ⚠️ RIEN N'EST JOURNALISÉ DU CONTENU — ni l'objet, ni le message, ni
+  // l'identité, ni le nom d'un fichier. Seuls les codes d'échec.
+  if (request.method === "POST" && path === "/v1/courriers") {
+    const claraUrl = Deno.env.get("CLARA_INTAKE_URL");
+    const claraKey = Deno.env.get("CLARA_INTAKE_KEY");
+    if (!claraUrl || !claraKey) {
+      const missing = [!claraUrl ? "CLARA_INTAKE_URL" : null, !claraKey ? "CLARA_INTAKE_KEY" : null];
+      console.error("portal-api : secrets Clara manquants —", missing.filter((n) => n !== null).join(", "));
+      return courrierFailure("courrier_not_configured");
+    }
+
+    // La taille annoncée AVANT de lire le corps : un envoi démesuré est refusé
+    // sans être chargé en mémoire.
+    const declared = Number.parseInt(request.headers.get("content-length") ?? "", 10);
+    if (Number.isFinite(declared) && declared > MAX_COURRIER_REQUEST_BYTES) {
+      return courrierFailure("file_too_large");
+    }
+    if (!courrierLimiter.allow(await hashKey(clientAddress(request.headers)))) {
+      return courrierFailure("too_many_courriers");
+    }
+
+    const resolved = await tenantOf(request, socle);
+    if (!resolved.ok) return resolved.response;
+
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch {
+      return json(
+        400,
+        { error: { code: "invalid_courrier", message: "Envoi multipart/form-data attendu." } },
+        { "Cache-Control": "no-store" },
+      );
+    }
+
+    const outcome = await depositCourrier({
+      form,
+      tenantId: resolved.tenant.id,
+      socle,
+      clara: createClaraClient({ url: claraUrl, apiKey: claraKey }),
+      checkChallenge: (challenge, submissionId) =>
+        checkDepositChallenge({
+          secret: Deno.env.get("ASSISTANT_SIGNING_SECRET") ?? null,
+          required: Deno.env.get("DEPOSIT_CHALLENGE_REQUIRED") === "true",
+          challenge,
+          submissionId,
+          nowSeconds: Math.floor(Date.now() / 1000),
+        }),
+    });
+    if (!outcome.ok) {
+      if (outcome.failure === "invalid_courrier") {
+        // Le message nomme le CHAMP fautif, jamais sa valeur : il peut revenir
+        // au navigateur, qui l'a de toute façon déjà vérifié lui-même.
+        return json(
+          400,
+          { error: { code: "invalid_courrier", message: outcome.message ?? COURRIER_MESSAGES.invalid_courrier } },
+          { "Cache-Control": "no-store" },
+        );
+      }
+      if (
+        outcome.failure === "clara_misconfigured" || outcome.failure === "courrier_undeliverable" ||
+        outcome.failure === "courrier_rejected" || outcome.failure === "clara_unavailable" ||
+        outcome.failure === "socle_unavailable"
+      ) {
+        // Un geste d'exploitation : le code (et, pour un refus de Clara, sa
+        // raison — jamais la saisie) va au journal ; l'usager lit une phrase.
+        console.error("portal-api : courrier libre non relayé —", outcome.failure, outcome.message ?? "");
+      }
+      return courrierFailure(outcome.failure);
+    }
+    // Jamais de cache sur un accusé : il est propre à un dépôt.
+    return json(200, { receipt: outcome.receipt }, { "Cache-Control": "no-store" });
+  }
+
   // ── POST /v1/defi — le défi anti-robot d'un DÉPÔT.
   //
   // À part de `/v1/assistant/defi`, qui n'existe que si la collectivité a ouvert
@@ -1074,6 +1281,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
   if (
     path === "/v1/bootstrap" || path === "/v1/demandes" || path === "/v1/demandes/pieces"
     || path === "/v1/audience" || path.startsWith("/v1/demarches/")
+    || path === "/v1/courrier" || path === "/v1/courriers"
   ) {
     return json(405, {
       error: { code: "method_not_allowed", message: "Méthode non autorisée sur cette ressource." },

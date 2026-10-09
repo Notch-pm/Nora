@@ -226,17 +226,34 @@ const villeCollator = new Intl.Collator("fr", { sensitivity: "base" });
  *   · la collectivité elle-même, dont la page est l'accueil du portail ;
  *   · un organisme sans slug, qui n'a pas d'adresse.
  *
+ * ⚠️ DEPUIS LE COURRIER LIBRE (2026-10-09), le catalogue n'est plus le seul à
+ * ouvrir une page : un organisme qui reçoit du courrier libre en a une, même
+ * sans démarche publiée — `sansDemarche`. Sans ce troisième argument, la
+ * règle est exactement celle d'avant.
+ *
  * Proche parente de `organizationsOffering` (côté interface), qui sert le
  * FILTRE de l'accueil : celle-là garde la collectivité, en tête, parce que
  * filtrer sur elle a un sens. Ici, il s'agit d'aller ailleurs.
  */
-export function villesOf(demarches: Demarche[], tenantId: string): Ville[] {
+export function villesOf(
+  demarches: Demarche[],
+  tenantId: string,
+  sansDemarche: readonly { id: string; name: string; slug: string | null }[] = [],
+): Ville[] {
   const byId = new Map<string, Ville>();
   for (const demarche of demarches) {
     for (const org of demarche.organizations) {
       if (org.id === tenantId || org.slug === null || byId.has(org.id)) continue;
       byId.set(org.id, { id: org.id, name: org.name, slug: org.slug, logoUrl: org.logoUrl });
     }
+  }
+  // Les organismes qui ont une page SANS démarche publiée — aujourd'hui, ceux
+  // qui reçoivent du courrier libre (`courrierPages`). Même règle d'adresse,
+  // mêmes exclusions ; le catalogue passe d'abord, parce qu'il porte le logo
+  // propre de l'organisme, que la liste des organismes du Socle ne sert pas.
+  for (const org of sansDemarche) {
+    if (org.id === tenantId || org.slug === null || byId.has(org.id)) continue;
+    byId.set(org.id, { id: org.id, name: org.name, slug: org.slug, logoUrl: null });
   }
   return [...byId.values()].sort((a, b) => villeCollator.compare(a.name, b.name));
 }
