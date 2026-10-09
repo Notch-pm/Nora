@@ -81,6 +81,9 @@ describe("le ticket d'une conversation", () => {
     expect(await readTicket(SECRET, await issueTicket(SECRET, ticket(MAX_TURNS)), NANTES, NOW)).toEqual({
       ok: false,
       reason: "exhausted",
+      // Authentique et vivant : il ne rouvre aucun tour, mais la dernière
+      // réponse peut encore être lue à voix haute.
+      ticket: ticket(MAX_TURNS),
     });
   });
 
@@ -92,7 +95,7 @@ describe("le ticket d'une conversation", () => {
     expect(
       (await readTicket(SECRET, await issueTicket(SECRET, collecting(MAX_TURNS_COLLECT - 1)), NANTES, NOW)).ok,
     ).toBe(true);
-    expect(await readTicket(SECRET, await issueTicket(SECRET, collecting(MAX_TURNS_COLLECT)), NANTES, NOW)).toEqual({
+    expect(await readTicket(SECRET, await issueTicket(SECRET, collecting(MAX_TURNS_COLLECT)), NANTES, NOW)).toMatchObject({
       ok: false,
       reason: "exhausted",
     });

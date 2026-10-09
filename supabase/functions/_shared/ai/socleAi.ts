@@ -73,13 +73,119 @@ export interface SocleAiClient {
   complete(input: CompletionInput): Promise<CompletionResult>;
 }
 
+/** Ce qu'un appel au guichet peut rendre d'autre qu'une réussite — commun aux trois routes. */
+export type GuichetRefusal = Exclude<CompletionResult, { kind: "ok" }>;
+
+export interface TranscriptionInput {
+  organizationId: string;
+  /** WAV PCM 16 bits, 16 kHz, mono — déjà vérifié par le portail (`readWav`). */
+  audio: Uint8Array<ArrayBuffer>;
+  durationMs: number;
+  /** Langue de base (`fr`), ou `null` pour laisser le fournisseur la détecter. */
+  language: string | null;
+  /** Identifiant de CONVERSATION : la cadence audio du guichet se compte par lui. */
+  actorId: string;
+}
+
+export type TranscriptionResult = { kind: "ok"; text: string } | GuichetRefusal;
+
+export interface SpeechInput {
+  organizationId: string;
+  /** Texte DÉJÀ prononçable (`speakable`), 2 000 caractères au plus. */
+  text: string;
+  /** Langue de base : c'est le Socle qui en déduit la voix. */
+  language: string;
+  actorId: string;
+}
+
+export type SpeechResult = { kind: "ok"; audio: Uint8Array<ArrayBuffer>; contentType: string } | GuichetRefusal;
+
+/**
+ * La voix du MODE DIALOGUE (`ai-api` 1.4.0) — à part de `SocleAiClient` : un
+ * tour de conversation n'en a pas besoin, et ses tests non plus.
+ *
+ * ⚠️ Même clé, même chaîne de délais, même classement des refus que la
+ * conversation : c'est le même guichet, le même plafond, la même cadence (dans
+ * un seau « audio » à part, au Socle).
+ */
+export interface SocleVoiceClient {
+  transcribe(input: TranscriptionInput): Promise<TranscriptionResult>;
+  speak(input: SpeechInput): Promise<SpeechResult>;
+}
+
 export function createSocleAiClient(config: {
   baseUrl: string;
   apiKey: string;
   timeoutMs?: number;
-}): SocleAiClient {
+}): SocleAiClient & SocleVoiceClient {
   const baseUrl = config.baseUrl.replace(/\/+$/, "");
+  const post = async (path: string, init: { body: BodyInit; json: boolean; organizationId: string }) => {
+    try {
+      return await fetch(baseUrl + path, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + config.apiKey,
+          ...(init.json ? { "Content-Type": "application/json" } : {}),
+          "X-Organization-Id": init.organizationId,
+        },
+        body: init.body,
+        signal: AbortSignal.timeout(config.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+      });
+    } catch {
+      return null;
+    }
+  };
+  const bodyOf = async (response: Response): Promise<unknown> => {
+    try {
+      return await response.json();
+    } catch {
+      return null;
+    }
+  };
   return {
+    async transcribe(input) {
+      const form = new FormData();
+      form.append("file", new Blob([input.audio], { type: "audio/wav" }), "tour.wav");
+      form.append("duration_ms", String(Math.max(1, Math.round(input.durationMs))));
+      if (input.language !== null) form.append("language", input.language);
+      form.append("feature", FEATURE);
+      form.append("actor_id", input.actorId);
+      const response = await post("/v1/transcriptions", { body: form, json: false, organizationId: input.organizationId });
+      if (response === null) return { kind: "unavailable" };
+      const body = await bodyOf(response);
+      if (response.status === 200) {
+        // Un silence transcrit en « » n'est pas une panne : l'écran dit qu'il n'a
+        // rien entendu, il ne dit pas que l'assistant est indisponible.
+        const text = typeof body === "object" && body !== null ? (body as Record<string, unknown>).text : null;
+        return typeof text === "string" ? { kind: "ok", text: text.trim() } : { kind: "unavailable" };
+      }
+      return classifyRefusal(response.status, response.headers.get("Retry-After"), body);
+    },
+    async speak(input) {
+      const response = await post("/v1/speech", {
+        body: JSON.stringify({
+          feature: FEATURE,
+          text: input.text,
+          language: input.language,
+          format: "mp3",
+          actor_id: input.actorId,
+        }),
+        json: true,
+        organizationId: input.organizationId,
+      });
+      if (response === null) return { kind: "unavailable" };
+      if (response.status === 200) {
+        const contentType = response.headers.get("Content-Type") ?? "";
+        if (!contentType.startsWith("audio/")) return { kind: "unavailable" };
+        try {
+          const audio = new Uint8Array(await response.arrayBuffer());
+          return audio.length > 0 ? { kind: "ok", audio, contentType } : { kind: "unavailable" };
+        } catch {
+          return { kind: "unavailable" };
+        }
+      }
+      return classifyRefusal(response.status, response.headers.get("Retry-After"), await bodyOf(response));
+    },
     async complete(input) {
       let response: Response;
       try {
@@ -127,6 +233,12 @@ export function classify(status: number, retryAfter: string | null, body: unknow
       ? { kind: "ok", answer: record.answer }
       : { kind: "unavailable" };
   }
+  return classifyRefusal(status, retryAfter, body);
+}
+
+/** Le classement d'un refus du guichet, quelle que soit la route — pur, testé sans réseau. */
+export function classifyRefusal(status: number, retryAfter: string | null, body: unknown): GuichetRefusal {
+  const record = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
   const error =
     typeof record.error === "object" && record.error !== null
       ? (record.error as Record<string, unknown>)

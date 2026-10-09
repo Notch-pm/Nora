@@ -143,6 +143,27 @@ const OFFER_RULES = [
 ].join("\n");
 
 /**
+ * Les règles du MODE DIALOGUE — envoyées quand la réponse sera lue à voix haute
+ * (`mode: "voice"`, voix ouverte par la collectivité).
+ *
+ * ⚠️ Hors de `BASE_RULES` à dessein (jumeau de l'agent de la console) : elles
+ * l'emportent sur sa FORME (longueur, Markdown), jamais sur son FOND — le
+ * corpus strict, les délais, l'urgence restent les mêmes.
+ *
+ * Elles raccourcissent aussi la facture : la synthèse se paie au caractère, et
+ * une réponse prononcée coûte plus que l'appel au modèle qui l'a écrite.
+ */
+const VOICE_RULES = [
+  "MODE DIALOGUE — ta réponse sera LUE À VOIX HAUTE à l'usager, qui te répond en parlant. Ces règles l'emportent sur les règles générales pour la FORME de ta réponse, jamais pour le fond.",
+  "- Court : 60 mots au plus, deux ou trois phrases simples. Une idée par phrase. Ce qu'on entend ne se relit pas.",
+  "- Aucune mise en forme : ni gras, ni liste, ni tiret, ni émoji, ni parenthèse. Pour énumérer, dis-le avec des mots (« d'abord…, ensuite… »), trois éléments au plus.",
+  "- Ta réponse s'affiche aussi à l'écran. Un numéro de téléphone se dit par paires de chiffres ; une adresse courriel ou un long numéro de dossier, dis simplement qu'il est affiché à l'écran plutôt que de l'épeler.",
+  "- Le message de l'usager vient d'une TRANSCRIPTION de sa voix : il peut contenir des mots mal entendus, une ponctuation absente. Comprends-le avec bon sens. Si un nom propre, un numéro ou une adresse te paraît douteux, répète ce que tu as compris et demande s'il est juste (« j'ai compris le 12 rue Jean-Jaurès, c'est bien ça ? ») ; sinon, ne lui fais rien répéter.",
+  "- Un calendrier, une pièce à joindre ou le cadre « Vos informations » ne se remplissent pas à la voix : dis que c'est à l'écran, sous ton message.",
+  "- Quand une information a des valeurs listées et que l'usager hésite, cite-les, trois au plus.",
+].join("\n");
+
+/**
  * Les règles des ORGANISMES — envoyées seulement quand le bloc du même nom
  * figure dans le prompt, c'est-à-dire quand au moins un organisme a écrit
  * quelque chose (contrat Socle 1.30.0).
@@ -414,6 +435,8 @@ export interface AssistantPromptInput {
    * suite, et la question resterait sans réponse. Voir `runAssistantTurn`.
    */
   correcting?: "missing" | "complete";
+  /** La réponse sera lue à voix haute (mode dialogue) : voir `VOICE_RULES`. */
+  voice?: boolean;
 }
 
 export function buildAssistantPrompt(input: AssistantPromptInput): string {
@@ -429,6 +452,7 @@ export function buildAssistantPrompt(input: AssistantPromptInput): string {
     collecting === null ? "" : COLLECT_RULES,
     offering ? OFFER_RULES : "",
     organismes.length > 0 ? ORGANISMES_RULES : "",
+    input.voice === true ? VOICE_RULES : "",
     outputContract(input.lang, collecting !== null, offering),
     fenced("COLLECTIVITÉ", input.tenantName),
     // ⚠️ EN RECUEIL, ni catalogue ni candidats. La démarche est choisie — elle

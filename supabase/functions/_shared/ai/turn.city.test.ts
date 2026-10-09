@@ -39,7 +39,7 @@ const tenant: Tenant = {
   hostname: "test2.edilumen.fr",
   languages: ["fr"],
   theme: defaultTheme(),
-  assistant: { enabled: true, depositEnabled: true },
+  assistant: { enabled: true, depositEnabled: true, voiceEnabled: false },
 };
 
 const demarche: Demarche = {

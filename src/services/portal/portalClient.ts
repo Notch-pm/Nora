@@ -119,7 +119,11 @@ function readTenant(raw: unknown): Tenant | null {
     ...served,
     assistant:
       typeof assistant === "object" && assistant !== null && assistant.enabled === true
-        ? { enabled: true, depositEnabled: assistant.depositEnabled === true }
+        ? {
+            enabled: true,
+            depositEnabled: assistant.depositEnabled === true,
+            voiceEnabled: assistant.voiceEnabled === true,
+          }
         : closedAssistant(),
   };
 }

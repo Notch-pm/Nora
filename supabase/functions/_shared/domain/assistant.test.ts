@@ -3,13 +3,15 @@ import { closedAssistant, parseAssistant } from "./assistant.ts";
 
 describe("parseAssistant — ce que la collectivité a ouvert", () => {
   it("lit le bloc du Socle, du snake_case du contrat au camelCase du portail", () => {
-    expect(parseAssistant({ enabled: true, deposit_enabled: true })).toEqual({
+    expect(parseAssistant({ enabled: true, deposit_enabled: true, voice_enabled: true })).toEqual({
       enabled: true,
       depositEnabled: true,
+      voiceEnabled: true,
     });
     expect(parseAssistant({ enabled: true, deposit_enabled: false })).toEqual({
       enabled: true,
       depositEnabled: false,
+      voiceEnabled: false,
     });
   });
 
@@ -34,8 +36,15 @@ describe("parseAssistant — ce que la collectivité a ouvert", () => {
     expect(parseAssistant({ enabled: false, deposit_enabled: true })).toEqual(closedAssistant());
   });
 
-  it("ne retient rien d'autre que ses deux réglages", () => {
+  it("⚠️ pas de voix sous un assistant fermé, ni sans `true` littéral (contrat 1.37.0)", () => {
+    expect(parseAssistant({ enabled: false, voice_enabled: true })).toEqual(closedAssistant());
+    expect(parseAssistant({ enabled: true, voice_enabled: "true" }).voiceEnabled).toBe(false);
+    // La voix ne dépend pas du recueil : on parle à un assistant qui renseigne.
+    expect(parseAssistant({ enabled: true, deposit_enabled: false, voice_enabled: true }).voiceEnabled).toBe(true);
+  });
+
+  it("ne retient rien d'autre que ses trois réglages", () => {
     const parsed = parseAssistant({ enabled: true, deposit_enabled: true, agent: "x", prompt: "y" });
-    expect(Object.keys(parsed).sort()).toEqual(["depositEnabled", "enabled"]);
+    expect(Object.keys(parsed).sort()).toEqual(["depositEnabled", "enabled", "voiceEnabled"]);
   });
 });

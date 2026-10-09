@@ -29,7 +29,7 @@ const tenant = (depositEnabled: boolean): Tenant => ({
   hostname: "nantes.edilumen.fr",
   languages: ["fr"],
   theme: defaultTheme(),
-  assistant: { enabled: true, depositEnabled },
+  assistant: { enabled: true, depositEnabled, voiceEnabled: false },
 });
 
 const base = (id: string, name: string): Demarche => ({

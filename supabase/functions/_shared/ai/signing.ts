@@ -108,7 +108,13 @@ export interface Ticket {
 
 export type TicketReading =
   | { ok: true; ticket: Ticket }
-  | { ok: false; reason: "invalid" | "expired" | "exhausted" };
+  | { ok: false; reason: "invalid" | "expired" }
+  /**
+   * La borne de tours est atteinte — mais le ticket est authentique et vivant.
+   * Il ne rouvre AUCUN tour ; il permet seulement de faire LIRE à voix haute la
+   * dernière réponse, déjà signée (mode dialogue).
+   */
+  | { ok: false; reason: "exhausted"; ticket: Ticket };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -169,8 +175,9 @@ export async function readTicket(
   if (i > nowSeconds + 60) return { ok: false, reason: "invalid" };
   const ttl = collecting ? TICKET_TTL_COLLECT_SECONDS : TICKET_TTL_SECONDS;
   if (nowSeconds - i > ttl) return { ok: false, reason: "expired" };
-  if (n >= maxTurnsFor(collecting)) return { ok: false, reason: "exhausted" };
-  return { ok: true, ticket: { conversationId: c, tenantId: t, issuedAt: i, turn: n, collecting } };
+  const ticket: Ticket = { conversationId: c, tenantId: t, issuedAt: i, turn: n, collecting };
+  if (n >= maxTurnsFor(collecting)) return { ok: false, reason: "exhausted", ticket };
+  return { ok: true, ticket };
 }
 
 // --- Les réponses de l'assistant --------------------------------------------

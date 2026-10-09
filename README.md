@@ -1392,6 +1392,45 @@ Code : `supabase/functions/_shared/ai/` (`turn`, `prompt`, `conversation`,
 routes `POST /v1/assistant/defi` et `POST /v1/assistant` de `portal-api`,
 `src/features/assistant/`. Secrets : voir `.env.example`.
 
+### Le mode dialogue (la voix)
+
+Depuis le 2026-10-09 (serveur ; l'écran suit), l'assistant peut **parler** et
+**entendre**, si la collectivité l'a ouvert (`tenant.assistant.voiceEnabled`,
+interrupteur du super administrateur au Socle, contrat **1.37.0** — à part de
+l'assistant, parce que la voix coûte plusieurs fois le texte et fait traiter la
+voix de l'usager par le fournisseur). Rien de nouveau ne se conserve : le
+navigateur enregistre, `portal-api` vérifie et relaie au guichet IA du Socle
+(`ai-api` **1.4.0** : `/v1/transcriptions`, `/v1/speech`), qui compte la dépense
+sur le même plafond et la même part que la conversation.
+
+- **Trois cas selon la langue** (`_shared/domain/voice.ts`, partagé avec l'écran) :
+  `dialogue` en **français et en anglais** (seules langues qui ont une voix) ;
+  `dictation` — l'usager parle, l'assistant répond par écrit — en espagnol,
+  allemand, italien, portugais, arabe, russe, chinois ; `off` en turc et en
+  ukrainien, que la transcription refuse.
+- **`POST /v1/assistant/transcription`** (multipart : `file`, `ticket` **ou**
+  `challenge` — le défi résolu, en JSON, pour la toute première prise de parole —,
+  `lang`) → `{ text }`, que l'usager relit avant qu'il parte comme un message.
+  ⚠️ Un seul format accepté, celui que le portail produit : **WAV PCM 16 bits,
+  16 kHz, mono, 30 s au plus** — vérifié dans l'en-tête (`readWav`) avant tout
+  envoi. Ticket épuisé ⇒ `conversation_ended`.
+- **`POST /v1/assistant/voix`** (`{ ticket, content, signature, lang }`) → l'audio
+  (`audio/mpeg`, jamais en cache). ⚠️ **Ne prononce qu'une réponse SIGNÉE par le
+  serveur dans cette conversation** : sans cette porte, la route serait une
+  synthèse vocale gratuite, payée par la collectivité. Le texte est rendu
+  prononçable (`speakable` : la mise en forme tombe, chaque ligne devient une
+  phrase) ; un ticket **épuisé** suffit, pour que la dernière réponse soit dite.
+- **Le tour lui-même** porte `mode: "voice"` : le prompt reçoit `VOICE_RULES`
+  (60 mots, aucune mise en forme, une transcription peut mal entendre — faire
+  confirmer un nom ou une adresse douteux, un calendrier ou une pièce restent à
+  l'écran). Sans la voix ouverte par la collectivité, `mode` est sans effet.
+- Freins : `voiceLimiter` (120 par minute et par adresse, à part de celui de
+  l'assistant) ; au Socle, un seau de cadence **audio** (40 par minute et par
+  conversation) et le plafond. Les refus ont les codes de l'assistant.
+
+Code : `_shared/ai/{voice,speakable}.ts`, `socleAi.ts` (`transcribe`, `speak`),
+`_shared/domain/voice.ts`. Aucun secret nouveau.
+
 ## Ce qui n'est pas encore fait
 
 Dans l'ordre prévu — le détail, les prérequis côté Socle et les questions

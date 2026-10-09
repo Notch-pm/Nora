@@ -60,6 +60,8 @@ import { checkDepositChallenge } from "../_shared/ai/depositGate.ts";
 import { createSocleAiClient } from "../_shared/ai/socleAi.ts";
 import { lookupCommunes, lookupPostalCodes } from "../_shared/ai/communesClient.ts";
 import { runAssistantTurn } from "../_shared/ai/turn.ts";
+import { readTranscriptionForm, runSpeech, runTranscription, type VoiceFailure } from "../_shared/ai/voice.ts";
+import { MAX_RECORDING_BYTES } from "../_shared/domain/voice.ts";
 
 /**
  * CORS ouvert, et c'est délibéré : cette API sert des données **publiques**,
@@ -131,6 +133,15 @@ const audienceLimiter = createRateLimiter({ windowMs: 60_000, max: 120 });
  * plafond de la collectivité.
  */
 const assistantLimiter = createRateLimiter({ windowMs: 60_000, max: 60 });
+
+/**
+ * Frein de la VOIX (mode dialogue) — à part de celui de l'assistant : un tour
+ * de dialogue fait trois appels (entendre, répondre, prononcer), et la voix
+ * d'une conversation ne doit pas manger le frein de ses questions. Même nature,
+ * même rôle : couper une boucle. La borne opposable est au Socle (seau
+ * « audio », 40 par minute et par conversation, puis le plafond).
+ */
+const voiceLimiter = createRateLimiter({ windowMs: 60_000, max: 120 });
 
 /**
  * Messages de l'assistant adressés au visiteur — l'écran les traduit par CODE,
@@ -927,6 +938,80 @@ Deno.serve(async (request: Request): Promise<Response> => {
       return assistantFailure(outcome.reason, outcome.retryAfterSeconds);
     }
     return json(200, outcome.reply, { "Cache-Control": "no-store" });
+  }
+
+  // ── POST /v1/assistant/transcription et POST /v1/assistant/voix — le MODE DIALOGUE.
+  //
+  // Entendre l'usager (un enregistrement WAV → son texte, qu'il relit puis
+  // envoie comme un message), et faire entendre l'assistant (une réponse SIGNÉE
+  // → sa voix). Le portail vérifie, le Socle (`ai-api` 1.4.0) fait et compte.
+  // Toute la logique vit dans `_shared/ai/voice.ts`.
+  //
+  // ⚠️ RIEN N'EST JOURNALISÉ DU CONTENU — ni l'audio, ni ce qu'il dit, ni ce
+  // que l'assistant prononce. Pas de `console.*` qui en cite un octet.
+  if (request.method === "POST" && (path === "/v1/assistant/transcription" || path === "/v1/assistant/voix")) {
+    const secret = Deno.env.get("ASSISTANT_SIGNING_SECRET");
+    const aiUrl = Deno.env.get("SOCLE_AI_API_URL");
+    const aiKey = Deno.env.get("SOCLE_AI_API_KEY");
+    if (!secret || !aiUrl || !aiKey) {
+      console.error("portal-api : secrets de l'assistant manquants.");
+      return assistantFailure("assistant_not_configured");
+    }
+    // Avant de lire le corps : un envoi démesuré n'entre pas en mémoire.
+    const declared = Number.parseInt(request.headers.get("content-length") ?? "", 10);
+    if (Number.isFinite(declared) && declared > MAX_RECORDING_BYTES + MULTIPART_ALLOWANCE) {
+      return assistantFailure("bad_request");
+    }
+    if (!voiceLimiter.allow(await hashKey(clientAddress(request.headers)))) {
+      return assistantFailure("assistant_rate_limited", 60);
+    }
+
+    const resolved = await tenantOf(request, socle);
+    if (!resolved.ok) return resolved.response;
+    const tenant = resolved.tenant;
+    const deps = {
+      secret,
+      ai: createSocleAiClient({ baseUrl: aiUrl, apiKey: aiKey }),
+      nowSeconds: () => Math.floor(Date.now() / 1000),
+    };
+    const refused = (outcome: VoiceFailure) => {
+      if (outcome.reason === "assistant_not_configured") {
+        console.error("portal-api : le guichet IA du Socle refuse un appel de la voix.");
+      }
+      return assistantFailure(outcome.reason, outcome.retryAfterSeconds);
+    };
+
+    if (path === "/v1/assistant/transcription") {
+      let form: FormData;
+      try {
+        form = await request.formData();
+      } catch {
+        return assistantFailure("bad_request");
+      }
+      const field = form.get("lang");
+      const lang = resolveLang(typeof field === "string" ? field : askedLang, tenant.languages);
+      const read = await readTranscriptionForm(form.entries());
+      if (!read.ok) return refused(read);
+      const outcome = await runTranscription(tenant, lang, read.value, deps);
+      if (!outcome.ok) return refused(outcome);
+      return json(200, { text: outcome.text }, { "Cache-Control": "no-store" });
+    }
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return assistantFailure("bad_request");
+    }
+    const lang = resolveLang(isRecord(body) && typeof body.lang === "string" ? body.lang : askedLang, tenant.languages);
+    const outcome = await runSpeech(tenant, lang, body, deps);
+    if (!outcome.ok) return refused(outcome);
+    // L'audio lui-même, prêt à jouer — jamais mis en cache : c'est la voix
+    // d'une conversation, pas une ressource du site.
+    return new Response(outcome.audio, {
+      status: 200,
+      headers: { ...CORS_HEADERS, "Content-Type": outcome.contentType, "Cache-Control": "no-store" },
+    });
   }
 
   // ── POST /v1/audience — une page vue, comptée sans cookie.

@@ -204,7 +204,7 @@ export function parseMarkdown(source: string): Block[] {
 }
 
 /** Le texte que l'usager LIT dans des nœuds en ligne, sans leurs marques. */
-function inlineText(nodes: Inline[]): string {
+export function inlineText(nodes: Inline[]): string {
   return nodes
     .map((node) => (node.kind === "text" || node.kind === "code" ? node.text : inlineText(node.children)))
     .join("");

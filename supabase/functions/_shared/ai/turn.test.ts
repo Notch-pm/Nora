@@ -27,7 +27,7 @@ const tenant = (enabled = true): Tenant => ({
   hostname: "nantes.edilumen.fr",
   languages: ["fr"],
   theme: defaultTheme(),
-  assistant: enabled ? { enabled: true, depositEnabled: false } : closedAssistant(),
+  assistant: enabled ? { enabled: true, depositEnabled: false, voiceEnabled: false } : closedAssistant(),
 });
 
 const catalogue: Demarche[] = [
@@ -96,6 +96,30 @@ function setup(answer: CompletionResult = {
 
 const solved = async () => solveChallenge(await issueChallenge(SECRET, NOW, 6));
 const ask = (content: string) => [{ role: "user", content }];
+
+describe("mode dialogue — la réponse sera lue à voix haute", () => {
+  const voiceTenant = (): Tenant => ({ ...tenant(), assistant: { enabled: true, depositEnabled: false, voiceEnabled: true } });
+
+  it("demande une réponse courte et sans mise en forme quand la voix est ouverte", async () => {
+    const { deps, complete } = setup();
+    await runAssistantTurn(voiceTenant(), "fr", { challenge: await solved(), messages: ask("Un dépôt sauvage"), mode: "voice" }, deps);
+    const system = complete.mock.calls[0][0].system;
+    expect(system).toContain("MODE DIALOGUE");
+    expect(system).toContain("60 mots au plus");
+    // Le fond ne change pas : les règles générales restent là, intactes.
+    expect(system).toContain(BASE_RULES);
+  });
+
+  // Un navigateur ne raccourcit pas les réponses de son propre chef : sans la
+  // voix ouverte par la collectivité, `mode` est sans effet.
+  it("⚠️ sans effet tant que la collectivité n'a pas ouvert la voix — ou sans `mode`", async () => {
+    for (const [t, mode] of [[tenant(), "voice"], [voiceTenant(), undefined], [voiceTenant(), "text"]] as const) {
+      const { deps, complete } = setup();
+      await runAssistantTurn(t, "fr", { challenge: await solved(), messages: ask("Un dépôt sauvage"), mode }, deps);
+      expect(complete.mock.calls[0][0].system).not.toContain("MODE DIALOGUE");
+    }
+  });
+});
 
 describe("un tour de conversation", () => {
   it("« comment signaler un dépôt sauvage ? » → la démarche du catalogue, en carte, réponse signée", async () => {

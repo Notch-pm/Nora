@@ -320,6 +320,9 @@ export async function runAssistantTurn(
     typeof body.focusDemarcheId === "string" && UUID_RE.test(body.focusDemarcheId)
       ? body.focusDemarcheId
       : null;
+  // La réponse sera lue à voix haute — seulement si la collectivité a ouvert la
+  // voix : un navigateur ne raccourcit pas les réponses de son propre chef.
+  const voice = body.mode === "voice" && tenant.assistant.voiceEnabled;
 
   // --- Qui parle : un ticket du serveur, ou un défi résolu pour en obtenir un.
   const now = deps.nowSeconds();
@@ -441,6 +444,7 @@ export async function runAssistantTurn(
     offering: tenant.assistant.depositEnabled && focus?.form != null,
     cityHint,
     postalHint,
+    voice,
   });
 
   const completion = await deps.ai.complete({
@@ -534,6 +538,7 @@ export async function runAssistantTurn(
           collecting: collectableFields(form, collection),
           offering: false,
           correcting: fault,
+          voice,
         }),
         messages: windowHistory(messages).map(({ role, content }) => ({ role, content })),
         actorId: ticket.conversationId,

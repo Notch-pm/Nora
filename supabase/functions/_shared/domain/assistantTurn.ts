@@ -56,6 +56,12 @@ export interface AssistantTurnRequest {
    */
   collection?: CollectionPayload | null;
   lang?: string;
+  /**
+   * `voice` : la réponse sera LUE À VOIX HAUTE (mode dialogue) — le prompt
+   * demande alors une réponse courte, sans mise en forme. Ignoré tant que la
+   * collectivité n'a pas ouvert la voix. Absent : `text`.
+   */
+  mode?: "text" | "voice";
 }
 
 /** Une démarche que l'assistant propose — de quoi rendre une carte, rien de plus. */
