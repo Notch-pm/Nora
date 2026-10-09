@@ -77,6 +77,7 @@ describe("parseAssistantAnswer — le guichet garantit que ça parse, pas que ç
       fieldUpdates: [],
       asking: [],
       offerProcedureId: null,
+      offerAccepted: false,
     };
     const json = '{"reply":"Voici la démarche.","intent":"suggest","procedure_ids":["b"]}';
     for (const raw of [json, "```json\n" + json + "\n```", "Bien sûr : " + json + " Voilà."]) {
@@ -96,6 +97,7 @@ describe("parseAssistantAnswer — le guichet garantit que ça parse, pas que ç
       fieldUpdates: [],
       asking: [],
       offerProcedureId: null,
+      offerAccepted: false,
     });
   });
 
@@ -109,6 +111,7 @@ describe("parseAssistantAnswer — le guichet garantit que ça parse, pas que ç
       fieldUpdates: [],
       asking: [],
       offerProcedureId: null,
+      offerAccepted: false,
     });
   });
 
@@ -150,6 +153,20 @@ describe("parseAssistantAnswer — le guichet garantit que ça parse, pas que ç
     expect(offer("a")).toBe("a");
     // Inventée, d'une autre collectivité, ou d'une autre forme : rien.
     for (const junk of ["zzz", "", 42, null, undefined, ["a"]]) expect(offer(junk)).toBeNull();
+  });
+
+  // L'usager accepte EN LE DISANT : le modèle le constate. Un `true` littéral,
+  // et une démarche du catalogue — sans elle, il n'y a rien à ouvrir.
+  it("lit l'acceptation dite de l'offre, et seulement une acceptation nette", () => {
+    const accept = (accept_offer: unknown, id: unknown = "a") =>
+      parseAssistantAnswer(
+        JSON.stringify({ reply: "Très bien, commençons.", intent: "answer", offer_procedure_id: id, accept_offer }),
+        ids,
+      )?.offerAccepted;
+    expect(accept(true)).toBe(true);
+    for (const junk of ["true", 1, false, null, undefined]) expect(accept(junk)).toBe(false);
+    expect(accept(true, "zzz")).toBe(false);
+    expect(accept(true, "")).toBe(false);
   });
 
   it("⚠️ retire tout lien : l'assistant ne doit pas pouvoir hameçonner sous la marque d'une collectivité", () => {

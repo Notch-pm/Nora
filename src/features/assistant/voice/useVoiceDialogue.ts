@@ -53,7 +53,7 @@ export interface UseVoiceDialogue {
   interrupt: () => void;
   /** Envoie tout de suite ce qui a été entendu, sans attendre la fin de la relecture. */
   sendNow: () => void;
-  /** Rend ce qui a été entendu à la zone de saisie, pour le corriger au clavier. */
+  /** Rend ce qui a été entendu à la zone de saisie et revient au mode texte, pour corriger au clavier. */
   correct: () => void;
 }
 
@@ -82,8 +82,8 @@ export function useVoiceDialogue(params: {
   // Incrémenté à chaque arrêt : une réponse réseau tardive ne touche plus rien.
   const generationRef = useRef(0);
   // Valeurs lues par des fonctions asynchrones : toujours les plus récentes.
-  const live = useRef({ conversation, cardWaiting, lang, send, onCorrect, heard: state.heard });
-  live.current = { conversation, cardWaiting, lang, send, onCorrect, heard: state.heard };
+  const live = useRef({ conversation, cardWaiting, lang, send, onCorrect, heard: state.heard, phase: state.phase });
+  live.current = { conversation, cardWaiting, lang, send, onCorrect, heard: state.heard, phase: state.phase };
 
   const closeMicrophone = useCallback(() => {
     microphoneRef.current?.close();
@@ -264,8 +264,9 @@ export function useVoiceDialogue(params: {
     const heard = live.current.heard;
     if (heard === null) return;
     live.current.onCorrect(heard);
-    dispatch({ type: "correct" });
-  }, []);
+    // Corriger, c'est écrire : on revient au mode texte, la phrase dans la saisie.
+    stop();
+  }, [stop]);
 
   // ── Suivre la conversation : un tour part, une réponse arrive ──────────────
   const previousStatus = useRef(conversation.status);
@@ -273,7 +274,12 @@ export function useVoiceDialogue(params: {
     const previous = previousStatus.current;
     previousStatus.current = conversation.status;
     if (state.phase === "off" || previous === conversation.status) return;
-    if (conversation.status === "sending") dispatch({ type: "sent" });
+    if (conversation.status === "sending") {
+      // Un nouveau tour part (une carte validée, un recueil qui s'ouvre) : la
+      // réponse précédente se tait, sinon elle couvrirait la suivante.
+      speakerRef.current?.stop();
+      dispatch({ type: "sent" });
+    }
     else if (conversation.status === "ended") stop();
     else if (previous === "sending") {
       dispatch(conversation.failure !== null ? { type: "turnFailed" } : { type: "replied" });
@@ -306,6 +312,8 @@ export function useVoiceDialogue(params: {
         finish(true);
         return;
       }
+      // Un autre tour est parti pendant qu'on préparait la voix : elle n'a plus lieu d'être.
+      if (live.current.phase !== "speaking") return;
       const outcome = await speakerRef.current.play(speech.audio);
       // « Coupé » : c'est `interrupt` qui a déjà fait avancer l'automate.
       if (outcome !== "stopped") finish(outcome === "failed");

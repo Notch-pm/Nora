@@ -46,7 +46,7 @@ import { useAssistantCollect } from "./useAssistantCollect.ts";
 import { useAssistantConversation } from "./useAssistantConversation.ts";
 import { voiceModeFor } from "@fn/_shared/domain/voice.ts";
 import { useVoiceDialogue } from "./voice/useVoiceDialogue.ts";
-import { VoiceControls } from "./voice/VoiceControls.tsx";
+import { DialoguePanel, VoiceStartButton } from "./voice/VoiceControls.tsx";
 
 /**
  * La mention permanente : obligation de transparence, jamais reléguée au
@@ -261,6 +261,7 @@ export function AssistantThread({
     collectionReply,
     asking,
     collectOffer,
+    acceptedOffer,
   } = useAssistantConversation(focusDemarcheId, lang, () => (voiceTurnsRef.current ? "voice" : "text"));
   const collect = useAssistantCollect({ lang, depositEnabled, collectionReply });
   const [draft, setDraft] = useState("");
@@ -321,11 +322,20 @@ export function AssistantThread({
       return sent;
     },
     onCorrect: (text) => {
+      // « Corriger » ramène au MODE TEXTE, la phrase entendue dans la saisie.
       setDraft(text);
-      textareaRef.current?.focus();
     },
   });
-  voiceTurnsRef.current = voiceMode === "dialogue" && voice.state.phase !== "off";
+  const dialogueActive = voice.state.phase !== "off";
+  voiceTurnsRef.current = voiceMode === "dialogue" && dialogueActive;
+
+  // Retour au mode texte : la zone de saisie réapparaît, et reçoit le focus —
+  // le panneau qui l'avait remplacée vient de disparaître (RGAA 12.8).
+  const wasDialogueRef = useRef(false);
+  useEffect(() => {
+    if (wasDialogueRef.current && !dialogueActive) textareaRef.current?.focus();
+    wasDialogueRef.current = dialogueActive;
+  }, [dialogueActive, textareaRef]);
 
   useEffect(() => {
     if (cardSignature === "") return;
@@ -384,6 +394,19 @@ export function AssistantThread({
     if (opened === null) return;
     sendMessage(t("assistant.collect.openingSaid", { name: opened.name }), opened.payload);
   }
+
+  // L'usager a accepté l'offre EN LE DISANT (« oui, remplissons-la ») : on
+  // ouvre le recueil exactement comme sous le bouton. Sans cela, une
+  // acceptation dite — à la voix surtout — faisait reposer la question en
+  // boucle (constaté le 2026-10-09). Une fois par acceptation (`turn`).
+  const openedForTurnRef = useRef(0);
+  useEffect(() => {
+    if (acceptedOffer === null || acceptedOffer.turn === openedForTurnRef.current) return;
+    openedForTurnRef.current = acceptedOffer.turn;
+    if (!depositEnabled || collect.session !== null || collect.loading) return;
+    void startCollect(acceptedOffer.id);
+    // Seule une NOUVELLE acceptation déclenche.
+  }, [acceptedOffer]);
 
   /**
    * Une carte validée (ou passée) REDONNE LA PAROLE à l'assistant.
@@ -722,7 +745,12 @@ export function AssistantThread({
           </div>
         )}
 
-        {state.status === "ended" ? (
+        {/* ⚠️ DEUX MODES QU'ON NE CONFOND PAS (retour PO, 2026-10-09) : en
+            dialogue, la zone de saisie DISPARAÎT au profit du panneau — grand
+            micro, état en gros, « Revenir au mode texte » toujours visible. */}
+        {state.status !== "ended" && dialogueActive ? (
+          <DialoguePanel voice={voice} onNewConversation={state.ticket !== null ? endConversation : null} />
+        ) : state.status === "ended" ? (
           <div className={CARD_CLASS}>
             <p className="font-semibold text-[color:var(--pt-ink)]">
               {assistantErrorMessage({ reason: "conversation_ended" }, lang).title}
@@ -827,7 +855,7 @@ export function AssistantThread({
                 </p>
               )}
             </div>
-            <VoiceControls mode={voiceMode} voice={voice} />
+            <VoiceStartButton mode={voiceMode} voice={voice} />
           </form>
         )}
 

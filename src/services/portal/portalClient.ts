@@ -1022,6 +1022,8 @@ function readAssistantTurnReply(body: unknown): AssistantTurnReply | null {
     // Revalidés côté serveur ; ici on ne vérifie que la FORME, comme partout.
     asking: Array.isArray(raw.asking) ? raw.asking.filter((id): id is string => typeof id === "string") : [],
     collectOffer: readCollectOffer(raw.collectOffer),
+    // Un `true` littéral, et seulement avec une offre : sans elle, rien à ouvrir.
+    offerAccepted: (body as { offerAccepted?: unknown }).offerAccepted === true && readCollectOffer(raw.collectOffer) !== null,
   };
 }
 

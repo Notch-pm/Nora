@@ -586,6 +586,8 @@ export async function runAssistantTurn(
         : await deps.loadDemarche(offered.id);
   const collectOffer =
     offered !== null && offerDetail?.form != null ? { id: offered.id, name: offered.name } : null;
+  // L'acceptation ne vaut que pour une offre que le SERVEUR a retenue.
+  const offerAccepted = collectOffer !== null && answer.offerAccepted;
 
   const turn = ticket.turn + 1;
   // ⚠️ Le drapeau s'inscrit sur ce que le SERVEUR a constaté : `collection`
@@ -607,8 +609,11 @@ export async function runAssistantTurn(
       // avec un bouton « Remplir cette démarche ici » qui ne menait nulle part
       // puisqu'on y était déjà. Le modèle n'a plus le catalogue sous les yeux,
       // mais il lit l'identifiant de la démarche consultée et le recopiait.
+      // Pas de carte non plus sous un « on commence » : l'offre vient d'être
+      // acceptée, le recueil s'ouvre — un second « Remplir cette démarche ici »
+      // ne mènerait nulle part.
       suggestions:
-        collection !== null
+        collection !== null || offerAccepted
           ? []
           : answer.procedureIds.map((id) => {
               const demarche = catalogue.find((d) => d.id === id)!;
@@ -619,6 +624,7 @@ export async function runAssistantTurn(
       collection,
       asking,
       collectOffer,
+      offerAccepted,
     },
   };
 }

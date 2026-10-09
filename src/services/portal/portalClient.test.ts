@@ -128,10 +128,33 @@ describe("sendAssistantTurn", () => {
       collection: { demarcheId: "d1", values: { f1: "12 rue de la Paix" }, skipped: [] },
       asking: ["f2"],
       collectOffer: { id: "d1", name: "Recensement" },
+      offerAccepted: true,
     };
     vi.stubGlobal("fetch", vi.fn(async () => respond(reply)));
     const result = await sendAssistantTurn(REQUEST);
     expect(result).toEqual({ ok: true, reply });
+  });
+
+  // Une acceptation sans offre n'ouvre rien ; un serveur d'avant n'en dit rien.
+  it("ne lit l'acceptation de l'offre qu'avec une offre, et qu'en `true` littéral", async () => {
+    const base = {
+      ticket: "t2",
+      message: { role: "assistant", content: "Très bien.", signature: "sig2" },
+      suggestions: [],
+      emergency: false,
+      turnsLeft: 19,
+      collection: null,
+      asking: [],
+    };
+    for (const [extra, expected] of [
+      [{ collectOffer: null, offerAccepted: true }, false],
+      [{ collectOffer: { id: "d1", name: "Recensement" }, offerAccepted: "true" }, false],
+      [{ collectOffer: { id: "d1", name: "Recensement" } }, false],
+    ] as const) {
+      vi.stubGlobal("fetch", vi.fn(async () => respond({ ...base, ...extra })));
+      const result = await sendAssistantTurn(REQUEST);
+      expect(result.ok && result.reply.offerAccepted).toBe(expected);
+    }
   });
 
   it("⚠️ une offre ou une demande mal formées ne passent pas pour telles", async () => {

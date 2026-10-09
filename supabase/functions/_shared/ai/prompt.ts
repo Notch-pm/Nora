@@ -138,8 +138,9 @@ const COLLECT_RULES = [
 const OFFER_RULES = [
   "PROPOSER DE REMPLIR — la collectivité autorise l'usager à remplir cette démarche en te parlant.",
   "- Quand une démarche est clairement la bonne et qu'elle a un formulaire, termine ta réponse par une phrase simple : « Si vous préférez, on peut la remplir ensemble ici, tout de suite », et mets son identifiant dans `offer_procedure_id`. ⚠️ Cette règle l'emporte sur la consigne générale qui dit de renvoyer l'usager vers la démarche : ici, tu peux la remplir avec lui.",
-  "- N'ouvre rien toi-même : c'est l'usager qui accepte, d'un bouton sous ton message. Ne propose pas deux fois ; s'il décline ou n'y répond pas, n'y reviens pas.",
-  "- `offer_procedure_id` : \"\" partout ailleurs.",
+  "- N'ouvre rien de ta propre initiative : c'est l'usager qui accepte — d'un bouton sous ton message, OU EN LE DISANT. Ne propose pas deux fois ; s'il décline ou n'y répond pas, n'y reviens pas.",
+  "- ⚠️ S'IL ACCEPTE EN LE DISANT (« oui », « d'accord, remplissons-la », « je veux remplir le formulaire avec vous »), NE REPOSE PAS LA QUESTION : mets `accept_offer` à true, l'identifiant de la démarche dans `offer_procedure_id`, et réponds en une phrase courte que vous commencez — sans poser encore la première question, l'écran l'ouvre et elle viendra ensuite. `accept_offer` n'est vrai que sur une acceptation EXPLICITE de l'usager, dans son dernier message ; une question, une hésitation ou un « peut-être » ne sont pas une acceptation.",
+  "- `offer_procedure_id` : \"\" partout ailleurs ; `accept_offer` : false partout ailleurs.",
 ].join("\n");
 
 /**
@@ -302,7 +303,7 @@ function outputContract(lang: string, collecting: boolean, offering: boolean): s
     collecting
       ? '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[], "field_updates": { "id": string, "value"?: string | string[], "skip"?: true, "origin": "extracted" | "inferred" | "generated", "source"?: string, "reason"?: string }[], "asking": string[] }'
       : offering
-        ? '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[], "offer_procedure_id": string }'
+        ? '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[], "offer_procedure_id": string, "accept_offer": boolean }'
         : '{ "reply": string, "intent": "answer" | "suggest" | "clarify" | "unknown" | "off_topic", "procedure_ids": string[] }',
     `- "reply" : ton message à l'usager, rédigé dans la langue de code « ${lang} » (les textes de la collectivité restent cités dans leur langue).`,
     '- "intent" : "suggest" si tu proposes une ou plusieurs démarches, "clarify" si tu poses une question pour choisir, "answer" si tu renseignes, "unknown" si l\'information n\'est pas dans les données, "off_topic" si la demande ne concerne pas les démarches de la collectivité.',
@@ -315,7 +316,10 @@ function outputContract(lang: string, collecting: boolean, offering: boolean): s
           '- "asking" : les id des informations que TA question porte, trois au plus ; [] quand tu ne demandes rien.',
         ]
       : offering
-        ? ['- "offer_procedure_id" : l\'identifiant de la démarche que tu proposes de remplir ici ; "" si tu n\'en proposes aucune.']
+        ? [
+            '- "offer_procedure_id" : l\'identifiant de la démarche que tu proposes de remplir ici — ou que l\'usager vient d\'accepter de remplir ; "" sinon.',
+            '- "accept_offer" : true seulement si le dernier message de l\'usager ACCEPTE explicitement de remplir cette démarche ici ; false sinon.',
+          ]
         : []),
   ].join("\n");
 }

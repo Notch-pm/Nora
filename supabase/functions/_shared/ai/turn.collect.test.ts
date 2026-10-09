@@ -14,6 +14,7 @@ import { MAX_TURNS, MAX_TURNS_COLLECT } from "../domain/assistantTurn.ts";
 import { issueChallenge, solveChallenge } from "./challenge.ts";
 import { issueTicket, readTicket, signReply } from "./signing.ts";
 import type { CompletionInput, CompletionResult } from "./socleAi.ts";
+import { buildAssistantPrompt } from "./prompt.ts";
 import { runAssistantTurn, type TurnDeps } from "./turn.ts";
 
 const SECRET = "secret-de-test";
@@ -315,6 +316,40 @@ describe("le recueil dans la conversation", () => {
       id: PROPRETE,
       name: "Signaler un problème de propreté",
     });
+  });
+
+  // « Oui, remplissons-la » dit à voix haute ne déclenchait rien : l'offre
+  // revenait en boucle (2026-10-09). Le modèle constate l'acceptation, le
+  // serveur la revérifie, l'écran ouvre comme sous le bouton.
+  it("l'usager accepte EN LE DISANT : l'acceptation remonte avec l'offre", async () => {
+    // Le modèle recopie la démarche dans `procedure_ids` : le serveur ne doit pas en refaire une carte.
+    const { deps } = setup({ offer_procedure_id: PROPRETE, accept_offer: true, procedure_ids: [PROPRETE] });
+    const outcome = await runAssistantTurn(tenant(true), "fr", await body("Oui, remplissons-la ensemble", undefined), deps);
+    expect(outcome.ok && outcome.reply.collectOffer).toEqual({ id: PROPRETE, name: "Signaler un problème de propreté" });
+    expect(outcome.ok && outcome.reply.offerAccepted).toBe(true);
+    // Pas de carte « Remplir cette démarche ici » sous un « on commence ».
+    expect(outcome.ok && outcome.reply.suggestions).toEqual([]);
+    // Les règles de l'offre le disent au modèle : ne pas reposer la question.
+    const offering = buildAssistantPrompt({
+      tenantName: "Nantes", lang: "fr", catalogue: [], candidates: [], focus: null, offering: true,
+    });
+    expect(offering).toContain("NE REPOSE PAS LA QUESTION");
+    expect(offering).toContain('"accept_offer": boolean');
+  });
+
+  it("⚠️ une acceptation sans offre valable n'ouvre rien", async () => {
+    // Dépôt fermé par la collectivité : pas d'offre, donc rien à accepter.
+    const ferme = setup({ offer_procedure_id: PROPRETE, accept_offer: true });
+    const a = await runAssistantTurn(tenant(false), "fr", await body("Oui", undefined), ferme.deps);
+    expect(a.ok && a.reply.offerAccepted).toBe(false);
+    // Une démarche sans formulaire : rien à remplir.
+    const sansForm = setup({ offer_procedure_id: SANS_FORMULAIRE, accept_offer: true });
+    const b = await runAssistantTurn(tenant(true), "fr", await body("Oui", undefined), sansForm.deps);
+    expect(b.ok && b.reply.offerAccepted).toBe(false);
+    // Une offre sans acceptation reste une offre.
+    const offre = setup({ offer_procedure_id: PROPRETE });
+    const c = await runAssistantTurn(tenant(true), "fr", await body("Un dépôt sauvage", undefined), offre.deps);
+    expect(c.ok && c.reply.offerAccepted).toBe(false);
   });
 
   it("⚠️ une offre qui mènerait à une impasse est tue", async () => {

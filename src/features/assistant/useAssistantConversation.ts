@@ -91,6 +91,12 @@ export interface UseAssistantConversation {
   asking: string[];
   /** La démarche que l'assistant propose de remplir — l'écran en fait un bouton. */
   collectOffer: { id: string; name: string } | null;
+  /**
+   * L'usager vient d'accepter l'offre EN LE DISANT : l'écran ouvre le recueil
+   * comme sous le bouton. `turn` change à chaque réponse qui l'accepte — c'est
+   * ce que l'écran surveille, pour n'ouvrir qu'une fois par acceptation.
+   */
+  acceptedOffer: { id: string; name: string; turn: number } | null;
 }
 
 export function useAssistantConversation(
@@ -110,6 +116,8 @@ export function useAssistantConversation(
   const [collectionReply, setCollectionReply] = useState<CollectionPayload | null>(null);
   const [asking, setAsking] = useState<string[]>([]);
   const [collectOffer, setCollectOffer] = useState<{ id: string; name: string } | null>(null);
+  const [acceptedOffer, setAcceptedOffer] = useState<{ id: string; name: string; turn: number } | null>(null);
+  const acceptedTurnRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const newConversationButtonRef = useRef<HTMLButtonElement>(null);
   // Incrémenté à chaque geste de l'usager — voir l'en-tête du fichier.
@@ -232,6 +240,10 @@ export function useAssistantConversation(
     setCollectionReply(result.reply.collection);
     setAsking(result.reply.asking);
     setCollectOffer(result.reply.collectOffer);
+    if (result.reply.offerAccepted && result.reply.collectOffer !== null) {
+      acceptedTurnRef.current += 1;
+      setAcceptedOffer({ ...result.reply.collectOffer, turn: acceptedTurnRef.current });
+    }
   }
 
   function sendMessage(
@@ -271,6 +283,7 @@ export function useAssistantConversation(
     setCollectionReply(null);
     setAsking([]);
     setCollectOffer(null);
+    setAcceptedOffer(null);
     lastCollectionRef.current = null;
     const storage = tabStorage();
     if (storage !== null) clearConversation(storage);
@@ -289,5 +302,6 @@ export function useAssistantConversation(
     collectionReply,
     asking,
     collectOffer,
+    acceptedOffer,
   };
 }

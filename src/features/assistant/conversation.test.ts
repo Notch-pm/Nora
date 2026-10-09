@@ -248,6 +248,7 @@ describe("reduceConversation", () => {
         collection: null,
         asking: [],
         collectOffer: null,
+        offerAccepted: false,
       },
     });
     expect(next.status).toBe("ready");
@@ -269,6 +270,7 @@ describe("reduceConversation", () => {
         collection: null,
         asking: [],
         collectOffer: null,
+        offerAccepted: false,
       },
     });
     expect(next.status).toBe("ended");
@@ -287,6 +289,7 @@ describe("reduceConversation", () => {
         collection: null,
         asking: [],
         collectOffer: null,
+        offerAccepted: false,
       },
     });
     expect(next.emergency).toBe(true);

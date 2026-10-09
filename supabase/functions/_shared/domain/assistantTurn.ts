@@ -108,6 +108,13 @@ export interface AssistantTurnReply {
    * embarquerait dans un formulaire celui qui voulait juste poser une question.
    */
   collectOffer: { id: string; name: string } | null;
+  /**
+   * L'usager a ACCEPTÉ `collectOffer` en le disant (« oui, remplissons-la ») :
+   * l'écran ouvre le recueil comme sous le bouton. Sans cela, une acceptation
+   * dite à voix haute faisait reposer la question en boucle (2026-10-09).
+   * Toujours faux quand `collectOffer` est nul.
+   */
+  offerAccepted: boolean;
 }
 
 /**

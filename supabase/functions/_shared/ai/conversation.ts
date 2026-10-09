@@ -127,6 +127,12 @@ export interface AssistantAnswer {
    * modèle ne peut pas désigner une démarche qui n'existe pas.
    */
   offerProcedureId: string | null;
+  /**
+   * L'usager vient d'ACCEPTER, en le disant, de remplir `offerProcedureId` ici.
+   * Le modèle ne fait que le constater ; le serveur revérifie l'offre, et c'est
+   * l'écran qui ouvre — comme sous le bouton.
+   */
+  offerAccepted: boolean;
 }
 
 const MAX_REPLY_CHARS = 2000;
@@ -221,5 +227,7 @@ export function parseAssistantAnswer(raw: string, catalogueIds: ReadonlySet<stri
     fieldUpdates: readFieldUpdates(source.field_updates),
     asking,
     offerProcedureId,
+    // Un `true` littéral, et une démarche désignée : sans elle, il n'y a rien à ouvrir.
+    offerAccepted: source.accept_offer === true && offerProcedureId !== null,
   };
 }
