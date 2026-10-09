@@ -1443,6 +1443,19 @@ du 2026-10-09) : écoute → fin de parole détectée → transcription → **re
 de 2,5 s (« Envoyer », « Corriger » qui rend le texte au clavier) → envoi
 automatique → réponse affichée **et dite** → le micro se rouvre.
 
+- ⚠️ **Deux modes qu'on ne confond pas** (retour PO du 2026-10-09) : en dialogue,
+  la zone de saisie **disparaît** au profit de `DialoguePanel` — voyant « Mode
+  dialogue », grand micro qui suit la voix, état en gros caractères — et
+  **« Revenir au mode texte »** reste visible en haut du panneau. « Corriger »
+  ramène aussi au mode texte, la phrase entendue dans la saisie. Le focus entre
+  dans le panneau à son ouverture et revient à la saisie au retour.
+- ⚠️ **L'offre de remplir s'accepte aussi EN LE DISANT** (« oui, remplissons-la ») :
+  le modèle le constate (`accept_offer`), le serveur revérifie l'offre
+  (`offerAccepted` sur la réponse, jamais sans `collectOffer`), et l'écran ouvre
+  le recueil exactement comme sous le bouton. Avant, une acceptation dite à voix
+  haute faisait reposer la question en boucle. Rien ne s'ouvre pour autant sans
+  que l'usager l'ait demandé — sa parole vaut un clic, l'initiative du modèle non.
+
 - **La règle** est dans deux modules purs, testés : `dialogue.ts` (l'automate —
   quelles phases, quoi après quoi) et `endpointer.ts` (la fin de parole).
   `useVoiceDialogue.ts` exécute, `devices.ts` tient le micro et le haut-parleur,
