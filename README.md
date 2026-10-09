@@ -1533,8 +1533,10 @@ libre », traduit. Un champ absent (Socle d'avant 1.38.0), abîmé ou autre que 
   réponse illisible → `clara_unavailable` (« réessayez »). Un `404` **sans** `organisme_inconnu`
   (fonction non déployée) n'est pas lu comme un organisme inconnu. Rien du contenu n'est
   journalisé.
-- ⚠️ **La phrase de consentement nomme l'organisme destinataire**, pas la collectivité : c'est
-  l'organisation Clara rattachée à cet UUID Socle qui la consigne. À vérifier avec Clara.
+- ⚠️ **La phrase de consentement nomme la collectivité** (`tenant.name`), pas l'organisme
+  destinataire : Clara recompose la phrase qu'elle consigne avec `organizations.name`, le nom
+  de son tenant (miroir de la racine Socle) — comme Iris pour les démarches. Afficher un autre
+  nom ferait consigner une phrase que l'usager n'a pas lue.
 
 Sans les deux secrets `CLARA_*`, l'envoi répond `503 courrier_not_configured` et tout le reste du
 portail sert comme avant.

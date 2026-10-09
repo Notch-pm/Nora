@@ -553,9 +553,12 @@ export function CourrierLibrePage() {
           errors={senderErrors}
           consents={consents}
           onConsentChange={setConsent}
-          // ⚠️ Le nom de l'organisme DESTINATAIRE : c'est lui que Clara nomme
-          // dans la phrase qu'elle consigne, pas la collectivité du domaine.
-          organismName={organisme.name}
+          // ⚠️ Le nom de la COLLECTIVITÉ, pas celui de l'organisme destinataire :
+          // Clara recompose la phrase consignée avec `organizations.name`, le
+          // nom de son tenant (miroir de la racine Socle) — comme Iris pour les
+          // démarches. Afficher autre chose ferait consigner une phrase que
+          // l'usager n'a pas lue.
+          organismName={tenant.name}
           note={
             <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("courrierLibre.contactHint")}</p>
           }
