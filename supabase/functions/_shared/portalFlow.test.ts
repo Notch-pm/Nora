@@ -77,6 +77,14 @@ const ROUTES: Record<string, unknown> = {
         { id: "sans-nom", name: "" },
         "pas-un-objet",
       ],
+      // Contrat 1.41.0 : la catégorie dès la liste, pictogramme compris.
+      // Traduite en anglais, comme l'intitulé.
+      category: {
+        id: "cat-voirie",
+        name: "Voirie",
+        icon: "construction",
+        translations: { en: { name: "Roads" } },
+      },
     },
     {
       id: "d2",
@@ -255,6 +263,7 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
           },
         ],
         audiences: ["citoyen"],
+        category: { id: "cat-voirie", name: "Voirie", icon: "construction" },
       },
       {
         id: "d2",
@@ -267,6 +276,8 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
         // ⚠️ Dans l'ordre du filtre, pas celui du Socle : deux catalogues
         // paramétrés dans un ordre différent doivent se filtrer pareil.
         audiences: ["citoyen", "entreprise"],
+        // Un Socle d'avant 1.41.0 ne sert pas la catégorie : pas d'erreur.
+        category: null,
       },
     ]);
   });
@@ -293,6 +304,7 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
         organizations: [],
         // ⚠️ Vide, jamais « tous publics » : rien n'a été déclaré.
         audiences: [],
+        category: null,
       },
     ]);
   });
@@ -447,7 +459,9 @@ const DETAIL = {
   user_description: "Le service voirie interviendra sous 5 jours ouvrés.",
   input_duration_minutes: 5,
   organizations: [{ id: NANTES, name: "Ville de Nantes", slug: "nantes" }],
-  category: { id: "cat-1", name: "Espace public" },
+  // Un pictogramme qui n'a pas la forme d'un nom d'icône est écarté à la
+  // frontière : la carte dessinera le neutre.
+  category: { id: "cat-1", name: "Espace public", icon: "<svg onload=x>" },
   form_schema: {
     version: 1,
     content: [
@@ -488,7 +502,8 @@ describe("7. démarche connue → détail traduit et parsé", () => {
     expect(result.demarche.userDescription).toBe(
       "Le service voirie interviendra sous 5 jours ouvrés.",
     );
-    expect(result.demarche.category).toEqual({ id: "cat-1", name: "Espace public" });
+    // Pictogramme illisible : `null`, la carte dessinera le neutre.
+    expect(result.demarche.category).toEqual({ id: "cat-1", name: "Espace public", icon: null });
   });
 
   it("parse le formulaire à la frontière, en écartant ce qu'il ne sait pas rendre", async () => {

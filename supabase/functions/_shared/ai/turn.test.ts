@@ -31,8 +31,8 @@ const tenant = (enabled = true): Tenant => ({
 });
 
 const catalogue: Demarche[] = [
-  { id: CANTINE, name: "Inscription à la cantine", description: null, estimatedMinutes: 5, organizations: [], audiences: ["citoyen"] },
-  { id: PROPRETE, name: "Signaler un problème de propreté", description: "Dépôt sauvage, tag.", estimatedMinutes: 3, organizations: [], audiences: ["citoyen"] },
+  { id: CANTINE, name: "Inscription à la cantine", description: null, estimatedMinutes: 5, organizations: [], audiences: ["citoyen"], category: null },
+  { id: PROPRETE, name: "Signaler un problème de propreté", description: "Dépôt sauvage, tag.", estimatedMinutes: 3, organizations: [], audiences: ["citoyen"], category: null },
 ];
 
 const detail: DemarcheDetail = {

@@ -198,6 +198,14 @@ liste ordonnée de sections typées. Règles de rendu, toutes dans
   La liste du filtre est l'union des organismes du catalogue, la collectivité
   visitée en tête puis par nom — un organisme qui ne propose rien n'y figure
   pas.
+- **La carte porte le pictogramme de la catégorie** (contrat Socle 1.41.0 :
+  `category` dans la liste, avec `icon`), puis la catégorie, le nom, le résumé,
+  les organismes, et en pied la durée et une flèche — décorative, c'est la
+  carte entière qui est le lien. Nora n'embarque pas Lucide : les tracés sont
+  dans `features/portal/categoryIcons.ts`, **généré** depuis le catalogue du
+  Socle (`node scripts/generate-category-icons.mjs ../socle`) et épinglé par
+  `categoryIcons.test.tsx`. Une valeur inconnue (Socle en avance) se dessine en
+  pictogramme neutre, jamais en erreur.
 - **Au-delà de trois organismes, la carte annonce leur NOMBRE** (« 4
   collectivités ») au lieu de les nommer — `organizationChips`, seuil nommé une
   fois et valable partout où une dalle apparaît. Quatre noms de communes sur une

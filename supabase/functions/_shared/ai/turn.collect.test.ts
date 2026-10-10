@@ -34,7 +34,7 @@ const tenant = (depositEnabled: boolean): Tenant => ({
 });
 
 const base = (id: string, name: string): Demarche => ({
-  id, name, description: null, estimatedMinutes: 3, organizations: [], audiences: ["citoyen"],
+  id, name, description: null, estimatedMinutes: 3, organizations: [], audiences: ["citoyen"], category: null,
 });
 const catalogue = [base(PROPRETE, "Signaler un problème de propreté"), base(SANS_FORMULAIRE, "Prendre rendez-vous")];
 

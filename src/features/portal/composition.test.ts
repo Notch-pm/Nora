@@ -29,7 +29,7 @@ function demarche(
   organizations: Demarche["organizations"] = [ACCM],
   audiences: Demarche["audiences"] = ["citoyen"],
 ): Demarche {
-  return { id, name, description, estimatedMinutes: null, organizations, audiences };
+  return { id, name, description, estimatedMinutes: null, organizations, audiences, category: null };
 }
 
 describe("filterDemarchesByOrganization", () => {

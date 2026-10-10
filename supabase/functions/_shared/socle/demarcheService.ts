@@ -143,6 +143,7 @@ function toDemarche(raw: unknown, lang: string): Demarche | null {
         : null,
     organizations: toOrganizations(row.organizations),
     audiences: toAudiences(row.audiences),
+    category: toCategory(row.category, lang),
   };
 }
 
@@ -192,7 +193,11 @@ function toCategory(raw: unknown, lang: string): DemarcheCategory | null {
   const row = raw as Record<string, unknown>;
   const id = text(row.id);
   const name = localizedText(text(row.name), row.translations, lang, "name");
-  return id !== null && name !== null ? { id, name } : null;
+  if (id === null || name === null) return null;
+  // Un nom d'icône, rien d'autre : ce qui n'en a pas la forme est écarté ici,
+  // à la frontière, et la carte dessine le pictogramme neutre.
+  const icon = text(row.icon);
+  return { id, name, icon: icon !== null && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(icon) ? icon : null };
 }
 
 /**
@@ -248,7 +253,6 @@ export async function getPublicDemarche(
       // Le RÉSUMÉ SEUL : le descriptif suit en entier sur la même page, le
       // repli de la carte l'y ferait commencer deux fois.
       description: localizedText(text(row.short_description), row.translations, lang, "short_description"),
-      category: toCategory(row.category, lang),
       userDescription: localizedText(
         text(row.user_description),
         row.translations,

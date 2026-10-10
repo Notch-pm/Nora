@@ -122,12 +122,25 @@ export interface Demarche {
    * compris là où elle n'est pas ouverte.
    */
   audiences: Audience[];
+  /**
+   * La catégorie de la démarche, `null` si elle n'en a pas. Servie dès la
+   * LISTE depuis le contrat 1.41.0 du Socle : la carte en montre le libellé et
+   * le pictogramme.
+   */
+  category: DemarcheCategory | null;
 }
 
-/** Catégorie d'une démarche : de quoi la situer, rien de plus. */
+/** Catégorie d'une démarche : de quoi la situer et la dessiner, rien de plus. */
 export interface DemarcheCategory {
   id: string;
   name: string;
+  /**
+   * Pictogramme choisi au Socle — un nom d'icône Lucide en kebab-case
+   * (`utensils`, `school`…) — ou `null`. ⚠️ Une valeur que `categoryIcons.ts`
+   * ne connaît pas (le Socle a allongé son catalogue avant Nora) se dessine
+   * avec le pictogramme neutre : jamais d'erreur, jamais de case vide.
+   */
+  icon: string | null;
 }
 
 /**
@@ -140,7 +153,6 @@ export interface DemarcheCategory {
  * écrans n'ont donc jamais à douter de la forme de ce qu'ils reçoivent.
  */
 export interface DemarcheDetail extends Demarche {
-  category: DemarcheCategory | null;
   /**
    * Le descriptif rédigé POUR l'usager, en entier, en **MARKDOWN** (contrat
    * 1.24.0) — à rendre avec `Markdown.tsx`, jamais tel quel.

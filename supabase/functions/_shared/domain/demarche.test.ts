@@ -42,6 +42,7 @@ function demarche(id: string, organizations: DemarcheOrganization[]): Demarche {
     estimatedMinutes: null,
     organizations,
     audiences: [],
+    category: null,
   };
 }
 

@@ -16,6 +16,7 @@ const demarche = (id: string, name: string, description: string | null = null): 
   estimatedMinutes: null,
   organizations: [],
   audiences: [],
+  category: null,
 });
 
 describe("pickCandidates — quelles démarches décrire au modèle", () => {

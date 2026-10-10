@@ -44,7 +44,7 @@ const tenant: Tenant = {
 
 const demarche: Demarche = {
   id: SIGNALEMENT, name: "Signaler un problème dans l'espace public", description: null,
-  estimatedMinutes: 3, organizations: [], audiences: ["citoyen"],
+  estimatedMinutes: 3, organizations: [], audiences: ["citoyen"], category: null,
 };
 
 // Le bloc d'adresse tel que le Socle le publie — les clés sont celles de test2.
