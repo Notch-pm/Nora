@@ -1572,6 +1572,71 @@ portail sert comme avant.
 3. **`portal-api`** (`npx supabase functions deploy portal-api`) : le courrier s'ouvre là où le
    Socle (≥ 1.38.0) l'a ouvert.
 
+## L'espace usager — fondations (lot L1)
+
+L'analyse de référence est `C:\Users\jacqu\Notch\Sceaux\02-espace-usager.md`, rédigée pour le marché GRU de Sceaux.
+
+Le lot L1 pose le socle de tout le reste : **comment un citoyen reste connecté sans que rien ne fuie**. Il ne livre encore ni l'inscription ni la connexion (lot L3), ni le suivi hors compte (lot L2).
+
+### Le chemin d'une requête
+
+```
+navigateur ──► https://sceaux.edilumen.fr/api/*          (même origine)
+                 cookie __Host-nora_sid (HttpOnly, Secure, SameSite=Lax)
+Worker (worker/proxy.ts) ──► portal-api
+                 + x-nora-host, x-nora-client-ip, x-nora-proxy-secret
+portal-api ──► base Nora (sessions, service role) │ Socle │ Iris
+```
+
+- **Proxy de même origine.** Le Worker ne servait que des fichiers. Il relaie désormais `/api/*` vers portal-api.
+  - Le cookie de session devient de première partie, attaché au seul domaine de la collectivité. Le préfixe `__Host-` interdit `Domain` et tout sous-domaine.
+  - Ce chemin n'a plus besoin de CORS.
+  - Le Worker ne transmet qu'une liste blanche d'en-têtes : un visiteur ne peut pas poser lui-même les `x-nora-*`.
+- **Hôte et adresse certifiés.** portal-api ne croit `x-nora-host` et `x-nora-client-ip` que si `x-nora-proxy-secret` est le bon (comparaison à temps constant).
+  - L'hôte certifié passe devant `Origin`.
+  - L'adresse certifiée alimente les freins. Sans elle, vus de portal-api, tous les visiteurs auraient l'adresse du Worker.
+- **Sessions opaques.** Le jeton (256 bits) ne vit que dans le cookie. La base n'en garde que le SHA-256.
+  - Une session appartient à UNE collectivité. Présentée sous une autre, elle n'ouvre rien et l'incident est journalisé.
+  - Durées :
+
+    | Profil | Inactivité | Durée maximale |
+    |---|---|---|
+    | Standard | 30 min (`CITIZEN_SESSION_IDLE_MINUTES`) | 12 h |
+    | « Rester connecté » | 7 j | 30 j |
+    | Accès invité | 30 min | 2 h |
+- **Hors proxy, personne n'est connecté.** Un appel direct à portal-api reste possible : c'est le chemin actuel du portail public. Mais il est toujours anonyme, quoi qu'il porte.
+- **Écritures protégées.** Toute écriture qui touche une session exige l'en-tête `x-nora-request: 1`. Si le navigateur fournit `Origin` et `Sec-Fetch-Site`, ils doivent désigner la collectivité elle-même.
+- **Base fermée.**
+  - Les tables `citizen_*` sont sous RLS sans aucune politique, et leurs privilèges sont retirés à `anon` et `authenticated`.
+  - Seule portal-api y accède, en service role, par les fonctions `citizen_session_*`.
+  - La clé anon du projet n'est donnée à aucun navigateur.
+- **Journal des connexions** (`citizen_auth_events`). Il consigne l'ouverture, la fin, l'inactivité, l'expiration et la révocation d'une session, ainsi qu'une session présentée sous un autre tenant. Chaque entrée garde l'adresse IP et le navigateur, comme l'exigent les marchés publics. Conservation : un an.
+
+Routes livrées :
+
+- `GET /v1/session` : dit qui est là, sans jamais renvoyer d'identifiant ;
+- `POST /v1/session/fin` : déconnexion, idempotente.
+
+### Mise en service — dans cet ordre
+
+1. **Base** : appliquer `supabase/migrations/` sur le projet Nora.
+2. **Secret partagé** : `supabase secrets set NORA_PROXY_SECRET=…`, puis déployer portal-api. Rien ne change pour le portail public : les appels directs sont inchangés.
+3. **Worker** : `npx wrangler secret put NORA_PROXY_SECRET` (même valeur), puis pousser `wrangler.jsonc` et `worker/`. `/api/*` est alors relayé.
+4. **Interface** : variable de build `VITE_PORTAL_API_URL=/api`, puis rebuild. Le portail passe par le proxy. Pour revenir en arrière, remettre l'URL directe.
+5. **Purge** : planifier `citizen_purge_auth_data()` (pg_cron, quotidien).
+6. **Freins partagés** : poser des règles de limitation de débit Cloudflare sur `/api/v1/session*`, et au lot L3 sur la connexion et l'inscription. Les freins de portal-api sont en mémoire d'isolat, donc non partagés.
+
+En local, `vite.config.ts` relaie `/api/*` comme le Worker si `PORTAL_API_PROXY_TARGET` et `NORA_PROXY_SECRET` sont posés dans `.env.local` (voir `.env.example`).
+
+### Inventaire pour la bascule d'hébergement
+
+Le projet Nora sera recréé en France (CCTP §7.2.1). Ce lot ajoute à reporter :
+
+- les migrations `supabase/migrations/`, rejouables telles quelles ;
+- le secret `NORA_PROXY_SECRET`, côté portal-api ET côté Worker ;
+- la variable de runtime `PORTAL_API_URL` du Worker ;
+- la tâche planifiée de purge.
+
 ## Ce qui n'est pas encore fait
 
 Dans l'ordre prévu — le détail, les prérequis côté Socle et les questions
@@ -1582,7 +1647,8 @@ ouvertes sont dans `docs/roadmap.md` du Socle, section « Portail usagers » :
 2. les démarches **hors compte** : la demande part déjà, il lui manque son après —
    confirmation par courriel et lien de suivi signé, donc le statut d'une demande
    consultable depuis le portail ;
-3. les démarches **avec compte** (espace usager, rattaché au référentiel
+3. les démarches **avec compte** (fondations livrées au lot L1, voir « L'espace usager »
+   ci-dessus ; espace usager rattaché au référentiel
    `contacts` du Socle) — dont un « Mon compte » où l'usager **modifie ses
    consentements** RGPD (le lot 1 du 2026-09-22 ne fait que les recueillir) ;
 4. la **création de compte** ;

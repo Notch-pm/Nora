@@ -41,9 +41,21 @@ export interface DevHostnameConfig {
   fallback: string | null;
 }
 
-/** Nom d'hôte à résoudre, ou `null` s'il n'a pas pu être déterminé. */
-export function hostnameForRequest(request: Request, dev: DevHostnameConfig): string | null {
-  const originHost = hostFromOrigin(request.headers.get("origin"));
+/**
+ * Nom d'hôte à résoudre, ou `null` s'il n'a pas pu être déterminé.
+ *
+ * `proxyHost` est l'hôte CERTIFIÉ par le Worker du portail (`_shared/http/proxy.ts`).
+ * Quand il est là, il passe devant `Origin` : c'est le `Host` réellement servi,
+ * présent même sur un GET de même origine, où le navigateur n'envoie pas
+ * toujours `Origin`. Il suit ensuite exactement les mêmes règles — y compris la
+ * simulation de développement sur `*.localhost`.
+ */
+export function hostnameForRequest(
+  request: Request,
+  dev: DevHostnameConfig,
+  proxyHost: string | null = null,
+): string | null {
+  const originHost = proxyHost ?? hostFromOrigin(request.headers.get("origin"));
   const suffix = dev.suffix !== null && dev.suffix !== "" ? dev.suffix : null;
   const fallback = dev.fallback !== null && dev.fallback !== "" ? dev.fallback : null;
 

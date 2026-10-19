@@ -5,7 +5,8 @@
  * Son travail tient en quatre étapes : déterminer le domaine visité, demander
  * au Socle à qui il appartient, servir ce que cette collectivité publie, et
  * remettre à Iris les demandes que les usagers déposent. Il ne connaît aucune
- * collectivité, n'en stocke aucune, et n'a pas de base de données. Ajouter
+ * collectivité et n'en stocke aucune ; sa seule base est celle des comptes et
+ * sessions de citoyen (migrations `supabase/migrations/`). Ajouter
  * `angers.edilumen.fr` ne demande aucun déploiement — une ligne dans les
  * domaines du Socle suffit.
  *
@@ -15,8 +16,11 @@
  * d'interroger un référentiel authentifié et incapable de déposer une demande
  * sans donner à ses visiteurs le droit d'en déposer n'importe laquelle.
  *
- * Déployée avec `verify_jwt = false` : le portail est public par nature, il n'y
- * a pas d'usager connecté à ce stade.
+ * Déployée avec `verify_jwt = false` : le portail est public par nature. Les
+ * citoyens connectés (espace usager, depuis le lot L1) ne présentent pas de JWT
+ * Supabase mais un cookie de session opaque, que cette fonction vérifie
+ * elle-même dans la base du projet Nora — et SEULEMENT sur une requête relayée
+ * par le Worker du portail (`_shared/http/proxy.ts`, `_shared/session/`).
  *
  * Ce fichier ne contient QUE de la plomberie HTTP. Les règles sont dans
  * `_shared/` — c'est ce qui les rend testables sans lancer Deno.
@@ -48,7 +52,20 @@ import {
 } from "../_shared/domain/courrier.ts";
 import { httpStatusForPieceFailure, uploadPiece } from "../_shared/iris/pieceService.ts";
 import { hostnameForRequest } from "../_shared/http/requestHostname.ts";
-import { clientAddress, createRateLimiter, hashKey } from "../_shared/http/rateLimit.ts";
+import { createRateLimiter, hashKey } from "../_shared/http/rateLimit.ts";
+import { type ProxyContext, readProxyContext, visitorAddress } from "../_shared/http/proxy.ts";
+import { createSessionStore, type SessionStore } from "../_shared/session/sessionStore.ts";
+import { clearedSessionCookie } from "../_shared/session/sessionToken.ts";
+import {
+  checkMutation,
+  currentSession,
+  endSession,
+  httpStatusForSessionFailure,
+  SESSION_MESSAGES,
+  type SessionContext,
+  type SessionFailure,
+  traceOf,
+} from "../_shared/session/sessionService.ts";
 import { allFields } from "../_shared/domain/formSchema.ts";
 import { parseLocationValue } from "../_shared/domain/location.ts";
 import { AUDIENCES } from "../_shared/domain/requesterConfig.ts";
@@ -85,6 +102,10 @@ import { MAX_RECORDING_BYTES } from "../_shared/domain/voice.ts";
  * portail existe pour supprimer. Le contrôle d'accès n'est pas ici : il est
  * dans ce que le Socle accepte de publier, et dans le fait que le dépôt ne
  * peut viser qu'une démarche publiée de la collectivité du domaine visité.
+ *
+ * ⚠️ JAMAIS `Access-Control-Allow-Credentials`. Les sessions de citoyen passent
+ * par le proxy de MÊME origine, qui n'a pas besoin de CORS ; une page d'un
+ * autre site ne doit pas pouvoir appeler cette API avec un cookie.
  */
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -308,6 +329,55 @@ function socleClient(baseUrl: string, apiKey: string) {
 }
 
 /**
+ * Ce que le Worker du portail certifie pour cette requête (hôte visité, adresse
+ * du visiteur), ou rien s'il ne l'a pas relayée. Voir `_shared/http/proxy.ts`.
+ */
+function proxyOf(request: Request): ProxyContext {
+  return readProxyContext(request.headers, Deno.env.get("NORA_PROXY_SECRET"));
+}
+
+/** L'adresse du visiteur pour les freins — celle que certifie le proxy s'il relaie. */
+function visitor(request: Request): string {
+  return visitorAddress(request.headers, proxyOf(request));
+}
+
+/**
+ * La base des sessions — le projet Supabase de Nora lui-même. `SUPABASE_URL` et
+ * `SUPABASE_SERVICE_ROLE_KEY` sont posés d'office par Supabase dans toute edge
+ * function : rien à configurer. Construit une fois par isolat, comme le client
+ * du Socle.
+ */
+let sharedSessionStore: SessionStore | null = null;
+
+function sessionStore(): SessionStore | null {
+  if (sharedSessionStore !== null) return sharedSessionStore;
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) {
+    console.error("portal-api : SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY absent — sessions indisponibles.");
+    return null;
+  }
+  sharedSessionStore = createSessionStore({ url, serviceKey });
+  return sharedSessionStore;
+}
+
+/** Le contexte de session d'une requête, ou `null` si la base n'est pas joignable. */
+function sessionContext(request: Request, tenantId: string): SessionContext | null {
+  const store = sessionStore();
+  if (store === null) return null;
+  const proxy = proxyOf(request);
+  return { proxy, tenantId, store, trace: traceOf(request.headers, proxy) };
+}
+
+function sessionFailure(reason: SessionFailure): Response {
+  return json(
+    httpStatusForSessionFailure(reason),
+    { error: { code: reason, message: SESSION_MESSAGES[reason] } },
+    { "Cache-Control": "no-store" },
+  );
+}
+
+/**
  * La collectivité du domaine visité. Le navigateur ne fournit jamais de
  * tenant : il n'a aucun moyen d'en fournir un, et c'est ce qui rend inutile
  * toute tentative de le falsifier.
@@ -316,10 +386,15 @@ async function tenantOf(
   request: Request,
   socle: ReturnType<typeof socleClient>,
 ): Promise<{ ok: true; tenant: Tenant } | { ok: false; response: Response }> {
-  const hostname = hostnameForRequest(request, {
-    suffix: Deno.env.get("PORTAL_DEV_DOMAIN_SUFFIX") ?? null,
-    fallback: Deno.env.get("PORTAL_DEV_HOSTNAME") ?? null,
-  });
+  const proxy = proxyOf(request);
+  const hostname = hostnameForRequest(
+    request,
+    {
+      suffix: Deno.env.get("PORTAL_DEV_DOMAIN_SUFFIX") ?? null,
+      fallback: Deno.env.get("PORTAL_DEV_HOSTNAME") ?? null,
+    },
+    proxy.proxied ? proxy.host : null,
+  );
   const resolution = await resolveTenant(hostname, socle);
   if (!resolution.ok) return { ok: false, response: failure(resolution.reason) };
   return { ok: true, tenant: resolution.tenant };
@@ -638,7 +713,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     if (Number.isFinite(declared) && declared > MAX_PIECE_BYTES + MULTIPART_ALLOWANCE) {
       return pieceFailure("piece_too_large", 413);
     }
-    if (!pieceLimiter.allow(await hashKey(clientAddress(request.headers)))) {
+    if (!pieceLimiter.allow(await hashKey(visitor(request)))) {
       return pieceFailure("too_many_uploads", 429);
     }
 
@@ -982,7 +1057,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     if (Number.isFinite(declared) && declared > MAX_COURRIER_REQUEST_BYTES) {
       return courrierFailure("file_too_large");
     }
-    if (!courrierLimiter.allow(await hashKey(clientAddress(request.headers)))) {
+    if (!courrierLimiter.allow(await hashKey(visitor(request)))) {
       return courrierFailure("too_many_courriers");
     }
 
@@ -1052,7 +1127,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     if (!secret) {
       return json(404, { error: { code: "not_found", message: "Route inconnue." } }, { "Cache-Control": "no-store" });
     }
-    if (!assistantLimiter.allow(await hashKey(clientAddress(request.headers)))) {
+    if (!assistantLimiter.allow(await hashKey(visitor(request)))) {
       return json(429, { error: { code: "too_many_requests", message: "Merci de patienter quelques secondes." } }, { "Cache-Control": "no-store" });
     }
     // Un défi n'est servi qu'à un domaine qui existe : pas de calcul offert à
@@ -1089,7 +1164,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       console.error("portal-api : secrets de l'assistant manquants.");
       return assistantFailure("assistant_not_configured");
     }
-    if (!assistantLimiter.allow(await hashKey(clientAddress(request.headers)))) {
+    if (!assistantLimiter.allow(await hashKey(visitor(request)))) {
       return assistantFailure("assistant_rate_limited", 60);
     }
 
@@ -1169,7 +1244,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     if (Number.isFinite(declared) && declared > MAX_RECORDING_BYTES + MULTIPART_ALLOWANCE) {
       return assistantFailure("bad_request");
     }
-    if (!voiceLimiter.allow(await hashKey(clientAddress(request.headers)))) {
+    if (!voiceLimiter.allow(await hashKey(visitor(request)))) {
       return assistantFailure("assistant_rate_limited", 60);
     }
 
@@ -1254,7 +1329,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     const userAgent = request.headers.get("user-agent");
     if (isBot(userAgent)) return silent();
 
-    if (!audienceLimiter.allow(await hashKey(clientAddress(request.headers)))) return silent();
+    if (!audienceLimiter.allow(await hashKey(visitor(request)))) return silent();
 
     const audience = audienceClient();
     if (audience === null) return silent();
@@ -1278,10 +1353,58 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return silent();
   }
 
+  // ── GET /v1/session — qui est là. Anonyme hors proxy, quoi que porte la requête.
+  if (request.method === "GET" && path === "/v1/session") {
+    const resolved = await tenantOf(request, socle);
+    if (!resolved.ok) return resolved.response;
+    const context = sessionContext(request, resolved.tenant.id);
+    if (context === null) return sessionFailure("session_unavailable");
+
+    const current = await currentSession(request.headers, context);
+    if (!current.ok) return sessionFailure(current.reason);
+    const session = current.session;
+    if (session.status === "anonymous") {
+      return json(
+        200,
+        { authenticated: false },
+        session.clearCookie
+          ? { "Cache-Control": "no-store", "Set-Cookie": clearedSessionCookie() }
+          : { "Cache-Control": "no-store" },
+      );
+    }
+    // Ni identifiant de compte ni de fiche : l'interface n'en a pas l'usage, et
+    // ce qui ne sort pas ne peut pas être rejoué ailleurs.
+    return json(
+      200,
+      {
+        authenticated: true,
+        kind: session.record.kind,
+        expiresAt: session.record.expiresAt,
+        idleExpiresAt: session.record.idleExpiresAt,
+      },
+      { "Cache-Control": "no-store" },
+    );
+  }
+
+  // ── POST /v1/session/fin — la déconnexion. Idempotente.
+  if (request.method === "POST" && path === "/v1/session/fin") {
+    const proxy = proxyOf(request);
+    if (!checkMutation(request.headers, proxy).ok) return sessionFailure("csrf_rejected");
+    const resolved = await tenantOf(request, socle);
+    if (!resolved.ok) return resolved.response;
+    const context = sessionContext(request, resolved.tenant.id);
+    if (context === null) return sessionFailure("session_unavailable");
+
+    const ended = await endSession(request.headers, context);
+    if (!ended.ok) return sessionFailure(ended.reason);
+    return json(200, { authenticated: false }, { "Cache-Control": "no-store", "Set-Cookie": ended.setCookie });
+  }
+
   if (
     path === "/v1/bootstrap" || path === "/v1/demandes" || path === "/v1/demandes/pieces"
     || path === "/v1/audience" || path.startsWith("/v1/demarches/")
     || path === "/v1/courrier" || path === "/v1/courriers"
+    || path === "/v1/session" || path === "/v1/session/fin"
   ) {
     return json(405, {
       error: { code: "method_not_allowed", message: "Méthode non autorisée sur cette ressource." },

@@ -2,15 +2,17 @@
 # pas celui du projet distant. Le lien se fait avec
 # `supabase link --project-ref <ref>` (voir README.md).
 #
-# Nora n'a AUCUNE table, et n'en aura pas pour les tenants : le Socle est la
-# source de vérité des collectivités, de leurs domaines et de leurs démarches.
-# Le projet Supabase ne sert ici que d'exécution à l'edge function qui porte la
-# clé du Socle.
+# Nora n'a AUCUNE table pour les tenants : le Socle est la source de vérité
+# des collectivités, de leurs domaines et de leurs démarches. Ses seules tables
+# sont celles de l'ESPACE USAGER (comptes, sessions, journal des connexions —
+# `supabase/migrations/`), fermées à l'API de données : seule portal-api, en
+# service role, les lit.
 project_id = "nora"
 
 # ── Edge functions ───────────────────────────────────────────────────────────
-# Le portail est PUBLIC par nature : aucun usager n'est connecté à ce stade, il
-# n'y a donc pas de JWT à vérifier. La fonction ne sert que ce que le Socle a
-# déjà déclaré public.
+# Le portail est PUBLIC par nature : pas de JWT Supabase à vérifier. Un citoyen
+# connecté présente un cookie de session opaque, que portal-api vérifie
+# lui-même — et seulement derrière le proxy du Worker (voir README, « L'espace
+# usager »).
 [functions.portal-api]
 verify_jwt = false

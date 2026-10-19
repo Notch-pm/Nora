@@ -24,5 +24,5 @@
       "@fn/*": ["./supabase/functions/*"]
     }
   },
-  "include": ["src", "supabase/functions/_shared"]
+  "include": ["src", "supabase/functions/_shared", "worker"]
 }

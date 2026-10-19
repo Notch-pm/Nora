@@ -1,9 +1,38 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from "vitest/config";
+import { loadEnv, type ProxyOptions } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 
-export default defineConfig({
+/**
+ * Proxy de développement : relaie `/api/*` vers portal-api comme le Worker du
+ * portail en production (`worker/proxy.ts`) — hôte visité, adresse et secret
+ * compris. Actif seulement si `PORTAL_API_PROXY_TARGET` et `NORA_PROXY_SECRET`
+ * sont posés dans `.env.local` ; lus ici, jamais inlinés dans le bundle.
+ */
+function devApiProxy(mode: string): Record<string, ProxyOptions> | undefined {
+  const env = loadEnv(mode, process.cwd(), "");
+  const target = env.PORTAL_API_PROXY_TARGET;
+  const secret = env.NORA_PROXY_SECRET;
+  if (!target || !secret) return undefined;
+  return {
+    "/api": {
+      target,
+      changeOrigin: true,
+      rewrite: (p) => p.replace(/^\/api/, ""),
+      configure(proxy) {
+        proxy.on("proxyReq", (proxyReq, req) => {
+          // Comme le Worker : le visiteur ne pose jamais lui-même les en-têtes certifiés.
+          proxyReq.removeHeader("x-nora-client-ip");
+          proxyReq.setHeader("x-nora-proxy-secret", secret);
+          proxyReq.setHeader("x-nora-host", (req.headers.host ?? "").split(":")[0]);
+        });
+      },
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   resolve: {
     alias: {
@@ -27,6 +56,7 @@ export default defineConfig({
     //     Vite rejette par défaut tout ce qui n'est pas `localhost` exactement.
     host: true,
     allowedHosts: [".localhost"],
+    proxy: devApiProxy(mode),
   },
   test: {
     // Tout ce qui est testé ici est pur (résolution, filtrage, formatage
@@ -37,6 +67,7 @@ export default defineConfig({
     include: [
       "src/**/*.{test,spec}.{ts,tsx}",
       "supabase/functions/**/*.{test,spec}.ts",
+      "worker/**/*.{test,spec}.ts",
     ],
   },
-});
+}));

@@ -78,3 +78,17 @@ describe("hostnameForRequest — en développement", () => {
     expect(hostnameForRequest(request("http://nantes.localhost:5175"), blank)).toBeNull();
   });
 });
+
+describe("hostnameForRequest — derrière le proxy du portail", () => {
+  it("l'hôte certifié par le Worker passe devant Origin", () => {
+    expect(
+      hostnameForRequest(request("https://antony.edilumen.fr"), PRODUCTION, "sceaux.edilumen.fr"),
+    ).toBe("sceaux.edilumen.fr");
+    // Un GET de même origine arrive souvent sans Origin : l'hôte certifié suffit.
+    expect(hostnameForRequest(request(null), PRODUCTION, "sceaux.edilumen.fr")).toBe("sceaux.edilumen.fr");
+  });
+
+  it("suit la même simulation de développement sur *.localhost", () => {
+    expect(hostnameForRequest(request(null), DEV, "nantes.localhost")).toBe("nantes.edilumen.fr");
+  });
+});

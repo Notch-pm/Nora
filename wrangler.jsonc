@@ -1,21 +1,36 @@
-// Déploiement du portail Nora sur Cloudflare Workers (assets statiques uniquement, aucun code Worker).
+// Déploiement du portail Nora sur Cloudflare Workers : les fichiers statiques (`dist/`), plus un
+// script qui relaie `/api/*` vers `portal-api` — le proxy de MÊME ORIGINE de l'espace usager
+// (`worker/proxy.ts`). Sans lui, une session de citoyen ne pourrait tenir que dans un cookie tiers.
 //
 // Ce fichier DOIT exister : sans lui, `wrangler deploy` détecte un projet Vite et tente de réécrire
-// vite.config.ts pour y injecter @cloudflare/vite-plugin. Le Worker n'a pas de script — il n'y a
-// rien à brancher, et ce fichier suffit à le dire.
+// vite.config.ts pour y injecter @cloudflare/vite-plugin.
 //
-// ⚠️ VITE_PORTAL_API_URL (et VITE_PORTAL_CACHE_TTL_SECONDS, facultative) sont inlinées par Vite à
-// `npm run build` : elles se règlent comme variables de BUILD du projet Cloudflare
-// (Settings → Build → Variables), jamais comme variables de runtime — un Worker sans code n'en a pas.
-// Absentes, le build passe quand même et le portail ne joint aucune API.
+// Deux mondes de variables, à ne pas confondre :
+//   · VITE_PORTAL_API_URL (et VITE_PORTAL_CACHE_TTL_SECONDS, facultative) sont inlinées par Vite à
+//     `npm run build` : variables de BUILD du projet Cloudflare (Settings → Build → Variables).
+//     Avec le proxy, elle vaut `/api` ; l'ancienne valeur (URL directe de portal-api) reste
+//     possible le temps de la bascule — le portail public marche, sans espace usager.
+//   · PORTAL_API_URL (ci-dessous) et le SECRET NORA_PROXY_SECRET sont des variables de RUNTIME du
+//     Worker. Le secret se pose avec `npx wrangler secret put NORA_PROXY_SECRET` (ou au tableau de
+//     bord), avec la MÊME valeur que le secret d'edge function `NORA_PROXY_SECRET` de portal-api.
+//     Sans lui, `/api/*` répond 503 : le Worker ne relaie jamais sans certifier.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "nora",
   "compatibility_date": "2026-09-09",
+  "main": "worker/index.ts",
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
     // React Router (BrowserRouter) : toute route inconnue sert index.html au lieu d'un 404.
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // Seul `/api/*` passe par le script ; tout le reste est servi directement par les assets.
+    // Sans cette ligne, `/api/...` (inconnu des assets) servirait index.html.
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    // Racine de portal-api (projet Supabase Nora). Pas un secret.
+    "PORTAL_API_URL": "https://xbullkayqdzqiyrrwbqx.supabase.co/functions/v1/portal-api"
   },
 
   // Le portail est multi-tenant PAR NOM D'HÔTE : `nantes.edilumen.fr` doit arriver ici sans qu'on
