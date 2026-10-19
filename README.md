@@ -1637,6 +1637,23 @@ Le projet Nora sera recréé en France (CCTP §7.2.1). Ce lot ajoute à reporter
 - la variable de runtime `PORTAL_API_URL` du Worker ;
 - la tâche planifiée de purge.
 
+## Suivre une demande sans compte (lot L2)
+
+Un usager qui dépose **sans compte** coche « Je souhaite suivre ma demande en ligne » (proposé si un public est ouvert et le courriel non masqué ; cochée, l'adresse devient obligatoire). Iris tire alors un **code d'accès** (`XXXX-XXXX-XX`, contrat Iris 2.6.0) : l'accusé l'affiche une fois, et le courriel d'accusé le cite avec le lien `https://<collectivité>/suivi`.
+
+Sur `/suivi`, référence + adresse + code ouvrent une **session invitée** (lot L1, kind `guest`) qui porte l'identifiant de la demande — le navigateur ne le voit jamais. La page montre le statut lisible (Envoyée, En cours de traitement, En attente de votre réponse, Traitée, Annulée, Archivée), les dates, la réponse de la collectivité, les pièces déposées et les messages reçus.
+
+- **Ce que l'usager ne voit jamais** : motif de clôture, notes internes, agents, journal, pièces d'instruction — Iris sert une vue usager en liste blanche, et `domain/suivi.ts` la refiltre.
+- **L'adresse fait foi** : seuls les messages envoyés à l'adresse déclarée au dépôt apparaissent, et le code ne part qu'à elle. Une demande rattachée par Iris à la fiche d'une autre personne ne lui ouvre rien.
+- **Essais** : un seul refus, générique (`suivi_refused`). Iris verrouille une demande 1 h après 5 mauvais codes donnés avec la bonne adresse ; portal-api freine à 10 essais / 10 min par visiteur (IPv6 comptée par /64).
+- **Appels en même origine** : `/suivi` appelle toujours `/api` (`suiviClient.ts`), quelle que soit `VITE_PORTAL_API_URL` — le cookie de session est de première partie. En local, il faut donc le relais Vite (`PORTAL_API_PROXY_TARGET`, `NORA_PROXY_SECRET`).
+
+Routes : `POST /v1/suivi`, `GET /v1/suivi/demande`, `GET /v1/suivi/demande/pieces/{id}` (302 vers une URL signée de 60 s).
+
+**Mise en service** — Iris d'abord : migration `20261019150000_acces_usager_invite.sql`, secret `IRIS_ACCESS_CODE_PEPPER` (32 caractères au moins), déploiement de `requests-api` et `notifications-mailer`. Puis portal-api, puis le portail (push). Dans l'autre ordre, la case existe mais aucun code ne revient.
+
+**Reste à faire** : répondre en ligne (lot L4), renvoi du code perdu et coupure d'un accès par un agent, traduction des 47 textes dans les 9 autres langues (`PENDING_TRANSLATION_KEYS`).
+
 ## Ce qui n'est pas encore fait
 
 Dans l'ordre prévu — le détail, les prérequis côté Socle et les questions
@@ -1644,9 +1661,8 @@ ouvertes sont dans `docs/roadmap.md` du Socle, section « Portail usagers » :
 
 1. les **autres templates** (gabarits de page, autres pages que l'accueil,
    actualités) — le thème, lui, est appliqué depuis le 2026-09-08 ;
-2. les démarches **hors compte** : la demande part déjà, il lui manque son après —
-   confirmation par courriel et lien de suivi signé, donc le statut d'une demande
-   consultable depuis le portail ;
+2. ~~les démarches **hors compte** : suivi en ligne~~ — **livré au lot L2** (voir « Suivre
+   une demande sans compte » ci-dessus) ; reste à y répondre en ligne (lot L4) ;
 3. les démarches **avec compte** (fondations livrées au lot L1, voir « L'espace usager »
    ci-dessus ; espace usager rattaché au référentiel
    `contacts` du Socle) — dont un « Mon compte » où l'usager **modifie ses
