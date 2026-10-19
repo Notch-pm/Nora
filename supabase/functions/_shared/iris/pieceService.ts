@@ -80,6 +80,7 @@ export async function uploadPiece(
       if (reply.status === 429) return { ok: false, reason: "too_many_uploads" };
       console.error("portal-api : pièce refusée par Iris —", reply.message ?? "sans message");
       return { ok: false, reason: "piece_rejected" };
+    case "not_found":
     case "unreachable":
     case "unexpected":
       return { ok: false, reason: "iris_unavailable" };

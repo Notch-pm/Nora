@@ -16,6 +16,7 @@ function fakeIris(reply: IrisReply = { kind: "ok", body: CREATED }) {
       return Promise.resolve(reply);
     },
     postMultipart: () => Promise.reject(new Error("pas ici")),
+    get: () => Promise.reject(new Error("pas ici")),
   };
   return { client, calls };
 }
@@ -180,5 +181,33 @@ describe("submitDemande — ce qui revient", () => {
       ok: false,
       reason: "iris_unavailable",
     });
+  });
+});
+
+describe("submitDemande — suivi en ligne (lot L2)", () => {
+  it("n'envoie guest_access que si l'usager l'a demandé", async () => {
+    const without = fakeIris();
+    await submitDemande(INPUT, without.client);
+    expect(without.calls[0].body).not.toHaveProperty("guest_access");
+
+    const withAccess = fakeIris();
+    await submitDemande(
+      { ...INPUT, trackingUrl: "https://sceaux.edilumen.fr/suivi", submission: { ...INPUT.submission, guestAccess: true } },
+      withAccess.client,
+    );
+    expect(withAccess.calls[0].body.guest_access).toEqual({ tracking_url: "https://sceaux.edilumen.fr/suivi" });
+  });
+
+  it("rend le code d'accès d'Iris dans l'accusé, et rien d'autre", async () => {
+    const reply = (guest_access: unknown): IrisReply => ({
+      kind: "ok",
+      body: { ...(CREATED as Record<string, unknown>), guest_access },
+    });
+    const ok = await submitDemande(INPUT, fakeIris(reply({ code: "ABCD-EFGH-JK" })).client);
+    expect(ok.ok && ok.receipt.accessCode).toBe("ABCD-EFGH-JK");
+    const absent = await submitDemande(INPUT, fakeIris(reply(null)).client);
+    expect(absent.ok && absent.receipt.accessCode).toBeUndefined();
+    const odd = await submitDemande(INPUT, fakeIris(reply({ code: "<script>" })).client);
+    expect(odd.ok && odd.receipt.accessCode).toBeUndefined();
   });
 });

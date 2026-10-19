@@ -17,6 +17,7 @@ function fakeIris(reply: IrisReply) {
   const calls: { path: string; fileName: string; size: number }[] = [];
   const client: IrisClient = {
     post: () => Promise.reject(new Error("pas ici")),
+    get: () => Promise.reject(new Error("pas ici")),
     postMultipart(path, file, fileName) {
       calls.push({ path, fileName, size: file.size });
       return Promise.resolve(reply);

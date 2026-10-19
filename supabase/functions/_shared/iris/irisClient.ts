@@ -31,6 +31,12 @@ export type IrisReply =
   | { kind: "rejected"; status: number; message: string | null }
   /** 401/403 — la clé du PORTAIL est refusée, ou hors de son périmètre. */
   | { kind: "auth_failed" }
+  /**
+   * 404 — la ressource n'existe pas POUR CE PORTAIL. Iris répond ainsi sans
+   * distinguer « inconnue » de « hors périmètre » ; l'accès invité s'en sert
+   * pour tous ses refus.
+   */
+  | { kind: "not_found" }
   /** Réseau, DNS, délai dépassé : rien n'est revenu. */
   | { kind: "unreachable" }
   /** Une réponse est revenue, mais elle n'a aucun sens pour nous. */
@@ -38,6 +44,8 @@ export type IrisReply =
 
 export interface IrisClient {
   post(path: string, body: unknown): Promise<IrisReply>;
+  /** Lecture (vue usager d'une demande, contrat Iris 2.6.0). */
+  get(path: string): Promise<IrisReply>;
   /**
    * Dépôt d'un FICHIER (`POST /v1/uploads`, contrat 2.0.0) : les octets
    * partent en `multipart/form-data`, champ `file`, avec leur nom d'origine —
@@ -127,6 +135,7 @@ export function createIrisClient(config: IrisClientConfig): IrisClient {
     if (response.status === 200 || response.status === 201) {
       return parsed === null ? { kind: "unexpected" } : { kind: "ok", body: parsed };
     }
+    if (response.status === 404) return { kind: "not_found" };
     if (REJECTED_STATUSES.has(response.status)) {
       return { kind: "rejected", status: response.status, message: errorMessage(parsed) };
     }
@@ -140,6 +149,9 @@ export function createIrisClient(config: IrisClientConfig): IrisClient {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+    },
+    get(path: string): Promise<IrisReply> {
+      return send(path, { method: "GET", headers: {} });
     },
     postMultipart(path: string, file: Blob, fileName: string): Promise<IrisReply> {
       // Pas de Content-Type explicite : fetch pose la frontière multipart lui-même.

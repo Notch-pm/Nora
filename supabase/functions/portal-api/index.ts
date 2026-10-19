@@ -61,11 +61,20 @@ import {
   currentSession,
   endSession,
   httpStatusForSessionFailure,
+  openSession,
   SESSION_MESSAGES,
   type SessionContext,
   type SessionFailure,
   traceOf,
 } from "../_shared/session/sessionService.ts";
+import { sessionPolicyFromEnv } from "../_shared/session/sessionPolicy.ts";
+import { pieceUrl, readDemande, verifyAccess } from "../_shared/iris/suiviService.ts";
+import {
+  httpStatusForSuiviFailure,
+  parseSuiviAccess,
+  SUIVI_MESSAGES,
+  type SuiviFailure,
+} from "../_shared/domain/suivi.ts";
 import { allFields } from "../_shared/domain/formSchema.ts";
 import { parseLocationValue } from "../_shared/domain/location.ts";
 import { AUDIENCES } from "../_shared/domain/requesterConfig.ts";
@@ -369,12 +378,87 @@ function sessionContext(request: Request, tenantId: string): SessionContext | nu
   return { proxy, tenantId, store, trace: traceOf(request.headers, proxy) };
 }
 
-function sessionFailure(reason: SessionFailure): Response {
+function sessionFailure(reason: SessionFailure, clearCookie = false): Response {
   return json(
     httpStatusForSessionFailure(reason),
     { error: { code: reason, message: SESSION_MESSAGES[reason] } },
+    clearCookie
+      ? { "Cache-Control": "no-store", "Set-Cookie": clearedSessionCookie() }
+      : { "Cache-Control": "no-store" },
+  );
+}
+
+// ── Suivi d'une demande sans compte (espace usager, lot L2) ─────────────────
+//
+// `/suivi` : courriel + référence + code d'accès (vérifiés par Iris) ouvrent une
+// SESSION INVITÉE qui porte l'identifiant de la demande. Le navigateur ne le
+// voit jamais : les lectures suivantes le prennent dans la session, pas dans
+// la requête. Rien de tout cela n'existe hors du proxy de même origine — sans
+// cookie de première partie, pas de session.
+
+/** Essais d'accès par visiteur : Iris verrouille aussi la demande après 5 échecs. */
+const suiviLimiter = createRateLimiter({ windowMs: 10 * 60_000, max: 10 });
+
+const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+let sharedSessionPolicy: ReturnType<typeof sessionPolicyFromEnv> | null = null;
+function sessionPolicy() {
+  sharedSessionPolicy ??= sessionPolicyFromEnv((name) => Deno.env.get(name));
+  return sharedSessionPolicy;
+}
+
+/**
+ * La page `/suivi` du domaine canonique de la collectivité, citée par Iris
+ * dans l'accusé. Pas d'adresse de poste de développement (`*.localhost`) : Iris
+ * n'accepte que du https, et un lien local dans un courriel ne mène nulle part.
+ */
+function trackingUrlFor(hostname: string): string | null {
+  if (hostname === "" || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.includes(":")) {
+    return null;
+  }
+  return `https://${hostname}/suivi`;
+}
+
+function suiviFailure(reason: SuiviFailure): Response {
+  return json(
+    httpStatusForSuiviFailure(reason),
+    { error: { code: reason, message: SUIVI_MESSAGES[reason] } },
     { "Cache-Control": "no-store" },
   );
+}
+
+function irisFor(tenantId: string) {
+  const baseUrl = Deno.env.get("IRIS_API_URL");
+  const apiKey = Deno.env.get("IRIS_API_KEY");
+  if (!baseUrl || !apiKey) return null;
+  return createIrisClient({ baseUrl, apiKey, socleRootOrganizationId: tenantId });
+}
+
+/**
+ * La demande que tient la session invitée de ce visiteur, ou la réponse à
+ * rendre : il faut une session active, de cette collectivité (la base le
+ * vérifie), et INVITÉE — une session de compte n'ouvre pas cette porte.
+ */
+async function guestDemande(
+  request: Request,
+  socle: ReturnType<typeof socleClient>,
+): Promise<{ ok: true; requestId: string; iris: ReturnType<typeof createIrisClient> } | { ok: false; response: Response }> {
+  const resolved = await tenantOf(request, socle);
+  if (!resolved.ok) return resolved;
+  const iris = irisFor(resolved.tenant.id);
+  if (iris === null) return { ok: false, response: suiviFailure("not_configured") };
+  const context = sessionContext(request, resolved.tenant.id);
+  if (context === null) return { ok: false, response: sessionFailure("session_unavailable") };
+  const current = await currentSession(request.headers, context);
+  if (!current.ok) return { ok: false, response: sessionFailure(current.reason) };
+  const session = current.session;
+  if (session.status === "anonymous") {
+    return { ok: false, response: sessionFailure("session_required", session.clearCookie) };
+  }
+  if (session.record.kind !== "guest" || session.record.guestRequestId === null) {
+    return { ok: false, response: sessionFailure("session_required") };
+  }
+  return { ok: true, requestId: session.record.guestRequestId, iris };
 }
 
 /**
@@ -941,6 +1025,13 @@ Deno.serve(async (request: Request): Promise<Response> => {
       requester[key] = value.trim();
     }
 
+    // Suivi en ligne (lot L2) : l'accès se prouvera par l'adresse déclarée —
+    // sans elle, le code ne servirait à rien. L'écran l'exige déjà.
+    const guestAccess = body.guestAccess === true;
+    if (guestAccess && !SIMPLE_EMAIL_RE.test(requester.courriel ?? "")) {
+      return badRequest("guestAccess : une adresse de courriel est nécessaire au suivi en ligne.");
+    }
+
     // La clé est PLATEFORME ; c'est l'en-tête qui nomme la collectivité, et
     // Iris refuse (403) si elle n'a pas de source `portail-citoyen` active.
     const iris = createIrisClient({ baseUrl: irisUrl, apiKey: irisKey, socleRootOrganizationId: tenant.id });
@@ -949,6 +1040,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
         sourceSystem: Deno.env.get("IRIS_SOURCE_SYSTEM") ?? DEFAULT_SOURCE_SYSTEM,
         tenantId: tenant.id,
         demarcheName: demarche.name,
+        trackingUrl: trackingUrlFor(tenant.hostname),
         submission: {
           demarcheId,
           organizationId,
@@ -957,6 +1049,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
           submissionId,
           attachments,
           consents,
+          guestAccess,
         },
       },
       iris,
@@ -1400,11 +1493,83 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return json(200, { authenticated: false }, { "Cache-Control": "no-store", "Set-Cookie": ended.setCookie });
   }
 
+  // ── POST /v1/suivi — courriel + référence + code d'accès → session invitée.
+  if (request.method === "POST" && path === "/v1/suivi") {
+    const proxy = proxyOf(request);
+    if (!checkMutation(request.headers, proxy).ok) return sessionFailure("csrf_rejected");
+    if (!suiviLimiter.allow(await hashKey(visitor(request)))) return suiviFailure("suivi_too_many_attempts");
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return suiviFailure("bad_request");
+    }
+    const access = parseSuiviAccess(body);
+    // Une saisie mal formée reçoit le même « non » qu'un mauvais code.
+    if (access === null) return suiviFailure("suivi_refused");
+
+    const resolved = await tenantOf(request, socle);
+    if (!resolved.ok) return resolved.response;
+    const iris = irisFor(resolved.tenant.id);
+    if (iris === null) return suiviFailure("not_configured");
+    const context = sessionContext(request, resolved.tenant.id);
+    if (context === null) return sessionFailure("session_unavailable");
+
+    const verified = await verifyAccess(access, iris);
+    if (!verified.ok) return suiviFailure(verified.reason);
+
+    // Une session déjà ouverte sur ce navigateur (une autre demande suivie) se
+    // ferme : un cookie, une session, une demande.
+    await endSession(request.headers, context);
+    const opened = await openSession(
+      {
+        kind: "guest",
+        accountId: null,
+        guestRequestId: verified.value,
+        amr: ["code"],
+        remember: false,
+        durations: sessionPolicy().guest,
+      },
+      context,
+    );
+    if (!opened.ok) return sessionFailure(opened.reason);
+    return json(
+      200,
+      { authenticated: true, kind: "guest", expiresAt: opened.expiresAt },
+      { "Cache-Control": "no-store", "Set-Cookie": opened.setCookie },
+    );
+  }
+
+  // ── GET /v1/suivi/demande — la demande que tient la session invitée.
+  if (request.method === "GET" && path === "/v1/suivi/demande") {
+    const guest = await guestDemande(request, socle);
+    if (!guest.ok) return guest.response;
+    const demande = await readDemande(guest.requestId, guest.iris);
+    if (!demande.ok) return suiviFailure(demande.reason);
+    // `private` et `no-store` : une vue personnelle ne se met en cache nulle part.
+    return json(200, { demande: demande.value }, { "Cache-Control": "private, no-store" });
+  }
+
+  // ── GET /v1/suivi/demande/pieces/{id} — redirige vers une URL signée de 60 s.
+  const suiviPiece = path.match(/^\/v1\/suivi\/demande\/pieces\/([0-9a-f-]{36})$/i);
+  if (request.method === "GET" && suiviPiece) {
+    const guest = await guestDemande(request, socle);
+    if (!guest.ok) return guest.response;
+    const url = await pieceUrl(guest.requestId, suiviPiece[1], guest.iris);
+    if (!url.ok) return suiviFailure(url.reason);
+    return new Response(null, {
+      status: 302,
+      headers: { ...CORS_HEADERS, Location: url.value, "Cache-Control": "no-store" },
+    });
+  }
+
   if (
     path === "/v1/bootstrap" || path === "/v1/demandes" || path === "/v1/demandes/pieces"
     || path === "/v1/audience" || path.startsWith("/v1/demarches/")
     || path === "/v1/courrier" || path === "/v1/courriers"
     || path === "/v1/session" || path === "/v1/session/fin"
+    || path === "/v1/suivi" || path === "/v1/suivi/demande" || suiviPiece !== null
   ) {
     return json(405, {
       error: { code: "method_not_allowed", message: "Méthode non autorisée sur cette ressource." },

@@ -46,6 +46,11 @@ export interface SubmitDemandeInput {
   /** L'intitulé de la démarche — ce qu'un agent lira comme objet. */
   demarcheName: string;
   submission: DemandeSubmission;
+  /**
+   * La page `/suivi` du domaine visité (https), citée par Iris dans l'accusé.
+   * `null` = Iris renvoie à « la rubrique Suivre une demande » du portail.
+   */
+  trackingUrl?: string | null;
 }
 
 /**
@@ -53,6 +58,13 @@ export interface SubmitDemandeInput {
  * un : mieux vaut le dire que d'afficher une demande sans numéro, que l'usager
  * ne pourrait jamais retrouver.
  */
+/** Le code d'accès rendu par Iris, s'il a la forme attendue — sinon rien. */
+function accessCodeOf(value: unknown): string | null {
+  if (typeof value !== "object" || value === null) return null;
+  const code = (value as Record<string, unknown>).code;
+  return typeof code === "string" && /^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{2}$/.test(code) ? code : null;
+}
+
 function toReceipt(body: unknown): DemandeReceipt | null {
   if (typeof body !== "object" || body === null) return null;
   const envelope = body as Record<string, unknown>;
@@ -61,11 +73,13 @@ function toReceipt(body: unknown): DemandeReceipt | null {
   const row = request as Record<string, unknown>;
   const reference = typeof row.reference === "string" ? row.reference.trim() : "";
   if (reference === "") return null;
+  const accessCode = accessCodeOf(envelope.guest_access);
   return {
     reference,
     status: typeof row.status === "string" ? row.status : "a_traiter",
     // Absent = créée : c'est le cas nominal du 201, où Iris ne le répète pas.
     created: envelope.created !== false,
+    ...(accessCode === null ? {} : { accessCode }),
   };
 }
 
@@ -98,6 +112,11 @@ export async function submitDemande(
     consents: submission.consents.map((c) => ({ kind: c.kind, granted: c.granted })),
     context: { channel: "portail" },
   };
+  // Suivi en ligne (contrat Iris 2.6.0) : hors empreinte chez Iris, il ne
+  // change rien à l'idempotence du dépôt.
+  if (submission.guestAccess === true) {
+    envelope.guest_access = { tracking_url: input.trackingUrl ?? null };
+  }
   // La whitelist d'Iris refuse toute clé inconnue : on n'envoie une
   // organisation destinataire que si l'usager en a choisi une.
   if (submission.organizationId !== null) {
@@ -122,6 +141,7 @@ export async function submitDemande(
       // paramétrage ou de contrat, sur laquelle il ne peut rien.
       console.error("portal-api : dépôt refusé par Iris —", reply.message ?? "sans message");
       return { ok: false, reason: "submission_rejected" };
+    case "not_found":
     case "unreachable":
     case "unexpected":
       return { ok: false, reason: "iris_unavailable" };

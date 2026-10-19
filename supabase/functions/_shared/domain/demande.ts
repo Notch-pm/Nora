@@ -49,6 +49,12 @@ export interface DemandeSubmission {
    * ne dépose jamais sans le consentement au traitement.
    */
   consents: ConsentAnswer[];
+  /**
+   * L'usager accepte de suivre sa demande en ligne, sans compte (lot L2) :
+   * Iris tire un code d'accès, que l'accusé affiche. Exige une adresse de
+   * courriel déclarée (`courriel`). Absent = non.
+   */
+  guestAccess?: boolean;
 }
 
 /** Une pièce déposée, rattachée à l'exigence du formulaire qu'elle honore. */
@@ -68,4 +74,10 @@ export interface DemandeReceipt {
    * accusé, pas une seconde demande ni une erreur.
    */
   created: boolean;
+  /**
+   * Code d'accès pour `/suivi` — présent seulement si le suivi en ligne était
+   * demandé ET que l'accès s'est ouvert. Rendu UNE fois par Iris : un rejeu
+   * (`created: false`) n'en porte jamais ; le courriel d'accusé, si.
+   */
+  accessCode?: string | null;
 }
