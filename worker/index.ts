@@ -6,7 +6,7 @@
  * (`run_worker_first` dans `wrangler.jsonc`) : les pages et leurs ressources
  * restent servies directement par la couche d'assets.
  */
-import { isApiPath, type ProxyEnv, upstreamRequest } from "./proxy.ts";
+import { downstreamResponse, isApiPath, type ProxyEnv, upstreamRequest } from "./proxy.ts";
 
 interface Env extends ProxyEnv {
   ASSETS: { fetch(request: Request): Promise<Response> };
@@ -19,7 +19,7 @@ export default {
     const upstream = upstreamRequest(request, env);
     if (upstream instanceof Response) return upstream;
     try {
-      return await fetch(upstream);
+      return downstreamResponse(await fetch(upstream));
     } catch {
       return new Response(
         JSON.stringify({

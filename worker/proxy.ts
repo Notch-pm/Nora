@@ -9,11 +9,13 @@
  * sur le domaine du portail : plus de CORS, cookie local au domaine.
  *
  * Ce module ne contient AUCUNE règle métier — elles restent dans `portal-api`,
- * testées. Il fait trois choses :
+ * testées. Il fait quatre choses :
  *   1. ne transmettre que des en-têtes connus (liste blanche) — en particulier,
  *      un visiteur ne peut pas poser lui-même les en-têtes `x-nora-*` ;
  *   2. certifier l'hôte visité et l'adresse du visiteur ;
- *   3. prouver par un secret partagé que c'est bien ce Worker qui parle.
+ *   3. prouver par un secret partagé que c'est bien ce Worker qui parle ;
+ *   4. au retour, ne rendre au navigateur que les en-têtes du portail — ni les
+ *      cookies de Supabase (`__cf_bm`, domaine `supabase.co`), ni son CORS `*`.
  *
  * Pur et sans dépendance : testé sous Node, exécuté sous Cloudflare Workers.
  */
@@ -44,6 +46,26 @@ const FORWARDED_HEADERS = [
   "user-agent",
   "x-nora-request",
 ];
+
+/**
+ * En-têtes de `portal-api` rendus au navigateur. Tout le reste est écarté :
+ * le CORS (inutile en même origine), les en-têtes propres à Supabase, et
+ * `content-encoding`/`content-length` — le runtime décode le corps relayé et
+ * le réencode lui-même.
+ */
+const RETURNED_HEADERS = [
+  "cache-control",
+  "content-disposition",
+  "content-language",
+  "content-type",
+  "etag",
+  "last-modified",
+  "location",
+  "retry-after",
+];
+
+/** Seuls les cookies du portail repartent : `__Host-nora_sid` et ses futurs voisins. */
+const PORTAL_COOKIE = /^__Host-nora_[A-Za-z0-9_]*=/;
 
 export function isApiPath(pathname: string): boolean {
   return pathname === API_PREFIX || pathname.startsWith(API_PREFIX + "/");
@@ -90,4 +112,21 @@ export function upstreamRequest(request: Request, env: ProxyEnv): Request | Resp
     // dès qu'un corps est un flux. Absent des types DOM de TypeScript.
     ...(hasBody ? { duplex: "half" } : {}),
   } as RequestInit);
+}
+
+/**
+ * La réponse de `portal-api` telle que le navigateur la reçoit : même statut,
+ * même corps (en flux), en-têtes filtrés par liste blanche.
+ */
+export function downstreamResponse(upstream: Response): Response {
+  const headers = new Headers();
+  for (const name of RETURNED_HEADERS) {
+    const value = upstream.headers.get(name);
+    if (value !== null) headers.set(name, value);
+  }
+  for (const cookie of upstream.headers.getSetCookie()) {
+    if (PORTAL_COOKIE.test(cookie)) headers.append("set-cookie", cookie);
+  }
+  headers.set("x-content-type-options", "nosniff");
+  return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers });
 }

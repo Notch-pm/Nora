@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isApiPath, upstreamRequest } from "./proxy.ts";
+import { downstreamResponse, isApiPath, upstreamRequest } from "./proxy.ts";
 
 const ENV = {
   PORTAL_API_URL: "https://ref.supabase.co/functions/v1/portal-api/",
@@ -67,5 +67,41 @@ describe("upstreamRequest", () => {
       expect(result).toBeInstanceOf(Response);
       expect((result as Response).status).toBe(503);
     }
+  });
+});
+
+describe("downstreamResponse", () => {
+  it("ne rend que les en-têtes du portail", async () => {
+    const headers = new Headers({
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "retry-after": "30",
+      "access-control-allow-origin": "*",
+      "access-control-allow-headers": "content-type",
+      "content-encoding": "gzip",
+      "sb-request-id": "abc",
+      server: "cloudflare",
+    });
+    headers.append("set-cookie", "__Host-nora_sid=jeton; Path=/; Secure; HttpOnly; SameSite=Lax");
+    headers.append("set-cookie", "__cf_bm=x; HttpOnly; SameSite=None; Secure; Path=/; Domain=supabase.co");
+    const res = downstreamResponse(new Response('{"ok":true}', { status: 429, headers }));
+
+    expect(res.status).toBe(429);
+    expect(await res.text()).toBe('{"ok":true}');
+    expect(res.headers.get("content-type")).toBe("application/json; charset=utf-8");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("retry-after")).toBe("30");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    for (const dropped of ["access-control-allow-origin", "access-control-allow-headers", "content-encoding", "sb-request-id", "server"]) {
+      expect(res.headers.get(dropped)).toBeNull();
+    }
+    expect(res.headers.getSetCookie()).toEqual(["__Host-nora_sid=jeton; Path=/; Secure; HttpOnly; SameSite=Lax"]);
+  });
+
+  it("n'accepte pas un cookie qui ne fait que ressembler à celui du portail", () => {
+    const headers = new Headers();
+    headers.append("set-cookie", "nora_sid=x; Path=/");
+    headers.append("set-cookie", "__Host-nora-sid=x; Path=/");
+    expect(downstreamResponse(new Response(null, { status: 204, headers })).headers.getSetCookie()).toEqual([]);
   });
 });
