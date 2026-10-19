@@ -17,10 +17,10 @@
  * coupure inoffensifs : Iris rend alors la demande déjà créée au lieu d'en
  * créer une seconde.
  */
-import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { solveChallenge } from "@fn/_shared/ai/challenge.ts";
-import { useLanguage, useT, useTn } from "@/i18n/LanguageLayout.tsx";
+import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { errorText } from "@/i18n/t.ts";
 import { organismePath, servedLanguage, splitScopedPath } from "@/i18n/localizedPath.ts";
 import { demarcheTitle, errorPageTitle, formulaireTitle, receiptTitle } from "@/i18n/pageTitle.ts";
@@ -42,6 +42,7 @@ import { challengeToSolve } from "@/services/portal/depositChallenge.ts";
 import { fetchDepositChallenge, sendDemande, type PortalLoadFailure } from "@/services/portal/portalClient.ts";
 import { readAndClearPrefill } from "@/features/assistant/prefill.ts";
 import { DemarcheError, DemarcheLoading, DemarcheShell } from "./DemarcheShell.tsx";
+import { ErrorSummary } from "./ErrorSummary.tsx";
 import { FormFieldControl } from "./FormFields.tsx";
 import { Receipt } from "./Receipt.tsx";
 import { RequesterSection } from "./RequesterSection.tsx";
@@ -75,30 +76,6 @@ function tabStorage(): Storage | null {
   }
 }
 
-/**
- * Le récapitulatif des erreurs, en tête : le motif RGAA d'un formulaire long.
- *
- * `tabIndex={-1}` le rend focusable par programme sans l'ajouter à l'ordre de
- * tabulation — c'est `FormulairePage` qui y amène le focus après un envoi
- * refusé (RGAA 10.7 / bonne pratique 11.10), via la `ref` transmise ici.
- */
-const ErrorSummary = forwardRef<HTMLDivElement, { count: number }>(function ErrorSummary(
-  { count },
-  ref,
-) {
-  const tn = useTn();
-  return (
-    <div
-      ref={ref}
-      role="alert"
-      tabIndex={-1}
-      className="rounded-[var(--pt-radius-sm)] border border-red-300 bg-red-50 px-4 py-3 text-[length:var(--pt-body)] text-red-800"
-    >
-      {tn("form.errors", count)}
-    </div>
-  );
-});
-
 export function FormulairePage() {
   const { demarcheId = "" } = useParams();
   // Le périmètre vient de l'adresse — voir `DemarchePage`.
@@ -126,6 +103,8 @@ export function FormulairePage() {
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   // Les consentements : traitement décoché, partage coché (`domain/consents.ts`).
   const [consents, setConsents] = useState<ConsentAnswers>(defaultConsentAnswers);
+  // « Je souhaite suivre ma demande en ligne » (espace usager L2) : décoché par défaut.
+  const [followUp, setFollowUp] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [requesterErrors, setRequesterErrors] = useState<FieldErrors>({});
   const [organizationError, setOrganizationError] = useState<string | null>(null);
@@ -175,6 +154,24 @@ export function FormulairePage() {
         ? []
         : requesterFieldsFor(demarche.requester, currentAudience),
     [demarche, currentAudience],
+  );
+
+  // Le suivi en ligne n'est proposé que si un public est ouvert ET que le
+  // champ `courriel` n'est pas masqué par le paramétrage (`requesterFieldsFor`
+  // écarte les champs masqués) : le code d'accès se retrouve par courriel, et
+  // le serveur exige l'adresse. Sans cela, la case est absente, et un état
+  // coché d'un public précédent ne part pas (`guestAccess` ci-dessous).
+  const canFollow = currentAudience !== null && requesterFields.some((field) => field.key === "courriel");
+  const guestAccess = canFollow && followUp;
+  // Coché, le courriel devient obligatoire : on le déclare tel quel dans le
+  // champ, pour que `validateRequester` et l'astérisque de l'étiquette suivent
+  // sans règle supplémentaire.
+  const effectiveFields = useMemo(
+    () =>
+      guestAccess
+        ? requesterFields.map((field) => (field.key === "courriel" ? { ...field, required: true } : field))
+        : requesterFields,
+    [guestAccess, requesterFields],
   );
 
   // Calculé ici, AVANT les retours anticipés ci-dessous : c'est ce qui permet
@@ -250,6 +247,7 @@ export function FormulairePage() {
         <Receipt
           receipt={receipt}
           demarcheName={detail.name}
+          followUpRequested={guestAccess}
           footer={
             <Link
               to={organismePath(lang, organisme, "/")}
@@ -335,7 +333,7 @@ export function FormulairePage() {
     // récapitulatif d'erreurs : « Vos informations » est incomplet dans les
     // deux cas.
     const identityErrors: FieldErrors = {
-      ...validateRequester(requesterFields, requesterValues),
+      ...validateRequester(effectiveFields, requesterValues),
       ...validateConsents(consents),
     };
     const missingOrganization = mustChooseOrganization && effectiveOrganizationId === null;
@@ -371,6 +369,8 @@ export function FormulairePage() {
           currentAudience === null
             ? null
             : toRequester(CONTACT_TYPES[currentAudience], requesterFields, requesterValues),
+        // Absent plutôt que `false` : le corps reste celui d'avant pour qui ne coche rien.
+        guestAccess: guestAccess ? true : undefined,
         submissionId,
         // Les fichiers sont déjà chez Iris : seuls leurs identifiants partent,
         // et un rejeu après coupure les renvoie tels quels.
@@ -501,13 +501,31 @@ export function FormulairePage() {
             // sont à nouveau relus avec le nouveau public.
             setRequesterErrors({});
           }}
-          fields={requesterFields}
+          fields={effectiveFields}
           values={requesterValues}
           onChange={setRequesterValue}
           errors={requesterErrors}
           consents={consents}
           onConsentChange={setConsent}
           organismName={tenant.name}
+          followUp={
+            canFollow
+              ? {
+                  checked: followUp,
+                  onChange: (checked) => {
+                    setFollowUp(checked);
+                    // Cocher ou décocher change l'obligation du courriel : son
+                    // erreur ne désigne plus la même exigence.
+                    setRequesterErrors((previous) => {
+                      if (!("courriel" in previous)) return previous;
+                      const next = { ...previous };
+                      delete next.courriel;
+                      return next;
+                    });
+                  },
+                }
+              : undefined
+          }
         />
 
 

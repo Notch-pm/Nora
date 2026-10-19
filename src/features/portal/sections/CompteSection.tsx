@@ -1,13 +1,18 @@
 /**
  * Bandeau « Espace usager ».
  *
- * Le bouton est volontairement désactivé : ce lot ne livre aucune
+ * Le bouton de connexion est volontairement désactivé : ce lot ne livre aucune
  * authentification usager. Un bouton cliquable qui ne mènerait nulle part
  * serait pire qu'un bouton visiblement indisponible — `title` le dit
  * explicitement à qui pose la souris dessus.
+ *
+ * À côté, un lien ACTIF « Suivre une demande » : suivre une demande déposée sans
+ * compte (`/suivi`) n'a pas besoin d'espace usager.
  */
 import type { CompteSection as CompteSectionData } from "@fn/_shared/domain/page.ts";
-import { useT } from "@/i18n/LanguageLayout.tsx";
+import { Link } from "react-router-dom";
+import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
+import { localizedPath } from "@/i18n/localizedPath.ts";
 
 function UserIcon() {
   return (
@@ -28,6 +33,7 @@ function UserIcon() {
 
 export function CompteSection({ section }: { section: CompteSectionData }) {
   const t = useT();
+  const { lang } = useLanguage();
   return (
     <section className="flex flex-col items-stretch gap-4 rounded-[var(--pt-radius)] bg-[color:var(--pt-ink)] p-[var(--pt-pad)] sm:flex-row sm:items-center">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--pt-radius-sm)] bg-[color:var(--pt-primary)]">
@@ -37,15 +43,23 @@ export function CompteSection({ section }: { section: CompteSectionData }) {
         <h2 className="text-[length:var(--pt-h2)] font-bold text-white">{section.title}</h2>
         <p className="text-[length:var(--pt-small)] text-white/75">{section.subtitle}</p>
       </div>
-      <button
-        type="button"
-        disabled
-        title={t("compte.soon")}
-        aria-disabled="true"
-        className="shrink-0 cursor-not-allowed whitespace-nowrap rounded-[var(--pt-radius-sm)] bg-white px-4 py-2.5 text-center text-[length:var(--pt-body)] font-bold text-[color:var(--pt-ink)] opacity-60"
-      >
-        {t("compte.signIn")}
-      </button>
+      <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+        <Link
+          to={localizedPath(lang, "/suivi")}
+          className="whitespace-nowrap rounded-[var(--pt-radius-sm)] bg-white px-4 py-2.5 text-center text-[length:var(--pt-body)] font-bold text-[color:var(--pt-ink)] hover:opacity-90"
+        >
+          {t("compte.follow")}
+        </Link>
+        <button
+          type="button"
+          disabled
+          title={t("compte.soon")}
+          aria-disabled="true"
+          className="shrink-0 cursor-not-allowed whitespace-nowrap rounded-[var(--pt-radius-sm)] bg-white px-4 py-2.5 text-center text-[length:var(--pt-body)] font-bold text-[color:var(--pt-ink)] opacity-60"
+        >
+          {t("compte.signIn")}
+        </button>
+      </div>
     </section>
   );
 }

@@ -30,12 +30,12 @@ import type { StringKey } from "@/i18n/strings.ts";
 
 // ⚠️ Le contour d'un champ de saisie tient 3 : 1 (RGAA 3.3) — `--pt-field-border`,
 // pas `--pt-border` (1,24 : 1, réservé aux cartes et séparateurs décoratifs).
-const inputClass =
+export const inputClass =
   "w-full rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-field-border)] bg-white px-3 py-2 text-[length:var(--pt-body)] text-[color:var(--pt-ink)] " +
   "focus:border-[color:var(--brand-primary)] focus:outline-none " +
   "focus:ring-2 focus:ring-[color:var(--brand-primary)]/30";
 
-const invalidClass = "border-red-500 focus:border-red-500 focus:ring-red-500/30";
+export const invalidClass = "border-red-500 focus:border-red-500 focus:ring-red-500/30";
 
 /**
  * Les civilités telles que le Socle les STOCKE — minuscules, deux valeurs.
@@ -147,6 +147,7 @@ export function RequesterSection({
   organismName,
   dense = false,
   note,
+  followUp,
 }: {
   /** Les publics ouverts par la collectivité. Aucun = pas d'identité demandée, le bloc le dit. */
   audiences: Audience[];
@@ -170,6 +171,12 @@ export function RequesterSection({
    * courriel ou un téléphone ».
    */
   note?: ReactNode;
+  /**
+   * La case « Je souhaite suivre ma demande en ligne ». Absente = non proposée
+   * (la page décide : public ouvert et courriel non masqué). Le bloc ne fait
+   * que l'afficher ; l'obligation du courriel est portée par `fields`.
+   */
+  followUp?: { checked: boolean; onChange: (checked: boolean) => void };
 }) {
   const { lang } = useLanguage();
   const t = useT();
@@ -263,6 +270,26 @@ export function RequesterSection({
                 dense={dense}
               />
             ))}
+          </div>
+        )}
+
+        {asksIdentity && followUp !== undefined && (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="suivi-en-ligne" className="flex items-start gap-3 text-[length:var(--pt-body)] font-semibold text-[color:var(--pt-ink)]">
+              <input
+                id="suivi-en-ligne"
+                type="checkbox"
+                // Même case que les consentements : contour à 3 : 1, focus visible.
+                className="mt-1 h-4 w-4 shrink-0 rounded border border-[color:var(--pt-field-border)] accent-[color:var(--brand-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)] focus-visible:ring-offset-2"
+                checked={followUp.checked}
+                aria-describedby="suivi-en-ligne-aide"
+                onChange={(event) => followUp.onChange(event.target.checked)}
+              />
+              <span>{t("form.followUp")}</span>
+            </label>
+            <p id="suivi-en-ligne-aide" className="ml-7 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
+              {t("form.followUpHelp")}
+            </p>
           </div>
         )}
 

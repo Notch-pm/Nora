@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   COVERED_LANGUAGES,
   OPERATOR_ONLY_KEYS,
+  PENDING_TRANSLATION_KEYS,
   STRINGS,
   type StringKey,
 } from "./strings.ts";
@@ -41,7 +42,10 @@ describe("le dictionnaire est complet", () => {
     for (const key of KEYS) {
       // Sauf celles qui parlent à l'exploitant : l'exception est déclarée.
       if (OPERATOR_ONLY_KEYS.includes(key)) continue;
+      // Les clés en attente de traduction : fr et en exigés, le reste retombe sur le français.
+      const pending = PENDING_TRANSLATION_KEYS.includes(key);
       for (const lang of COVERED_LANGUAGES) {
+        if (pending && lang !== "fr" && lang !== "en") continue;
         const entry = STRINGS[key] as Record<string, string | undefined>;
         if (!entry[lang] || entry[lang]!.trim() === "") manquantes.push(`${key} / ${lang}`);
       }

@@ -4011,6 +4011,200 @@ export const STRINGS = {
     uk: "Файл «{name}» має неприпустимий формат.",
     zh: "“{name}”的格式不受支持。",
   },
+
+  // ── Suivi d'une demande sans compte (/suivi) ─────────────────────────────
+  // ⚠️ fr + en seulement pour l'instant : ces clés sont déclarées dans
+  // `PENDING_TRANSLATION_KEYS` (fin de fichier) et retombent sur le français
+  // dans les autres langues. Le jour où elles sont traduites, les en retirer.
+  "form.followUp": {
+    fr: "Je souhaite suivre ma demande en ligne",
+    en: "I would like to follow my request online",
+  },
+  "form.followUpHelp": {
+    fr: "Vous recevrez un code d'accès, à utiliser avec votre adresse de courriel et la référence de votre demande.",
+    en: "You will receive an access code, to be used with your email address and your request reference.",
+  },
+  "receipt.accessCode": {
+    fr: "Votre code d'accès",
+    en: "Your access code",
+  },
+  "receipt.accessCodeNote": {
+    fr: "Notez-le : il vous sera demandé avec votre adresse de courriel pour suivre votre demande. Il vous est aussi envoyé par courriel.",
+    en: "Keep it: you will need it, with your email address, to follow your request. It is also sent to you by email.",
+  },
+  "receipt.accessCodeMailed": {
+    fr: "Votre code d'accès vous est envoyé par courriel.",
+    en: "Your access code is sent to you by email.",
+  },
+  "receipt.follow": {
+    fr: "Suivre ma demande",
+    en: "Follow my request",
+  },
+  "compte.follow": {
+    fr: "Suivre une demande",
+    en: "Follow a request",
+  },
+  "suivi.title": {
+    fr: "Suivre ma demande",
+    en: "Follow my request",
+  },
+  "suivi.intro": {
+    fr: "Saisissez les informations reçues au dépôt de votre demande : sa référence, votre adresse de courriel et votre code d'accès.",
+    en: "Enter the details you received when you submitted your request: its reference, your email address and your access code.",
+  },
+  "suivi.reference": {
+    fr: "Référence de la demande",
+    en: "Request reference",
+  },
+  "suivi.email": {
+    fr: "Adresse de courriel",
+    en: "Email address",
+  },
+  "suivi.code": {
+    fr: "Code d'accès",
+    en: "Access code",
+  },
+  "suivi.submit": {
+    fr: "Accéder au suivi",
+    en: "Open the follow-up",
+  },
+  "suivi.submitting": {
+    fr: "Vérification…",
+    en: "Checking…",
+  },
+  "suivi.loading": {
+    fr: "Chargement de votre demande…",
+    en: "Loading your request…",
+  },
+  "suivi.required.reference": {
+    fr: "Saisissez la référence de votre demande.",
+    en: "Enter your request reference.",
+  },
+  "suivi.required.email": {
+    fr: "Saisissez votre adresse de courriel.",
+    en: "Enter your email address.",
+  },
+  "suivi.required.code": {
+    fr: "Saisissez votre code d'accès.",
+    en: "Enter your access code.",
+  },
+  // Un seul message pour tout refus : jamais « référence inconnue ».
+  "suivi.error.refused": {
+    fr: "Ces informations ne permettent pas d'accéder à une demande. Vérifiez-les ; après plusieurs essais, l'accès est suspendu une heure.",
+    en: "These details do not give access to a request. Please check them; after several attempts, access is suspended for an hour.",
+  },
+  "suivi.error.tooMany": {
+    fr: "Trop d'essais en peu de temps : patientez quelques minutes.",
+    en: "Too many attempts in a short time: please wait a few minutes.",
+  },
+  "suivi.error.unavailable": {
+    fr: "Le suivi est momentanément indisponible. Merci de réessayer dans quelques instants.",
+    en: "The follow-up is temporarily unavailable. Please try again in a few moments.",
+  },
+  "suivi.error.notConfigured": {
+    fr: "Le suivi n'est pas disponible sur ce site.",
+    en: "The follow-up is not available on this site.",
+  },
+  "suivi.error.badRequest": {
+    fr: "Ces informations n'ont pas pu être lues. Vérifiez-les et réessayez.",
+    en: "These details could not be read. Please check them and try again.",
+  },
+  "suivi.error.network": {
+    fr: "La connexion a échoué. Vérifiez votre connexion et réessayez.",
+    en: "The connection failed. Check your connection and try again.",
+  },
+  "suivi.error.expired": {
+    fr: "Votre accès au suivi a expiré. Saisissez de nouveau vos informations.",
+    en: "Your access to the follow-up has expired. Please enter your details again.",
+  },
+  "suivi.viewTitle": {
+    fr: "Suivi de la demande {reference}",
+    en: "Follow-up of request {reference}",
+  },
+  "suivi.quit": {
+    fr: "Quitter le suivi",
+    en: "Leave the follow-up",
+  },
+  "suivi.summary": {
+    fr: "Votre demande",
+    en: "Your request",
+  },
+  "suivi.field.reference": {
+    fr: "Référence",
+    en: "Reference",
+  },
+  "suivi.field.subject": {
+    fr: "Objet",
+    en: "Subject",
+  },
+  "suivi.field.demarche": {
+    fr: "Démarche",
+    en: "Procedure",
+  },
+  "suivi.field.status": {
+    fr: "Statut",
+    en: "Status",
+  },
+  "suivi.field.receivedAt": {
+    fr: "Déposée le",
+    en: "Submitted on",
+  },
+  "suivi.field.updatedAt": {
+    fr: "Dernière mise à jour",
+    en: "Last updated",
+  },
+  "suivi.status.envoyee": {
+    fr: "Envoyée",
+    en: "Sent",
+  },
+  "suivi.status.en_cours": {
+    fr: "En cours de traitement",
+    en: "Being processed",
+  },
+  "suivi.status.en_attente": {
+    fr: "En attente de votre réponse",
+    en: "Waiting for your reply",
+  },
+  "suivi.status.traitee": {
+    fr: "Traitée",
+    en: "Processed",
+  },
+  "suivi.status.annulee": {
+    fr: "Annulée",
+    en: "Cancelled",
+  },
+  "suivi.status.archivee": {
+    fr: "Archivée",
+    en: "Archived",
+  },
+  "suivi.waiting": {
+    fr: "La collectivité attend une réponse de votre part : consultez le dernier message reçu.",
+    en: "The local authority is waiting for a reply from you: please read the latest message received.",
+  },
+  "suivi.closure": {
+    fr: "Réponse de la collectivité",
+    en: "Reply from the local authority",
+  },
+  "suivi.pieces": {
+    fr: "Vos pièces",
+    en: "Your documents",
+  },
+  "suivi.messages": {
+    fr: "Messages reçus",
+    en: "Messages received",
+  },
+  "suivi.noMessages": {
+    fr: "Vous n'avez pas encore reçu de message.",
+    en: "You have not received any message yet.",
+  },
+  "suivi.messagePieces": {
+    fr: "Pièces jointes",
+    en: "Attachments",
+  },
+  "suivi.noSubject": {
+    fr: "(sans objet)",
+    en: "(no subject)",
+  },
 } as const satisfies Record<string, Translated>;
 
 export type StringKey = keyof typeof STRINGS;
@@ -4030,4 +4224,61 @@ export type StringKey = keyof typeof STRINGS;
 export const OPERATOR_ONLY_KEYS: readonly StringKey[] = [
   "error.not_configured.title",
   "error.not_configured.detail",
+];
+
+/**
+ * Les clés écrites en français ET en anglais seulement, en attente des autres
+ * langues couvertes — elles retombent sur le français (repli par clé). La
+ * dette est DÉCLARÉE, pas silencieuse : le test de complétude l'exige de fr et
+ * en, et tolère le reste pour ces clés seulement. Les retirer d'ici une fois
+ * traduites.
+ */
+export const PENDING_TRANSLATION_KEYS: readonly StringKey[] = [
+  "form.followUp",
+  "form.followUpHelp",
+  "receipt.accessCode",
+  "receipt.accessCodeNote",
+  "receipt.accessCodeMailed",
+  "receipt.follow",
+  "compte.follow",
+  "suivi.title",
+  "suivi.intro",
+  "suivi.reference",
+  "suivi.email",
+  "suivi.code",
+  "suivi.submit",
+  "suivi.submitting",
+  "suivi.loading",
+  "suivi.required.reference",
+  "suivi.required.email",
+  "suivi.required.code",
+  "suivi.error.refused",
+  "suivi.error.tooMany",
+  "suivi.error.unavailable",
+  "suivi.error.notConfigured",
+  "suivi.error.badRequest",
+  "suivi.error.network",
+  "suivi.error.expired",
+  "suivi.viewTitle",
+  "suivi.quit",
+  "suivi.summary",
+  "suivi.field.reference",
+  "suivi.field.subject",
+  "suivi.field.demarche",
+  "suivi.field.status",
+  "suivi.field.receivedAt",
+  "suivi.field.updatedAt",
+  "suivi.status.envoyee",
+  "suivi.status.en_cours",
+  "suivi.status.en_attente",
+  "suivi.status.traitee",
+  "suivi.status.annulee",
+  "suivi.status.archivee",
+  "suivi.waiting",
+  "suivi.closure",
+  "suivi.pieces",
+  "suivi.messages",
+  "suivi.noMessages",
+  "suivi.messagePieces",
+  "suivi.noSubject",
 ];

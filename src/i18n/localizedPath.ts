@@ -85,8 +85,11 @@ export function localizedPath(lang: string, path: string): string {
  *
  * ⚠️ `courrier` (2026-10-09, courrier libre) : même raison, pour `/courrier`.
  * Même remarque : à interdire comme slug d'organisme au Socle.
+ *
+ * ⚠️ `suivi` (2026-10-19, espace usager L2) : même raison, pour `/suivi`. Même
+ * remarque : à interdire comme slug d'organisme au Socle.
  */
-export const ROUTE_SEGMENTS: readonly string[] = ["demarches", "accessibilite", "assistant", "courrier"];
+export const ROUTE_SEGMENTS: readonly string[] = ["demarches", "accessibilite", "assistant", "courrier", "suivi"];
 
 /**
  * Sépare un éventuel préfixe d'ORGANISME du chemin réel. `path` est le chemin

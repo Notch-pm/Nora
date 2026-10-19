@@ -9,6 +9,7 @@ import {
   formulaireTitle,
   homeTitle,
   organismeTitle,
+  suiviTitle,
   receiptTitle,
 } from "./pageTitle.ts";
 
@@ -50,6 +51,17 @@ describe("accessibiliteTitle", () => {
       "Déclaration d'accessibilité — Laurentville",
     );
     expect(accessibiliteTitle("en", "Laurentville")).toBe("Accessibility statement — Laurentville");
+  });
+});
+
+describe("suiviTitle", () => {
+  it("nomme la page, puis la collectivité", () => {
+    expect(suiviTitle("fr", "Laurentville")).toBe("Suivre ma demande — Laurentville");
+    expect(suiviTitle("en", "Laurentville")).toBe("Follow my request — Laurentville");
+  });
+
+  it("se préfixe du nombre d'erreurs après une saisie refusée", () => {
+    expect(suiviTitle("fr", "Laurentville", 2)).toMatch(/^2 .* — Suivre ma demande — Laurentville$/);
   });
 });
 

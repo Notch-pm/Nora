@@ -32,6 +32,7 @@ import { CourrierLibrePage } from "@/features/courrier/CourrierLibrePage.tsx";
 import { DemarchePage } from "@/features/demarche/DemarchePage.tsx";
 import { FormulairePage } from "@/features/demarche/FormulairePage.tsx";
 import { OrganismePage } from "@/features/organisme/OrganismePage.tsx";
+import { SuiviPage } from "@/features/suivi/SuiviPage.tsx";
 import { PortalPage } from "@/features/portal/PortalPage.tsx";
 import { LanguageLayout } from "@/i18n/LanguageLayout.tsx";
 import { splitScopedPath } from "@/i18n/localizedPath.ts";
@@ -71,6 +72,13 @@ export function App() {
           <Route path="/accessibilite" element={<AccessibilitePage />} />
           <Route path=":scopeA/accessibilite" element={<AccessibilitePage />} />
           <Route path=":scopeA/:scopeB/accessibilite" element={<AccessibilitePage />} />
+
+          {/* ⚠️ `suivi` aussi est un segment STATIQUE (`ROUTE_SEGMENTS`), aux
+              mêmes trois formes : le suivi vaut pour la collectivité entière,
+              un périmètre d'organisme ramène à `/suivi`. */}
+          <Route path="/suivi" element={<SuiviPage />} />
+          <Route path=":scopeA/suivi" element={<SuiviPage />} />
+          <Route path=":scopeA/:scopeB/suivi" element={<SuiviPage />} />
 
           {/* ⚠️ `assistant` est lui aussi un segment STATIQUE (voir
               `ROUTE_SEGMENTS`) : mêmes trois formes que `accessibilite`, et pour

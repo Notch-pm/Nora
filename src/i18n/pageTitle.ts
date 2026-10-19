@@ -58,6 +58,15 @@ export function accessibiliteTitle(lang: string, tenantName: string): string {
   return t(lang, "accessibilite.title") + SEPARATOR + tenantName;
 }
 
+/**
+ * Le suivi d'une demande : son intitulé, puis la collectivité. Préfixé du
+ * nombre d'erreurs après une saisie refusée, comme le formulaire d'une démarche.
+ */
+export function suiviTitle(lang: string, tenantName: string, errorCount = 0): string {
+  const base = t(lang, "suivi.title") + SEPARATOR + tenantName;
+  return errorCount > 0 ? tn(lang, "page.errorsPrefix", errorCount) + SEPARATOR + base : base;
+}
+
 /** La page de l'assistant : son intitulé, puis la collectivité. */
 export function assistantTitle(lang: string, tenantName: string): string {
   return t(lang, "assistant.title") + SEPARATOR + tenantName;
