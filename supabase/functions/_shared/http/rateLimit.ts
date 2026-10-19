@@ -68,6 +68,22 @@ export function clientAddress(headers: Headers): string {
   return headers.get("cf-connecting-ip")?.trim() || "inconnue";
 }
 
+/**
+ * La clé d'un frein qui doit résister à un visiteur décidé : une adresse IPv6
+ * se change à volonté dans son /64 (le préfixe qu'un fournisseur attribue à un
+ * abonné), on compte donc par /64. Une IPv4 reste entière — un /24 regrouperait
+ * des abonnés sans rapport derrière le même opérateur.
+ */
+export function addressBucket(address: string): string {
+  if (!address.includes(":")) return address;
+  const [head] = address.split("%");
+  const parts = head.split("::");
+  const left = parts[0] === "" ? [] : parts[0].split(":");
+  const right = parts.length > 1 && parts[1] !== "" ? parts[1].split(":") : [];
+  const groups = parts.length > 1 ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right] : left;
+  return groups.slice(0, 4).map((g) => (g === "" ? "0" : g.toLowerCase().replace(/^0+(?=.)/, ""))).join(":") + "::/64";
+}
+
 /** SHA-256 hexadécimal — WebCrypto, disponible sous Deno comme sous Node. */
 export async function hashKey(input: string): Promise<string> {
   const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));

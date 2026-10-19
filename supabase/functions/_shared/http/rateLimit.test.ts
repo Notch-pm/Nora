@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clientAddress, createRateLimiter, hashKey } from "./rateLimit.ts";
+import { addressBucket, clientAddress, createRateLimiter, hashKey } from "./rateLimit.ts";
 
 describe("createRateLimiter", () => {
   it("accepte jusqu'à la borne, puis refuse dans la fenêtre, puis libère", () => {
@@ -37,5 +37,15 @@ describe("clientAddress", () => {
 describe("hashKey", () => {
   it("hache en SHA-256 : l'adresse n'est jamais conservée en clair", async () => {
     expect(await hashKey("abc")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  });
+});
+
+describe("addressBucket", () => {
+  it("compte une IPv6 par /64, une IPv4 entière", () => {
+    expect(addressBucket("2001:db8:1:2:aaaa:bbbb:cccc:dddd")).toBe("2001:db8:1:2::/64");
+    expect(addressBucket("2001:DB8:0001:0002::1")).toBe("2001:db8:1:2::/64");
+    expect(addressBucket("2001:db8::1")).toBe("2001:db8:0:0::/64");
+    expect(addressBucket("fe80::1%eth0")).toBe("fe80:0:0:0::/64");
+    expect(addressBucket("203.0.113.9")).toBe("203.0.113.9");
   });
 });

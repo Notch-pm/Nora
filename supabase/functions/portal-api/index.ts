@@ -52,7 +52,7 @@ import {
 } from "../_shared/domain/courrier.ts";
 import { httpStatusForPieceFailure, uploadPiece } from "../_shared/iris/pieceService.ts";
 import { hostnameForRequest } from "../_shared/http/requestHostname.ts";
-import { createRateLimiter, hashKey } from "../_shared/http/rateLimit.ts";
+import { addressBucket, createRateLimiter, hashKey } from "../_shared/http/rateLimit.ts";
 import { type ProxyContext, readProxyContext, visitorAddress } from "../_shared/http/proxy.ts";
 import { createSessionStore, type SessionStore } from "../_shared/session/sessionStore.ts";
 import { clearedSessionCookie } from "../_shared/session/sessionToken.ts";
@@ -1497,7 +1497,9 @@ Deno.serve(async (request: Request): Promise<Response> => {
   if (request.method === "POST" && path === "/v1/suivi") {
     const proxy = proxyOf(request);
     if (!checkMutation(request.headers, proxy).ok) return sessionFailure("csrf_rejected");
-    if (!suiviLimiter.allow(await hashKey(visitor(request)))) return suiviFailure("suivi_too_many_attempts");
+    if (!suiviLimiter.allow(await hashKey(addressBucket(visitor(request))))) {
+      return suiviFailure("suivi_too_many_attempts");
+    }
 
     let body: unknown;
     try {
