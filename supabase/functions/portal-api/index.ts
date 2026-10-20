@@ -88,6 +88,7 @@ import {
   enregistrerProfil,
   httpStatusForProfilFailure,
   lireProfil,
+  ficheConfirmee,
   PROFIL_MESSAGES,
   type ProfilDeps,
   type ProfilFailure,
@@ -783,6 +784,12 @@ async function mesDemandesContext(
   const contactId = await spaceContactId(deps, who.accountId);
   if (contactId === undefined) return { ok: false, response: suiviFailure("suivi_unavailable") };
   if (contactId === null) return { ok: true, contactId: null };
+  const confirmee = await ficheConfirmee(deps, who.accountId, contactId);
+  if (confirmee === undefined) return { ok: false, response: suiviFailure("suivi_unavailable") };
+  if (!confirmee) {
+    console.error("portal-api : la fiche de l'espace n'est plus celle du Socle (rattachement corrigé ou fiche archivée)");
+    return { ok: false, response: suiviFailure("suivi_refused") };
+  }
   const email = await deps.identity.emailOf(who.accountId);
   const headers = email === null ? null : await citizenHeaders(who.tenant.id, { kind: "contact", id: contactId, email });
   if (headers === null) return { ok: false, response: suiviFailure("suivi_unavailable") };

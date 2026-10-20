@@ -61,7 +61,8 @@ export async function listMesDemandes(
   if (!UUID_RE.test(contactId)) return { ok: false, reason: "suivi_refused" };
   const query = new URLSearchParams({ limit: "20" });
   if (avant !== null) {
-    if (Number.isNaN(Date.parse(avant))) return { ok: false, reason: "bad_request" };
+    // Curseur opaque d'Iris (`<date>_<id>`) : borné, jamais interprété ici.
+    if (!/^[0-9TZ:.+-]{10,40}(_[0-9a-f-]{36})?$/i.test(avant)) return { ok: false, reason: "bad_request" };
     query.set("before", avant);
   }
   const reply = await iris.get(`/v1/citizen/contacts/${contactId}/requests?${query.toString()}`, headers);

@@ -35,6 +35,20 @@ export interface ProfilDeps {
   trace: RequestTrace;
 }
 
+/**
+ * La fiche que l'espace retient est-elle TOUJOURS celle que le Socle rattache
+ * à ce compte, et active ? Un agent peut avoir corrigé le rattachement ou
+ * archivé la fiche : « Mes demandes » ne suit alors plus l'ancienne
+ * (relecture de sécurité du 2026-10-20, I3). `undefined` = Socle muet.
+ */
+export async function ficheConfirmee(deps: ProfilDeps, accountId: string, contactId: string): Promise<boolean | undefined> {
+  const reply = await deps.contacts.get(deps.tenantId, accountId);
+  if (reply.kind === "not_found") return false;
+  if (reply.kind !== "ok") return undefined;
+  const id = (reply.body as { contact?: { id?: unknown } } | null)?.contact?.id;
+  return id === contactId;
+}
+
 /** La fiche de l'espace, ou `null` s'il n'en a pas encore — `undefined` si la base ne répond pas. */
 export async function spaceContactId(deps: ProfilDeps, accountId: string): Promise<string | null | undefined> {
   const r = await deps.store.spaceContact(accountId, deps.tenantId);
@@ -53,7 +67,11 @@ export async function lireProfil(deps: ProfilDeps, accountId: string): Promise<P
   const reply = await deps.contacts.get(deps.tenantId, accountId);
   if (reply.kind === "not_found") return { ok: true, profil: null };
   if (reply.kind !== "ok") return { ok: false, reason: "profil_indisponible" };
-  return { ok: true, profil: profilOf(reply.body) };
+  const profil = profilOf(reply.body);
+  // Le Socle désigne une AUTRE fiche que celle de l'espace : on ne montre rien.
+  const id = (reply.body as { contact?: { id?: unknown } } | null)?.contact?.id;
+  if (id !== contactId) return { ok: false, reason: "profil_indisponible" };
+  return { ok: true, profil };
 }
 
 /**

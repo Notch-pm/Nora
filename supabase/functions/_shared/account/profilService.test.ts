@@ -105,3 +105,14 @@ describe("domaine du profil", () => {
     });
   });
 });
+
+describe("fiche de l'espace confrontée au Socle (I3)", () => {
+  it("si le Socle désigne une autre fiche, rien n'est montré", async () => {
+    const { d } = deps();
+    await enregistrerProfil(d, "acc", IDENTITE);
+    d.contacts.get = async () => ({ kind: "ok", status: 200, body: { contact: { ...FICHE, id: "dddddddd-0000-4000-8000-000000000009" } } });
+    expect(await lireProfil(d, "acc")).toEqual({ ok: false, reason: "profil_indisponible" });
+    const { ficheConfirmee } = await import("./profilService.ts");
+    expect(await ficheConfirmee(d, "acc", CONTACT)).toBe(false);
+  });
+});
