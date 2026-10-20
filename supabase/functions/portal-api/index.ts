@@ -70,6 +70,21 @@ import {
 import { sessionPolicyFromEnv } from "../_shared/session/sessionPolicy.ts";
 import { pieceUrl, readDemande, verifyAccess } from "../_shared/iris/suiviService.ts";
 import {
+  ACCOUNT_MESSAGES,
+  type AccountFailure,
+  type AccountMailer,
+  type AccountService,
+  type Authenticated,
+  createAccountService,
+  httpStatusForAccountFailure,
+  normalizeEmail,
+} from "../_shared/account/accountService.ts";
+import { createAccountStore } from "../_shared/account/accountStore.ts";
+import { createIdentityProvider } from "../_shared/account/identity.ts";
+import { authSecretFrom } from "../_shared/account/secrets.ts";
+import { type SmtpConfig, smtpFromSocle } from "../_shared/account/mail/smtpConfig.ts";
+import { sendAccountMessage } from "../_shared/account/mail/transport.ts";
+import {
   httpStatusForSuiviFailure,
   parseSuiviAccess,
   SUIVI_MESSAGES,
@@ -386,6 +401,148 @@ function sessionFailure(reason: SessionFailure, clearCookie = false): Response {
       ? { "Cache-Control": "no-store", "Set-Cookie": clearedSessionCookie() }
       : { "Cache-Control": "no-store" },
   );
+}
+
+// ── Compte citoyen (espace usager, lot L3a) ─────────────────────────────────
+//
+// Les parcours vivent dans `_shared/account/accountService.ts` ; ici, seulement
+// le câblage : GoTrue et la base Nora (service_role), le serveur d'envoi de la
+// collectivité (Socle, scope `smtp`), `NORA_AUTH_SECRET`, et la session du lot
+// L1. Toutes les écritures passent par `checkMutation` (relais obligatoire).
+
+/** Les parcours sans session : inscription, liens, connexion. */
+const ACCOUNT_ANONYMOUS_PATHS = new Set([
+  "/v1/compte/inscription",
+  "/v1/compte/confirmation",
+  "/v1/compte/confirmation/renvoi",
+  "/v1/compte/mot-de-passe-oublie",
+  "/v1/compte/mot-de-passe",
+  "/v1/compte/connexion",
+  "/v1/compte/connexion/totp",
+]);
+const ACCOUNT_POST_PATHS = new Set([
+  ...ACCOUNT_ANONYMOUS_PATHS,
+  "/v1/compte/mot-de-passe/changement",
+  "/v1/compte/totp/activation",
+  "/v1/compte/totp/confirmation",
+  "/v1/compte/totp/desactivation",
+]);
+
+/** Inscriptions, demandes de lien, connexions : par visiteur (IPv6 par /64). */
+const accountLimiter = createRateLimiter({ windowMs: 10 * 60_000, max: 20 });
+
+function accountFailure(reason: AccountFailure, rules?: string[]): Response {
+  return json(
+    httpStatusForAccountFailure(reason),
+    { error: { code: reason, message: ACCOUNT_MESSAGES[reason], ...(rules ? { rules } : {}) } },
+    { "Cache-Control": "no-store" },
+  );
+}
+
+/** Le serveur d'envoi de la collectivité, lu au Socle une fois par requête — jamais mis en cache partagé. */
+function tenantMailer(tenantId: string): AccountMailer {
+  let config: Promise<SmtpConfig | null> | null = null;
+  const load = () => {
+    config ??= (async () => {
+      const baseUrl = Deno.env.get("SOCLE_API_URL");
+      const apiKey = Deno.env.get("SOCLE_API_KEY");
+      if (!baseUrl || !apiKey) return null;
+      const reply = await createSocleClient({ baseUrl, apiKey }).get(`/v1/organizations/${tenantId}/smtp`);
+      if (reply.kind === "auth_failed") console.error("portal-api : la clé Socle n'a pas le scope smtp");
+      return reply.kind === "ok" ? smtpFromSocle(reply.body) : null;
+    })();
+    return config;
+  };
+  return {
+    ready: async () => (await load()) !== null,
+    async send(to, message) {
+      const smtp = await load();
+      if (smtp === null) return false;
+      try {
+        await sendAccountMessage(smtp, to, message);
+        return true;
+      } catch (error) {
+        // Jamais l'adresse ni le contenu dans le journal.
+        console.error("portal-api : courriel du compte non envoyé —", error instanceof Error ? error.message : "?");
+        return false;
+      }
+    },
+  };
+}
+
+/** Les parcours du compte pour cette requête, ou la réponse à rendre si le portail n'est pas configuré. */
+function accountServiceFor(
+  request: Request,
+  tenant: Tenant,
+): { ok: true; service: AccountService } | { ok: false; response: Response } {
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const authSecret = authSecretFrom(Deno.env.get("NORA_AUTH_SECRET"));
+  if (!url || !serviceKey || authSecret === null) {
+    console.error("portal-api : compte citoyen non configuré (SUPABASE_*, NORA_AUTH_SECRET)");
+    return { ok: false, response: accountFailure("account_unavailable") };
+  }
+  const proxy = proxyOf(request);
+  return {
+    ok: true,
+    service: createAccountService({
+      identity: createIdentityProvider({ url, serviceKey }),
+      store: createAccountStore({ url, serviceKey }),
+      mailer: tenantMailer(tenant.id),
+      authSecret,
+      tenant: { id: tenant.id, name: tenant.name },
+      portalUrl: trackingUrlFor(tenant.hostname)?.replace(/\/suivi$/, "") ?? `https://${tenant.hostname}`,
+      trace: traceOf(request.headers, proxy),
+      nowSeconds: () => Math.floor(Date.now() / 1000),
+      sha256: hashKey,
+    }),
+  };
+}
+
+/** Ouvre la session d'un compte authentifié (et ferme celle que portait ce navigateur). */
+async function openAccountSession(request: Request, context: SessionContext, who: Authenticated): Promise<Response> {
+  await endSession(request.headers, context);
+  const opened = await openSession(
+    {
+      kind: "account",
+      accountId: who.accountId,
+      guestRequestId: null,
+      amr: who.amr,
+      remember: who.remember,
+      durations: who.remember ? sessionPolicy().remember : sessionPolicy().standard,
+    },
+    context,
+  );
+  if (!opened.ok) return sessionFailure(opened.reason);
+  return json(
+    200,
+    { authenticated: true, kind: "account", expiresAt: opened.expiresAt },
+    { "Cache-Control": "no-store", "Set-Cookie": opened.setCookie },
+  );
+}
+
+/** Le compte connecté sur ce navigateur, dans cette collectivité — ou la réponse à rendre. */
+async function accountSession(
+  request: Request,
+  socle: ReturnType<typeof socleClient>,
+): Promise<
+  | { ok: true; accountId: string; idHash: string; tenant: Tenant; context: SessionContext }
+  | { ok: false; response: Response }
+> {
+  const resolved = await tenantOf(request, socle);
+  if (!resolved.ok) return resolved;
+  const context = sessionContext(request, resolved.tenant.id);
+  if (context === null) return { ok: false, response: sessionFailure("session_unavailable") };
+  const current = await currentSession(request.headers, context);
+  if (!current.ok) return { ok: false, response: sessionFailure(current.reason) };
+  const session = current.session;
+  if (session.status === "anonymous") {
+    return { ok: false, response: sessionFailure("session_required", session.clearCookie) };
+  }
+  if (session.record.kind !== "account" || session.record.accountId === null) {
+    return { ok: false, response: sessionFailure("session_required") };
+  }
+  return { ok: true, accountId: session.record.accountId, idHash: session.idHash, tenant: resolved.tenant, context };
 }
 
 // ── Suivi d'une demande sans compte (espace usager, lot L2) ─────────────────
@@ -1493,6 +1650,106 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return json(200, { authenticated: false }, { "Cache-Control": "no-store", "Set-Cookie": ended.setCookie });
   }
 
+  // ── /v1/compte/* — le compte citoyen (lot L3a). ──────────────────────────
+  if (path === "/v1/compte" && request.method === "GET") {
+    const who = await accountSession(request, socle);
+    if (!who.ok) return who.response;
+    const built = accountServiceFor(request, who.tenant);
+    if (!built.ok) return built.response;
+    const profile = await built.service.profile(who.accountId);
+    if (!profile.ok) return accountFailure(profile.reason);
+    return json(200, { compte: profile.value }, { "Cache-Control": "private, no-store" });
+  }
+
+  if (request.method === "POST" && ACCOUNT_POST_PATHS.has(path)) {
+    const proxy = proxyOf(request);
+    if (!checkMutation(request.headers, proxy).ok) return sessionFailure("csrf_rejected");
+    let body: Record<string, unknown>;
+    try {
+      const parsed = await request.json();
+      if (!isRecord(parsed)) return accountFailure("bad_request");
+      body = parsed;
+    } catch {
+      return accountFailure("bad_request");
+    }
+
+    // Parcours ANONYMES : frein par visiteur, avant toute lecture.
+    if (ACCOUNT_ANONYMOUS_PATHS.has(path)) {
+      if (!accountLimiter.allow(await hashKey(addressBucket(visitor(request))))) return accountFailure("account_locked");
+      if (path === "/v1/compte/inscription") {
+        // La porte anti-robot du dépôt, liée à l'adresse saisie (`depositGate.ts`).
+        const gate = await checkDepositChallenge({
+          secret: Deno.env.get("ASSISTANT_SIGNING_SECRET") ?? null,
+          required: Deno.env.get("DEPOSIT_CHALLENGE_REQUIRED") === "true",
+          challenge: body.challenge,
+          submissionId: normalizeEmail(body.email) ?? "",
+          nowSeconds: Math.floor(Date.now() / 1000),
+        });
+        if (gate !== "open") {
+          return json(428, { error: { code: "challenge_required", message: "Merci de réessayer." } }, { "Cache-Control": "no-store" });
+        }
+      }
+      const resolved = await tenantOf(request, socle);
+      if (!resolved.ok) return resolved.response;
+      const built = accountServiceFor(request, resolved.tenant);
+      if (!built.ok) return built.response;
+      const service = built.service;
+      const done = (result: { ok: true } | { ok: false; reason: AccountFailure; rules?: string[] }) =>
+        result.ok ? json(200, { ok: true }, { "Cache-Control": "no-store" }) : accountFailure(result.reason, result.rules);
+
+      switch (path) {
+        case "/v1/compte/inscription":
+          return done(await service.register({ email: body.email, password: body.password, cguAccepted: body.cguAccepted }));
+        case "/v1/compte/confirmation":
+          return done(await service.confirm(body.jeton));
+        case "/v1/compte/confirmation/renvoi":
+          return done(await service.resendConfirmation({ email: body.email }));
+        case "/v1/compte/mot-de-passe-oublie":
+          return done(await service.requestReset({ email: body.email }));
+        case "/v1/compte/mot-de-passe":
+          return done(await service.resetPassword({ token: body.jeton, password: body.password }));
+      }
+
+      const context = sessionContext(request, resolved.tenant.id);
+      if (context === null) return sessionFailure("session_unavailable");
+      if (path === "/v1/compte/connexion") {
+        const login = await service.login({ email: body.email, password: body.password, remember: body.remember });
+        if (!login.ok) return accountFailure(login.reason);
+        if (login.value.kind === "mfa") {
+          return json(200, { authenticated: false, mfaRequired: true, ticket: login.value.ticket }, { "Cache-Control": "no-store" });
+        }
+        return await openAccountSession(request, context, login.value.session);
+      }
+      // /v1/compte/connexion/totp
+      const second = await service.loginTotp({ ticket: body.ticket, code: body.code });
+      if (!second.ok) return accountFailure(second.reason);
+      return await openAccountSession(request, context, second.value);
+    }
+
+    // Parcours CONNECTÉS.
+    const who = await accountSession(request, socle);
+    if (!who.ok) return who.response;
+    const built = accountServiceFor(request, who.tenant);
+    if (!built.ok) return built.response;
+    const service = built.service;
+    const done = (result: { ok: true } | { ok: false; reason: AccountFailure; rules?: string[] }) =>
+      result.ok ? json(200, { ok: true }, { "Cache-Control": "no-store" }) : accountFailure(result.reason, result.rules);
+    switch (path) {
+      case "/v1/compte/mot-de-passe/changement":
+        return done(await service.changePassword(who.accountId, who.idHash, { current: body.current, password: body.password }));
+      case "/v1/compte/totp/activation": {
+        const started = await service.totpStart(who.accountId, { password: body.password });
+        return started.ok
+          ? json(200, { secret: started.value.secret, uri: started.value.uri }, { "Cache-Control": "no-store" })
+          : accountFailure(started.reason);
+      }
+      case "/v1/compte/totp/confirmation":
+        return done(await service.totpConfirm(who.accountId, { code: body.code }));
+      case "/v1/compte/totp/desactivation":
+        return done(await service.totpDisable(who.accountId, { password: body.password, code: body.code }));
+    }
+  }
+
   // ── POST /v1/suivi — courriel + référence + code d'accès → session invitée.
   if (request.method === "POST" && path === "/v1/suivi") {
     const proxy = proxyOf(request);
@@ -1572,6 +1829,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     || path === "/v1/courrier" || path === "/v1/courriers"
     || path === "/v1/session" || path === "/v1/session/fin"
     || path === "/v1/suivi" || path === "/v1/suivi/demande" || suiviPiece !== null
+    || path === "/v1/compte" || ACCOUNT_POST_PATHS.has(path)
   ) {
     return json(405, {
       error: { code: "method_not_allowed", message: "Méthode non autorisée sur cette ressource." },

@@ -24,5 +24,8 @@
       "@fn/*": ["./supabase/functions/*"]
     }
   },
-  "include": ["src", "supabase/functions/_shared", "worker"]
+  "include": ["src", "supabase/functions/_shared", "worker"],
+  // Le seul module de _shared qui dépend du runtime Deno (nodemailer par `npm:`) :
+  // vérifié par `deno check`, jamais importé par l'interface.
+  "exclude": ["supabase/functions/_shared/account/mail/transport.ts"]
 }
