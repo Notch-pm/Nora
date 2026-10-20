@@ -19,6 +19,7 @@ import {
 } from "../domain/profil.ts";
 import type { CitizenContacts } from "../socle/citizenContacts.ts";
 import type { AccountStore } from "./accountStore.ts";
+import { isConsentKind } from "../domain/consents.ts";
 import type { IdentityProvider } from "./identity.ts";
 
 export type ProfilFailure = "profil_invalide" | "profil_refuse" | "profil_indisponible";
@@ -101,6 +102,23 @@ export async function enregistrerProfil(deps: ProfilDeps, accountId: string, bod
   if (!coordonnees.ok) return { ok: false, reason: "profil_invalide", champs: coordonnees.champs };
   if (Object.keys(coordonnees.value).length === 0) return lireProfil(deps, accountId);
   const reply = await deps.contacts.update(deps.tenantId, accountId, toSocleCoordonnees(coordonnees.value));
+  if (reply.kind === "rejected") return { ok: false, reason: "profil_refuse", message: reply.message };
+  if (reply.kind !== "ok") return { ok: false, reason: "profil_indisponible" };
+  return { ok: true, profil: profilOf(reply.body) };
+}
+
+/**
+ * L'usager modifie un consentement depuis « Mon compte » (lot L3c) : un
+ * recueil daté au Socle, sur SA fiche. `{ kind, granted }` seulement — la
+ * phrase est composée par le Socle. Un retrait est un recueil `granted: false`.
+ */
+export async function modifierConsentement(deps: ProfilDeps, accountId: string, body: unknown): Promise<ProfilResult> {
+  const r = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+  if (!isConsentKind(r.kind) || typeof r.granted !== "boolean") return { ok: false, reason: "profil_invalide" };
+  const contactId = await spaceContactId(deps, accountId);
+  if (contactId === undefined) return { ok: false, reason: "profil_indisponible" };
+  if (contactId === null) return { ok: false, reason: "profil_invalide" };
+  const reply = await deps.contacts.consent(deps.tenantId, accountId, { kind: r.kind, granted: r.granted });
   if (reply.kind === "rejected") return { ok: false, reason: "profil_refuse", message: reply.message };
   if (reply.kind !== "ok") return { ok: false, reason: "profil_indisponible" };
   return { ok: true, profil: profilOf(reply.body) };

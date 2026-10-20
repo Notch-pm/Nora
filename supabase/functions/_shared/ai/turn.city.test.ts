@@ -44,13 +44,13 @@ const tenant: Tenant = {
 
 const demarche: Demarche = {
   id: SIGNALEMENT, name: "Signaler un problème dans l'espace public", description: null,
-  estimatedMinutes: 3, organizations: [], audiences: ["citoyen"], category: null,
+  estimatedMinutes: 3, organizations: [], audiences: ["citoyen"], category: null, accessMode: "libre",
 };
 
 // Le bloc d'adresse tel que le Socle le publie — les clés sont celles de test2.
 const detail: DemarcheDetail = {
   ...demarche,
-  category: null,
+  category: null, accessMode: "libre",
   userDescription: null,
   form: {
     version: 1,

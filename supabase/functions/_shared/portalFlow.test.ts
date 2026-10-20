@@ -264,6 +264,7 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
         ],
         audiences: ["citoyen"],
         category: { id: "cat-voirie", name: "Voirie", icon: "construction" },
+        accessMode: "libre",
       },
       {
         id: "d2",
@@ -278,6 +279,7 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
         audiences: ["citoyen", "entreprise"],
         // Un Socle d'avant 1.41.0 ne sert pas la catégorie : pas d'erreur.
         category: null,
+        accessMode: "libre",
       },
     ]);
   });
@@ -305,6 +307,7 @@ describe("3. tenant connu → bonnes démarches récupérées", () => {
         // ⚠️ Vide, jamais « tous publics » : rien n'a été déclaré.
         audiences: [],
         category: null,
+        accessMode: "libre",
       },
     ]);
   });

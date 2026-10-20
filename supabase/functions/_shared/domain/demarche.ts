@@ -82,6 +82,13 @@ import type { FormSchema } from "./formSchema.ts";
 import type { Audience, RequesterConfig } from "./requesterConfig.ts";
 import type { UserCommunication } from "./userCommunication.ts";
 
+export type AccessMode = "libre" | "authentifie";
+
+/** `libre` quand le Socle ne dit rien : c'était vrai avant que la colonne existe. */
+export function accessModeOf(value: unknown): AccessMode {
+  return value === "authentifie" ? "authentifie" : "libre";
+}
+
 export interface Demarche {
   id: string;
   /** Intitulé de la démarche. */
@@ -128,6 +135,16 @@ export interface Demarche {
    * le pictogramme.
    */
   category: DemarcheCategory | null;
+  /**
+   * À quelles conditions on la DÉPOSE (Socle, `procedures.access_mode`,
+   * contrat 1.19.0) : `libre` — tout le monde ; `authentifie` — un compte
+   * connecté, profil rempli (espace usager, lot L3c).
+   *
+   * ⚠️ Pas une règle de publication : une démarche réservée se voit au
+   * catalogue, avec un verrou — c'est là que l'usager apprend qu'il doit se
+   * connecter. Le serveur refuse le dépôt sans compte (`POST /v1/demandes`).
+   */
+  accessMode: AccessMode;
 }
 
 /** Catégorie d'une démarche : de quoi la situer et la dessiner, rien de plus. */

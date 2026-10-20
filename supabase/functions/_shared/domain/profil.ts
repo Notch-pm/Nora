@@ -14,6 +14,8 @@
  * rattachement, et se corrigent auprès de la collectivité.
  */
 
+import type { ConsentKind } from "./consents.ts";
+
 export type Civilite = "madame" | "monsieur";
 
 export interface Profil {
@@ -29,6 +31,18 @@ export interface Profil {
   adresse2: string | null;
   codePostal: string | null;
   ville: string | null;
+  /**
+   * Les consentements RGPD de la PERSONNE, tels que le Socle les tient — TROIS
+   * états : accordé, refusé (`accorde: false`, daté), jamais demandé (`null`).
+   * C'est la date qui tranche, jamais le booléen seul (règle de la gamme).
+   */
+  consentements: Record<ConsentKind, ConsentEtat | null>;
+}
+
+export interface ConsentEtat {
+  accorde: boolean;
+  /** Date du dernier recueil (ISO). */
+  le: string;
 }
 
 /** L'identité saisie au premier remplissage (CCTP Sceaux 5.1). */
@@ -142,7 +156,39 @@ export function toProfil(body: unknown): Profil | null {
     adresse2: s(r.address_line2),
     codePostal: s(r.postal_code),
     ville: s(r.city),
+    consentements: {
+      traitement: consentEtat(r.consent_traitement, r.consent_traitement_at),
+      partage: consentEtat(r.consent_partage, r.consent_partage_at),
+    },
   };
+}
+
+function consentEtat(granted: unknown, at: unknown): ConsentEtat | null {
+  return typeof at === "string" && typeof granted === "boolean" ? { accorde: granted, le: at } : null;
+}
+
+/**
+ * Le profil → les réponses du bloc « Vos informations » d'un formulaire, aux
+ * clés du paramétrage du Socle (`requesterConfig.ts`, public `citoyen`) — le
+ * préremplissage du dépôt connecté (« Dites-le nous une fois », CCTP 3.5).
+ * Seules les clés renseignées sont rendues ; l'usager peut tout corriger.
+ */
+export function requesterValuesFromProfil(profil: Profil): Record<string, string> {
+  const out: Record<string, string> = {};
+  const put = (key: string, value: string | null) => {
+    if (value !== null && value.trim() !== "") out[key] = value;
+  };
+  put("civilite", profil.civilite);
+  put("nom_naissance", profil.nom);
+  put("nom_usuel", profil.nomUsage ?? profil.nom);
+  put("prenoms", profil.prenom);
+  const rue = [profil.adresse1, profil.adresse2].filter((v) => v !== null && v.trim() !== "").join(", ");
+  const commune = [profil.codePostal, profil.ville].filter((v) => v !== null && v.trim() !== "").join(" ");
+  put("adresse", [rue, commune].filter((v) => v !== "").join(", ") || null);
+  put("tel_portable", profil.mobile);
+  put("tel_fixe", profil.fixe);
+  put("courriel", profil.courriel);
+  return out;
 }
 
 /** L'identité → le corps de `POST /v1/citizen/contacts/{compte}/link` (l'adresse est celle du compte). */

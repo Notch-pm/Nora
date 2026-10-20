@@ -89,6 +89,7 @@ import {
   httpStatusForProfilFailure,
   lireProfil,
   ficheConfirmee,
+  modifierConsentement,
   PROFIL_MESSAGES,
   type ProfilDeps,
   type ProfilFailure,
@@ -166,11 +167,10 @@ const MAX_ATTACHMENTS = 50;
 const MAX_UPLOAD_ID = 64;
 
 /**
- * Une pièce déposée depuis le portail : 10 Mo. Iris en accepte 25 ; on garde
- * la marge pour un usager sur mobile — et parce qu'un justificatif de 10 Mo
- * est déjà une photo mal compressée.
+ * Une pièce déposée depuis le portail : 20 Mo (CCTP Sceaux 5.2 ; 10 Mo
+ * jusqu'au 2026-10-20). Iris en accepte 25 : la marge reste pour l'enrobage.
  */
-const MAX_PIECE_BYTES = 10 * 1_048_576;
+const MAX_PIECE_BYTES = 20 * 1_048_576;
 /** Marge d'enrobage multipart tolérée sur `Content-Length` avant lecture. */
 const MULTIPART_ALLOWANCE = 64 * 1024;
 
@@ -284,7 +284,7 @@ function audienceClient() {
 
 /** Messages de refus d'une pièce, adressés au visiteur (l'écran les traduit par code). */
 const PIECE_MESSAGES: Record<string, string> = {
-  piece_too_large: "Ce fichier dépasse la taille maximale de 10 Mo.",
+  piece_too_large: "Ce fichier dépasse la taille maximale de 20 Mo.",
   piece_unsupported: "Ce fichier n'est pas dans un format accepté.",
   piece_rejected: "Ce fichier n'a pas pu être accepté.",
   too_many_uploads: "Trop de fichiers envoyés en peu de temps : patientez une minute.",
@@ -325,6 +325,8 @@ const FAILURE_MESSAGES: Record<PortalFailure, string> = {
     "Votre demande n'a pas pu être envoyée. Merci de réessayer dans quelques instants.",
   iris_misconfigured:
     "Votre demande n'a pas pu être envoyée. Merci de réessayer dans quelques instants.",
+  account_required:
+    "Cette démarche est réservée aux usagers connectés : connectez-vous et complétez vos informations pour la déposer.",
 };
 
 function failure(reason: PortalFailure): Response {
@@ -1373,6 +1375,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
     // Connecté, profil rempli : la demande part rattachée à la fiche du compte
     // (lot L3b). La fiche vient de la SESSION, jamais du corps de la requête.
     const socleContactId = await depositContactId(request, tenant);
+    // Démarche réservée aux connectés (Socle `access_mode`, lot L3c) : un
+    // compte connecté, profil rempli — la demande part alors rattachée à SA
+    // fiche. L'écran le dit avant ; le serveur ne s'y fie pas.
+    if (demarche.accessMode === "authentifie" && socleContactId === null) return failure("account_required");
     const submission = await submitDemande(
       {
         sourceSystem: Deno.env.get("IRIS_SOURCE_SYSTEM") ?? DEFAULT_SOURCE_SYSTEM,
@@ -1857,6 +1863,24 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return json(200, { profil: result.profil }, { "Cache-Control": "private, no-store" });
   }
 
+  // ── POST /v1/compte/consentements — l'usager modifie ses consentements (lot L3c).
+  if (path === "/v1/compte/consentements" && request.method === "POST") {
+    if (!checkMutation(request.headers, proxyOf(request)).ok) return sessionFailure("csrf_rejected");
+    const who = await accountSession(request, socle);
+    if (!who.ok) return who.response;
+    const deps = profilDepsFor(request, who.tenant);
+    if (deps === null) return profilFailure("profil_indisponible");
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return profilFailure("profil_invalide");
+    }
+    const result = await modifierConsentement(deps, who.accountId, body);
+    if (!result.ok) return profilFailure(result.reason, result.champs);
+    return json(200, { profil: result.profil }, { "Cache-Control": "private, no-store" });
+  }
+
   // ── /v1/compte/demandes[/{id}[/pieces/{id}]] — « Mes demandes » (lot L3b). ─
   const mesDemandesMatch = path.match(/^\/v1\/compte\/demandes(?:\/([0-9a-f-]{36})(?:\/pieces\/([0-9a-f-]{36}))?)?$/i);
   if (mesDemandesMatch && request.method === "GET") {
@@ -2025,7 +2049,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     || path === "/v1/session" || path === "/v1/session/fin"
     || path === "/v1/suivi" || path === "/v1/suivi/demande" || suiviPiece !== null
     || path === "/v1/compte" || ACCOUNT_POST_PATHS.has(path)
-    || path === "/v1/compte/profil" || mesDemandesMatch !== null
+    || path === "/v1/compte/profil" || mesDemandesMatch !== null || path === "/v1/compte/consentements"
   ) {
     return json(405, {
       error: { code: "method_not_allowed", message: "Méthode non autorisée sur cette ressource." },

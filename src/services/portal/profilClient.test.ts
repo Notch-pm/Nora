@@ -11,6 +11,7 @@ type Call = [string, RequestInit | undefined];
 const PROFIL = {
   civilite: "madame", prenom: "Anne", nom: "Martin", nomUsage: null, dateNaissance: "1980-02-03",
   courriel: "a@b.fr", mobile: null, fixe: null, adresse1: "1 rue X", adresse2: null, codePostal: "46000", ville: "Cahors",
+  consentements: { traitement: null, partage: null },
 };
 
 afterEach(() => {

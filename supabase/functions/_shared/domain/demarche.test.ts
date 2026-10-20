@@ -42,7 +42,7 @@ function demarche(id: string, organizations: DemarcheOrganization[]): Demarche {
     estimatedMinutes: null,
     organizations,
     audiences: [],
-    category: null,
+    category: null, accessMode: "libre",
   };
 }
 
@@ -182,5 +182,15 @@ describe("villesOf — les organismes qui reçoivent du courrier libre", () => {
         { id: "x", name: "Sans adresse", slug: null },
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("accessModeOf (L3c)", () => {
+  it("réservée aux connectés seulement si le Socle le dit", async () => {
+    const { accessModeOf } = await import("./demarche.ts");
+    expect(accessModeOf("authentifie")).toBe("authentifie");
+    expect(accessModeOf("libre")).toBe("libre");
+    expect(accessModeOf(undefined)).toBe("libre");
+    expect(accessModeOf("autre")).toBe("libre");
   });
 });

@@ -71,7 +71,17 @@ function readProfil(reply: unknown): Profil | null | undefined {
     adresse2: text(r.adresse2),
     codePostal: text(r.codePostal),
     ville: text(r.ville),
+    consentements: {
+      traitement: readConsent(r.consentements, "traitement"),
+      partage: readConsent(r.consentements, "partage"),
+    },
   };
+}
+
+/** Trois états : accordé, refusé (daté), jamais demandé (`null`). */
+function readConsent(raw: unknown, kind: "traitement" | "partage"): { accorde: boolean; le: string } | null {
+  const v = (raw as Record<string, unknown> | null)?.[kind] as Record<string, unknown> | null | undefined;
+  return v && typeof v.accorde === "boolean" && typeof v.le === "string" ? { accorde: v.accorde, le: v.le } : null;
 }
 
 async function call(method: "GET" | "POST", body: object | null): Promise<ProfilCall<Profil | null>> {

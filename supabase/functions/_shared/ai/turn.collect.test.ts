@@ -34,13 +34,13 @@ const tenant = (depositEnabled: boolean): Tenant => ({
 });
 
 const base = (id: string, name: string): Demarche => ({
-  id, name, description: null, estimatedMinutes: 3, organizations: [], audiences: ["citoyen"], category: null,
+  id, name, description: null, estimatedMinutes: 3, organizations: [], audiences: ["citoyen"], category: null, accessMode: "libre",
 });
 const catalogue = [base(PROPRETE, "Signaler un problème de propreté"), base(SANS_FORMULAIRE, "Prendre rendez-vous")];
 
 const detail = (id: string): DemarcheDetail => ({
   ...catalogue.find((d) => d.id === id)!,
-  category: null,
+  category: null, accessMode: "libre",
   userDescription: null,
   form:
     id === SANS_FORMULAIRE

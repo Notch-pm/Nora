@@ -23,6 +23,7 @@ import type {
   DemarcheDetail,
   DemarcheOrganization,
 } from "../domain/demarche.ts";
+import { accessModeOf } from "../domain/demarche.ts";
 import type { Audience } from "../domain/requesterConfig.ts";
 import type { PortalFailure } from "../domain/failure.ts";
 import { parseFormSchema } from "../domain/formSchema.ts";
@@ -144,6 +145,7 @@ function toDemarche(raw: unknown, lang: string): Demarche | null {
     organizations: toOrganizations(row.organizations),
     audiences: toAudiences(row.audiences),
     category: toCategory(row.category, lang),
+    accessMode: accessModeOf(row.access_mode),
   };
 }
 

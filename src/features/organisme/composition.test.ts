@@ -9,7 +9,7 @@ function demarche(
   name: string,
   audiences: Demarche["audiences"] = ["citoyen"],
 ): Demarche {
-  return { id, name, description: null, estimatedMinutes: null, organizations: [ORG], audiences, category: null };
+  return { id, name, description: null, estimatedMinutes: null, organizations: [ORG], audiences, category: null, accessMode: "libre" };
 }
 
 describe("visibleOrganismeDemarches", () => {

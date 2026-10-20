@@ -50,6 +50,8 @@ const RETRYABLE: Record<PortalLoadFailure, boolean> = {
   organisme_unavailable: false,
   // Le courrier libre fermé pour cet organisme : réessayer ne l'ouvrira pas.
   courrier_unavailable: false,
+  // Démarche réservée aux connectés : réessayer sans se connecter ne change rien.
+  account_required: false,
   // Renvoyer à l'identique serait refusé de la même façon.
   submission_rejected: false,
   iris_unavailable: true,

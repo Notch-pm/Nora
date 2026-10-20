@@ -47,6 +47,9 @@ function deps() {
       calls.push({ method: "link", body });
       return { kind: "ok", status: 201, body: { contact: FICHE, outcome: "created" } };
     },
+    async consent() {
+      return { kind: "ok", status: 201, body: { contact: FICHE } };
+    },
     async update(_t, _a, body) {
       calls.push({ method: "update", body });
       return { kind: "ok", status: 200, body: { contact: { ...FICHE, city: "Antony" } } };

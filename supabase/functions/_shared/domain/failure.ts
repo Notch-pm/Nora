@@ -36,7 +36,12 @@ export type PortalFailure =
   /** Iris est injoignable, ou a répondu quelque chose d'inattendu. */
   | "iris_unavailable"
   /** La clé du portail est refusée par Iris — panne de configuration. */
-  | "iris_misconfigured";
+  | "iris_misconfigured"
+  /**
+   * Démarche réservée aux usagers connectés (`accessMode: authentifie`) :
+   * il faut un compte connecté, profil rempli, pour la déposer (lot L3c).
+   */
+  | "account_required";
 
 /**
  * Statut HTTP d'un échec.
@@ -74,5 +79,9 @@ export function httpStatusForFailure(failure: PortalFailure): number {
       return 502;
     case "not_configured":
       return 503;
+    case "account_required":
+      // 401 : la requête est juste, il lui manque une identité — l'écran sait
+      // quoi faire (se connecter, compléter son profil).
+      return 401;
   }
 }

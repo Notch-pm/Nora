@@ -18,6 +18,8 @@ export interface CitizenContacts {
   get(tenantId: string, accountId: string): Promise<CitizenContactReply>;
   link(tenantId: string, accountId: string, identity: Record<string, string>): Promise<CitizenContactReply>;
   update(tenantId: string, accountId: string, fields: Record<string, string | null>): Promise<CitizenContactReply>;
+  /** `{ kind, granted }` seulement : la phrase consignée est composée par le Socle (lot L3c). */
+  consent(tenantId: string, accountId: string, consent: { kind: string; granted: boolean }): Promise<CitizenContactReply>;
 }
 
 export interface CitizenContactsConfig {
@@ -73,5 +75,6 @@ export function createCitizenContacts(config: CitizenContactsConfig): CitizenCon
     get: (tenantId, accountId) => call("GET", tenantId, path(accountId)),
     link: (tenantId, accountId, identity) => call("POST", tenantId, path(accountId) + "/link", identity),
     update: (tenantId, accountId, fields) => call("PATCH", tenantId, path(accountId), fields),
+    consent: (tenantId, accountId, consent) => call("POST", tenantId, path(accountId) + "/consents", consent),
   };
 }
