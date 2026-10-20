@@ -52,6 +52,7 @@ import {
 } from "../_shared/domain/courrier.ts";
 import { httpStatusForPieceFailure, uploadPiece } from "../_shared/iris/pieceService.ts";
 import { boundRequestBody } from "../_shared/http/boundedBody.ts";
+import { requesterValuesFromProfil } from "../_shared/domain/profil.ts";
 import { hostnameForRequest } from "../_shared/http/requestHostname.ts";
 import { addressBucket, createRateLimiter, hashKey } from "../_shared/http/rateLimit.ts";
 import { type ProxyContext, readProxyContext, visitorAddress } from "../_shared/http/proxy.ts";
@@ -90,6 +91,7 @@ import {
   httpStatusForProfilFailure,
   lireProfil,
   ficheConfirmee,
+  ficheDuCompte,
   modifierConsentement,
   PROFIL_MESSAGES,
   type ProfilDeps,
@@ -737,12 +739,15 @@ async function citizenHeaders(tenantId: string, subject: CitizenTokenSubject): P
 }
 
 /**
- * La fiche du compte connecté sur ce navigateur, pour un dépôt — `null` pour
- * un visiteur anonyme, une session invitée, un profil pas encore rempli, ou au
- * moindre doute (un dépôt ne doit jamais échouer pour cela : il part alors
- * comme un dépôt sans compte).
+ * La fiche du compte connecté sur ce navigateur, pour un dépôt, avec
+ * l'identité qu'elle porte — `null` pour un visiteur anonyme, une session
+ * invitée, un profil pas encore rempli, ou au moindre doute (un dépôt ne doit
+ * jamais échouer pour cela : il part alors comme un dépôt sans compte).
  */
-async function depositContactId(request: Request, tenant: Tenant): Promise<string | null> {
+async function depositAccount(
+  request: Request,
+  tenant: Tenant,
+): Promise<{ contactId: string; identity: Record<string, string> } | null> {
   // L'autorité du cookie ne vaut que pour une requête de même origine : un
   // site voisin (même domaine parent, donc même « site » pour SameSite=Lax)
   // ne doit pas déposer au nom de la fiche du visiteur connecté. Refusée, la
@@ -761,11 +766,12 @@ async function depositContactId(request: Request, tenant: Tenant): Promise<strin
   // être ENCORE celle que le Socle rattache au compte. Après une correction de
   // rattachement par un agent, l'espace désignerait la fiche d'un autre, et la
   // demande apparaîtrait chez lui (relecture de sécurité L3c, I1).
-  if (await ficheConfirmee(deps, accountId, contactId) !== true) {
+  const fiche = await ficheDuCompte(deps, accountId, contactId);
+  if (fiche == null) {
     console.error("portal-api : dépôt sans rattachement — la fiche de l'espace n'est plus celle du Socle");
     return null;
   }
-  return contactId;
+  return { contactId, identity: requesterValuesFromProfil(fiche) };
 }
 
 /** Ce que les routes du profil et de « Mes demandes » partagent : base, GoTrue, Socle (scope citizen). */
@@ -1082,7 +1088,12 @@ Deno.serve(async (incoming: Request): Promise<Response> => {
   //    Le Socle décide seul si elle est publiée ; un identifiant qui ne l'est
   //    pas rend le même 404 qu'un identifiant inventé.
   if (request.method === "GET" && path.startsWith("/v1/demarches/")) {
-    const demarcheId = decodeURIComponent(path.slice("/v1/demarches/".length));
+    let demarcheId = "";
+    try {
+      demarcheId = decodeURIComponent(path.slice("/v1/demarches/".length));
+    } catch {
+      // Encodage illisible : le même 404 qu'un identifiant inventé.
+    }
     if (demarcheId === "" || demarcheId.includes("/")) {
       return json(404, { error: { code: "not_found", message: "Ressource introuvable." } });
     }
@@ -1408,9 +1419,24 @@ Deno.serve(async (incoming: Request): Promise<Response> => {
       requester[key] = value.trim();
     }
 
+    // Connecté, profil rempli : la demande part rattachée à la fiche du compte
+    // (lot L3b). La fiche vient de la SESSION, jamais du corps de la requête —
+    // et l'identité déclarée aussi : celle de la fiche remplace ce que le corps
+    // dit (nom, adresse, courriel…). Sans cela, un compte connecté faisait
+    // écrire Iris (accusé, code) à une adresse qui n'est pas la sienne
+    // (relecture de sécurité L3c, M1).
+    const account = await depositAccount(request, tenant);
+    const socleContactId = account?.contactId ?? null;
+    if (account !== null) {
+      for (const [key, value] of Object.entries(account.identity)) {
+        if (requesterKeys.has(key)) requester[key] = value;
+      }
+    }
+
     // Suivi en ligne (lot L2) : l'accès se prouvera par l'adresse déclarée —
-    // sans elle, le code ne servirait à rien. L'écran l'exige déjà.
-    const guestAccess = body.guestAccess === true;
+    // sans elle, le code ne servirait à rien. L'écran l'exige déjà. Un compte
+    // connecté n'en a pas besoin : sa demande va dans « Mes demandes ».
+    const guestAccess = account === null && body.guestAccess === true;
     if (guestAccess && !SIMPLE_EMAIL_RE.test(requester.courriel ?? "")) {
       return badRequest("guestAccess : une adresse de courriel est nécessaire au suivi en ligne.");
     }
@@ -1418,9 +1444,6 @@ Deno.serve(async (incoming: Request): Promise<Response> => {
     // La clé est PLATEFORME ; c'est l'en-tête qui nomme la collectivité, et
     // Iris refuse (403) si elle n'a pas de source `portail-citoyen` active.
     const iris = createIrisClient({ baseUrl: irisUrl, apiKey: irisKey, socleRootOrganizationId: tenant.id });
-    // Connecté, profil rempli : la demande part rattachée à la fiche du compte
-    // (lot L3b). La fiche vient de la SESSION, jamais du corps de la requête.
-    const socleContactId = await depositContactId(request, tenant);
     // Démarche réservée aux connectés (Socle `access_mode`, lot L3c) : un
     // compte connecté, profil rempli — la demande part alors rattachée à SA
     // fiche. L'écran le dit avant ; le serveur ne s'y fie pas.

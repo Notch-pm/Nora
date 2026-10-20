@@ -108,6 +108,9 @@ const KNOWN_FAILURES: readonly PortalLoadFailure[] = [
   "submission_rejected",
   "iris_unavailable",
   "iris_misconfigured",
+  // Démarche réservée aux connectés (lot L3c) : l'écran montre « Me connecter »
+  // ou « Compléter mes informations », jamais « service indisponible ».
+  "account_required",
   "network",
 ];
 

@@ -84,12 +84,9 @@ describe("chemins", () => {
     expect(isApiPath(new URL("https://sceaux.edilumen.fr/api/../x").pathname)).toBe(false);
   });
 
-  // OBSERVATION O1 (défense en profondeur, non exploitable seule) : `%2f` n'est PAS normalisé,
-  // donc `/api/..%2f..%2frest/v1/rpc/…` est relayé tel quel après `/portal-api`. Le Worker ne
-  // pose jamais `apikey` ni `authorization`, de sorte qu'une résolution côté passerelle ne
-  // donnerait accès à rien — mais le relais ne devrait pas laisser passer un chemin qui
-  // contient une séquence de remontée encodée.
-  it.fails("O1 — un chemin contenant « ..%2f » ou « %2e%2e » encodé n'est pas relayé vers portal-api", () => {
+  // O1 (défense en profondeur, corrigé) : `%2f` n'est PAS normalisé par `new URL` ; le relais
+  // refuse lui-même un chemin qui contient une séquence de remontée encodée.
+  it("O1 — un chemin contenant « ..%2f » ou « %2e%2e » encodé n'est pas relayé vers portal-api", () => {
     const result = upstreamRequest(new Request("https://sceaux.edilumen.fr/api/..%2f..%2frest/v1/rpc/citizen_purge_auth_data"), ENV);
     expect(result).toBeInstanceOf(Response);
   });
@@ -183,15 +180,22 @@ describe("Worker complet (worker/index.ts)", () => {
 });
 
 describe("le Worker ne lève jamais", () => {
-  // ANOMALIE A5 (constatée EN PRODUCTION le 2026-10-20 sur test1.edilumen.fr) — `GET /api/v1/session%`
-  // (un « % » isolé), `/api/v1/zzz%E0%A4%A`… répondent « 500 error code: 1101 » de Cloudflare (le Worker
-  // lève) en ~100 ms, sans jamais atteindre portal-api, au lieu d'un JSON d'erreur. Cause probable :
-  // `upstreamRequest` (worker/index.ts, avant le `try`) construit la requête sortante hors de toute garde,
-  // et le runtime refuse l'adresse. On le reproduit ici par une adresse de portal-api illisible, qui lève
-  // de la même façon sous Node : `worker.fetch` doit rendre une réponse, pas rejeter.
+  // A5 (constatée EN PRODUCTION le 2026-10-20, corrigée) — `GET /api/v1/session%`, `/api/v1/zzz%E0%A4%A`…
+  // répondaient « 500 error code: 1101 » de Cloudflare (le Worker levait). Le chemin illisible est
+  // désormais refusé en 404 JSON, et toute construction impossible de la requête sortante rend un
+  // JSON 5xx — reproduite ici par une adresse de portal-api illisible.
   const env = { PORTAL_API_URL: "pas une url", NORA_PROXY_SECRET: "s".repeat(40), ASSETS: { fetch: async () => new Response("asset") } };
 
-  it.fails("A5 — une construction de requête sortante impossible rend un JSON 5xx, jamais une exception", async () => {
+  it("A5 (encodage) — un « % » isolé ou des octets invalides rendent un 404 JSON", async () => {
+    const ok = { ...env, PORTAL_API_URL: "https://ref.supabase.co/functions/v1/portal-api" };
+    for (const path of ["/api/v1/session%", "/api/v1/zzz%E0%A4%A"]) {
+      const res = await worker.fetch(new Request("https://sceaux.edilumen.fr" + path), ok);
+      expect(res.status).toBe(404);
+      expect(res.headers.get("content-type")).toMatch(/json/);
+    }
+  });
+
+  it("A5 — une construction de requête sortante impossible rend un JSON 5xx, jamais une exception", async () => {
     const res = await worker.fetch(new Request("https://sceaux.edilumen.fr/api/v1/session"), env);
     expect(res.status).toBeGreaterThanOrEqual(500);
     expect(res.headers.get("content-type")).toMatch(/json/);

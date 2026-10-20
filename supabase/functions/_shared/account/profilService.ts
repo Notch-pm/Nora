@@ -50,6 +50,20 @@ export async function ficheConfirmee(deps: ProfilDeps, accountId: string, contac
   return id === contactId;
 }
 
+/**
+ * La fiche du compte telle que le Socle la tient, SI c'est encore celle de
+ * l'espace (`contactId`) — `null` sinon (rattachement corrigé, fiche
+ * archivée), `undefined` si le Socle ne répond pas. Pour un dépôt connecté :
+ * le contrôle de `ficheConfirmee` et l'identité à déclarer, en une lecture.
+ */
+export async function ficheDuCompte(deps: ProfilDeps, accountId: string, contactId: string): Promise<Profil | null | undefined> {
+  const reply = await deps.contacts.get(deps.tenantId, accountId);
+  if (reply.kind === "not_found") return null;
+  if (reply.kind !== "ok") return undefined;
+  const id = (reply.body as { contact?: { id?: unknown } } | null)?.contact?.id;
+  return id === contactId ? profilOf(reply.body) : null;
+}
+
 /** La fiche de l'espace, ou `null` s'il n'en a pas encore — `undefined` si la base ne répond pas. */
 export async function spaceContactId(deps: ProfilDeps, accountId: string): Promise<string | null | undefined> {
   const r = await deps.store.spaceContact(accountId, deps.tenantId);

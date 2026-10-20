@@ -3,8 +3,8 @@
  * identifiants forgés, encodages invalides, méthodes inattendues, dates
  * impossibles. Aucune ne doit produire autre chose qu'un refus propre.
  *
- * Les `it.fails` ci-dessous sont des ANOMALIES CONSTATÉES, laissées en échec
- * attendu (le code de production n'a pas été modifié) : voir le rapport.
+ * Les anomalies A1 à A3 constatées le 2026-10-20 sont corrigées : leurs tests
+ * gardent la trace du défaut et empêchent son retour.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IDENTITE, PROC_LIBRE, SCEAUX, withProfile, World } from "./harness/world.ts";
@@ -103,21 +103,21 @@ describe("méthodes et routes inattendues", () => {
   });
 });
 
-describe("anomalies constatées (échecs attendus)", () => {
-  // ANOMALIE A1 (mineure) — portal-api/index.ts, route GET /v1/demarches/{id} :
+describe("anomalies constatées le 2026-10-20, corrigées", () => {
+  // A1 (corrigée) (mineure) — portal-api/index.ts, route GET /v1/demarches/{id} :
   // `decodeURIComponent` sans garde. Un pourcentage mal formé lève URIError,
   // non rattrapée : la fonction répond 500 au lieu du 404 des autres identifiants.
-  it.fails("A1 — GET /v1/demarches/%E0%A4%A (encodage invalide) rend un 404 propre, pas une exception", async () => {
+  it("A1 — GET /v1/demarches/%E0%A4%A (encodage invalide) rend un 404 propre, pas une exception", async () => {
     const reply = await world.browser(SCEAUX, freshIp()).send("/v1/demarches/%E0%A4%A");
     expect(reply.status).toBe(404);
   });
 
-  // ANOMALIE A2 (mineure) — domain/profil.ts `parseIdentite` et contacts-api
+  // A2 (corrigée) (mineure) — domain/profil.ts `parseIdentite` et contacts-api
   // `parseCitizenIdentity` : la date de naissance n'est vérifiée que par la
   // forme AAAA-MM-JJ. « 1990-02-31 » ou « 2026-13-45 » traverse, puis le
   // `::date` du rattachement SQL échoue (22008) → le Socle répond 500 et Nora
   // « service indisponible » au lieu d'une erreur de saisie sur le champ.
-  it.fails("A2 — une date de naissance impossible est refusée à la saisie (champ dateNaissance)", () => {
+  it("A2 — une date de naissance impossible est refusée à la saisie (champ dateNaissance)", () => {
     for (const dateNaissance of ["1990-02-31", "2026-13-45", "0000-00-00"]) {
       const parsed = parseIdentite({ ...IDENTITE, dateNaissance });
       expect(parsed.ok, dateNaissance).toBe(false);
@@ -128,13 +128,13 @@ describe("anomalies constatées (échecs attendus)", () => {
     expect(parseIdentite({ ...IDENTITE, dateNaissance: "1990-02-28" }).ok).toBe(true);
   });
 
-  // ANOMALIE A3 (connue, relecture L3c M1) — le `requester` d'un dépôt connecté
+  // A3 (corrigée) (connue, relecture L3c M1) — le `requester` d'un dépôt connecté
   // est transmis tel que saisi : l'adresse déclarée n'est pas recomposée depuis
   // le compte. L'usager connecté peut faire écrire Iris (accusé, code) à une
   // adresse qui n'est pas la sienne. Pas de fuite entre comptes, mais un relais
   // de courriel. Attendu après correction : le courriel du dépôt connecté est
   // celui du compte.
-  it.fails("A3 — un dépôt connecté déclare l'adresse du COMPTE, pas celle du corps (M1)", async () => {
+  it("A3 — un dépôt connecté déclare l'adresse du COMPTE, pas celle du corps (M1)", async () => {
     const browser = world.browser(SCEAUX, freshIp());
     await withProfile(world, browser, "camille@example.org");
     await browser.send("/v1/demandes", {

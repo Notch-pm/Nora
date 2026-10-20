@@ -87,6 +87,29 @@ function unavailable(): Response {
   );
 }
 
+function badPath(): Response {
+  return new Response(
+    JSON.stringify({ error: { code: "not_found", message: "Ressource introuvable." } }),
+    { status: 404, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } },
+  );
+}
+
+/**
+ * Un chemin qu'on ne relaie pas : encodage illisible (`%` isolé, octets
+ * invalides — le runtime refusait alors l'adresse sortante et le Worker
+ * levait), ou séquence de remontée ENCODÉE (`..%2f`, que `new URL` ne
+ * normalise pas). Aucune route de `portal-api` n'en contient.
+ */
+function unrelayablePath(pathname: string): boolean {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return true;
+  }
+  return decoded.includes("\\") || decoded.split("/").some((segment) => segment === ".." || segment === ".");
+}
+
 /**
  * La requête à envoyer à `portal-api`, ou une réponse d'erreur si le Worker
  * n'a pas sa configuration — jamais un relais sans secret, qui rendrait les
@@ -98,6 +121,7 @@ export function upstreamRequest(request: Request, env: ProxyEnv): Request | Resp
   if (!apiUrl || !secret || secret.length < 32) return unavailable();
 
   const url = new URL(request.url);
+  if (unrelayablePath(url.pathname)) return badPath();
   const target = apiUrl.replace(/\/+$/, "") + url.pathname.slice(API_PREFIX.length) + url.search;
 
   const headers = new Headers();

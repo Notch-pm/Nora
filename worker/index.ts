@@ -16,9 +16,11 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (!isApiPath(url.pathname)) return env.ASSETS.fetch(request);
-    const upstream = upstreamRequest(request, env);
-    if (upstream instanceof Response) return upstream;
     try {
+      // Construction comprise dans le `try` : une adresse que le runtime refuse
+      // rend l'erreur JSON ci-dessous, jamais une page d'erreur de Cloudflare.
+      const upstream = upstreamRequest(request, env);
+      if (upstream instanceof Response) return upstream;
       return downstreamResponse(await fetch(upstream));
     } catch {
       return new Response(

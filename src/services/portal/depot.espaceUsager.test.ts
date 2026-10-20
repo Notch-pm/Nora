@@ -62,14 +62,10 @@ describe("sendDemande — espace usager", () => {
     expect(await sendDemande(submission)).toEqual({ ok: false, reason: "iris_unavailable" });
   });
 
-  // ANOMALIE A4 (L3c) — portalClient.ts, `KNOWN_FAILURES` (l. 98-112) ne contient pas
-  // « account_required ». Le serveur répond bien 401 { error: { code: "account_required" } }
-  // à un dépôt refusé sur une démarche réservée, mais `readFailure` ne reconnaît pas ce code et
-  // le ramène à « socle_unavailable » : FormulairePage (l. 480) attend `account_required` pour
-  // afficher l'encart « Me connecter / Compléter mes informations » — il ne s'affichera jamais,
-  // l'usager lira « service momentanément indisponible ». Se produit dès que la garde d'écran est
-  // dépassée (session expirée pendant la saisie, profil vidé, ouverture directe du formulaire).
-  it.fails("A4 — un dépôt refusé pour « account_required » remonte ce code à l'écran", async () => {
+  // A4 (L3c, corrigé) — `account_required` doit atteindre l'écran : FormulairePage et l'assistant
+  // l'attendent pour afficher « Me connecter / Compléter mes informations ». Ramené à
+  // « socle_unavailable », l'usager lisait « service momentanément indisponible ».
+  it("A4 — un dépôt refusé pour « account_required » remonte ce code à l'écran", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => reply(401, { error: { code: "account_required", message: "…" } })));
     expect(await sendDemande(submission)).toEqual({ ok: false, reason: "account_required" });
   });

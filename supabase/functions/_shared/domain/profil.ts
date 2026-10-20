@@ -94,7 +94,7 @@ export function parseIdentite(body: unknown): ProfilParse<ProfilIdentite> {
   const prenom = champ("prenom", true);
   const nom = champ("nom", true);
   const nomUsage = champ("nomUsage", false);
-  const dateNaissance = champ("dateNaissance", false, (v) => /^\d{4}-\d{2}-\d{2}$/.test(v));
+  const dateNaissance = champ("dateNaissance", false, isBirthDate);
   const mobile = champ("mobile", false, (v) => /^[+\d][\d .-]{5,19}$/.test(v));
   const fixe = champ("fixe", false, (v) => /^[+\d][\d .-]{5,19}$/.test(v));
   const adresse1 = champ("adresse1", true);
@@ -173,6 +173,20 @@ function consentEtat(granted: unknown, at: unknown): ConsentEtat | null {
  * préremplissage du dépôt connecté (« Dites-le nous une fois », CCTP 3.5).
  * Seules les clés renseignées sont rendues ; l'usager peut tout corriger.
  */
+/**
+ * Une date de naissance RÉELLE (AAAA-MM-JJ) : la forme ne suffit pas —
+ * « 1990-02-31 » passait, puis le Socle échouait en 500 sur sa conversion.
+ */
+export function isBirthDate(value: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (m === null) return false;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return year >= 1900
+    && date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+    && date.getTime() <= Date.now();
+}
+
 export function requesterValuesFromProfil(profil: Profil): Record<string, string> {
   const out: Record<string, string> = {};
   const put = (key: string, value: string | null) => {
