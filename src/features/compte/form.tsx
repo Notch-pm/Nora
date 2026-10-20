@@ -137,12 +137,15 @@ export function Field({
   error,
   hint,
   describedBy,
+  optional = false,
   children,
 }: {
   id: string;
   label: string;
   error: string | null;
   hint?: string;
+  /** Un champ facultatif : ni astérisque ni « (obligatoire) », mais « (facultatif) » dit en toutes lettres. */
+  optional?: boolean;
   /** Un élément déjà relié au champ (la liste des règles). */
   describedBy?: string;
   children: (props: InputProps) => ReactNode;
@@ -155,10 +158,16 @@ export function Field({
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-[length:var(--pt-body)] font-semibold text-[color:var(--pt-ink)]">
         {label}
-        <span className="ml-1 text-red-600" aria-hidden="true">
-          *
-        </span>
-        <span className="sr-only">{t("form.required")}</span>
+        {optional ? (
+          <span className="font-normal text-[color:var(--pt-muted)]">{t("compte.profil.optional")}</span>
+        ) : (
+          <>
+            <span className="ml-1 text-red-600" aria-hidden="true">
+              *
+            </span>
+            <span className="sr-only">{t("form.required")}</span>
+          </>
+        )}
       </label>
       {hint && (
         <p id={id + "-aide"} className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">

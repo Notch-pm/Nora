@@ -38,6 +38,7 @@ import { ConfirmerPage } from "@/features/compte/ConfirmerPage.tsx";
 import { ConnexionPage } from "@/features/compte/ConnexionPage.tsx";
 import { InscriptionPage } from "@/features/compte/InscriptionPage.tsx";
 import { MotDePasseOubliePage } from "@/features/compte/MotDePasseOubliePage.tsx";
+import { MaDemandePage, MesDemandesPage } from "@/features/compte/MesDemandesPage.tsx";
 import { MotDePassePage } from "@/features/compte/MotDePassePage.tsx";
 import { SuiviPage } from "@/features/suivi/SuiviPage.tsx";
 import { PortalPage } from "@/features/portal/PortalPage.tsx";
@@ -74,6 +75,8 @@ const COMPTE_ROUTES: { path: string; element: JSX.Element }[] = [
   { path: "/compte/mot-de-passe-oublie", element: <MotDePasseOubliePage /> },
   { path: "/compte/mot-de-passe", element: <MotDePassePage /> },
   { path: "/compte/cgu", element: <CguPage /> },
+  { path: "/compte/demandes", element: <MesDemandesPage /> },
+  { path: "/compte/demandes/:id", element: <MaDemandePage /> },
 ];
 
 export function App() {

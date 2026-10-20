@@ -3,11 +3,13 @@
  *
  * L'adresse du compte, la sécurité (mot de passe, double authentification) et la
  * déconnexion. Tout vient du serveur (`GET /v1/compte`) : sans session de
- * compte il répond `session_required`, et l'écran renvoie à la connexion. Une
+ * compte il répond `session_required`, et l'écran renvoie à la connexion.
+ * « Mes informations » (la fiche du Socle) et le lien « Mes demandes » ouvrent
+ * l'espace connecté (L3b). Une
  * session INVITÉE (celle de `/suivi`) n'ouvre pas cette page.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { localizedPath } from "@/i18n/localizedPath.ts";
 import {
@@ -16,10 +18,11 @@ import {
   endAccountSession,
   fetchAccount,
 } from "@/services/portal/accountClient.ts";
-import { AccountFrame, StepTitle, useScreenTitle } from "./AccountFrame.tsx";
+import { AccountFrame, LINK_CLASS, StepTitle, useScreenTitle } from "./AccountFrame.tsx";
 import { ChangePasswordForm } from "./ChangePasswordForm.tsx";
 import { accountFailureKey } from "./failureMessage.ts";
 import { H2, SECONDARY_BUTTON } from "./form.tsx";
+import { ProfilSection } from "./ProfilSection.tsx";
 import { forgetSessionKind } from "./sessionKind.ts";
 import { TotpSection } from "./TotpSection.tsx";
 
@@ -29,12 +32,12 @@ type State =
   | { status: "error"; reason: AccountClientFailure };
 
 export function ComptePage() {
-  return <AccountFrame>{() => <CompteScreen />}</AccountFrame>;
+  return <AccountFrame>{(tenantName) => <CompteScreen tenantName={tenantName} />}</AccountFrame>;
 }
 
 const H3 = "text-[length:var(--pt-body)] font-bold text-[color:var(--pt-ink)]";
 
-function CompteScreen() {
+function CompteScreen({ tenantName }: { tenantName: string }) {
   const t = useT();
   const { lang } = useLanguage();
   const navigate = useNavigate();
@@ -55,6 +58,12 @@ function CompteScreen() {
       current = false;
     };
   }, [attempt]);
+
+  // Une lecture ou une écriture du profil a dit « pas de session » : même issue que la lecture du compte.
+  const sessionLost = useCallback(() => {
+    forgetSessionKind();
+    navigate(localizedPath(lang, "/compte/connexion"), { replace: true });
+  }, [lang, navigate]);
 
   // Après une activation ou un retrait : relire le profil, sans repasser par l'attente.
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
@@ -115,7 +124,19 @@ function CompteScreen() {
           <dt className="font-semibold text-[color:var(--pt-ink)]">{t("compte.email")}</dt>
           <dd className="break-all text-[color:var(--pt-ink)]">{state.profile.email}</dd>
         </dl>
-        <p className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">{t("compte.register.identityLater")}</p>
+        <ProfilSection tenantName={tenantName} onSessionLost={sessionLost} />
+      </section>
+
+      <section aria-labelledby="compte-demandes" className="mt-10 flex flex-col gap-3">
+        <h2 id="compte-demandes" className={H2}>
+          {t("compte.demandes.link")}
+        </h2>
+        <p className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("compte.demandes.intro")}</p>
+        <div>
+          <Link to={localizedPath(lang, "/compte/demandes")} className={LINK_CLASS}>
+            {t("compte.demandes.link")}
+          </Link>
+        </div>
       </section>
 
       <section aria-labelledby="compte-securite" className="mt-10 flex flex-col gap-8">

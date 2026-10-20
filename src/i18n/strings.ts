@@ -4600,6 +4600,162 @@ export const STRINGS = {
     fr: "Me déconnecter",
     en: "Sign out",
   },
+  "compte.profil.completeTitle": {
+    fr: "Complétez vos informations",
+    en: "Complete your details",
+  },
+  "compte.profil.completeIntro": {
+    fr: "Elles permettent à {tenant} de retrouver vos demandes et de vous répondre.",
+    en: "They allow {tenant} to find your requests and to reply to you.",
+  },
+  "compte.profil.civilite": {
+    fr: "Civilité",
+    en: "Title",
+  },
+  "compte.profil.madame": {
+    fr: "Madame",
+    en: "Ms",
+  },
+  "compte.profil.monsieur": {
+    fr: "Monsieur",
+    en: "Mr",
+  },
+  "compte.profil.prenom": {
+    fr: "Prénom",
+    en: "First name",
+  },
+  "compte.profil.nom": {
+    fr: "Nom",
+    en: "Last name",
+  },
+  "compte.profil.nomUsage": {
+    fr: "Nom d'usage",
+    en: "Name in use",
+  },
+  "compte.profil.dateNaissance": {
+    fr: "Date de naissance",
+    en: "Date of birth",
+  },
+  "compte.profil.mobile": {
+    fr: "Téléphone mobile",
+    en: "Mobile phone",
+  },
+  "compte.profil.fixe": {
+    fr: "Téléphone fixe",
+    en: "Landline phone",
+  },
+  "compte.profil.adresse1": {
+    fr: "Adresse",
+    en: "Address",
+  },
+  "compte.profil.adresse2": {
+    fr: "Complément d'adresse",
+    en: "Address line 2",
+  },
+  "compte.profil.codePostal": {
+    fr: "Code postal",
+    en: "Postcode",
+  },
+  "compte.profil.ville": {
+    fr: "Ville",
+    en: "Town or city",
+  },
+  "compte.profil.optional": {
+    fr: " (facultatif)",
+    en: " (optional)",
+  },
+  "compte.profil.submitIdentite": {
+    fr: "Enregistrer mes informations",
+    en: "Save my details",
+  },
+  "compte.profil.submitCoordonnees": {
+    fr: "Enregistrer mes coordonnées",
+    en: "Save my contact details",
+  },
+  "compte.profil.edit": {
+    fr: "Modifier mes coordonnées",
+    en: "Edit my contact details",
+  },
+  "compte.profil.editTitle": {
+    fr: "Modifier mes coordonnées",
+    en: "Edit my contact details",
+  },
+  "compte.profil.cancel": {
+    fr: "Annuler",
+    en: "Cancel",
+  },
+  "compte.profil.saved": {
+    fr: "Vos informations sont enregistrées.",
+    en: "Your details have been saved.",
+  },
+  "compte.profil.readonly": {
+    fr: "Pour corriger ces informations, contactez {tenant}.",
+    en: "To correct these details, contact {tenant}.",
+  },
+  "compte.profil.notFilled": {
+    fr: "Non renseigné",
+    en: "Not provided",
+  },
+  "compte.profil.error.required": {
+    fr: "Renseignez ce champ.",
+    en: "Fill in this field.",
+  },
+  "compte.profil.error.civilite": {
+    fr: "Choisissez une civilité.",
+    en: "Choose a title.",
+  },
+  "compte.profil.error.codePostal": {
+    fr: "Saisissez un code postal à 5 chiffres.",
+    en: "Enter a 5-digit postcode.",
+  },
+  "compte.profil.error.phone": {
+    fr: "Saisissez un numéro de téléphone valide.",
+    en: "Enter a valid phone number.",
+  },
+  "compte.profil.error.date": {
+    fr: "Saisissez une date valide.",
+    en: "Enter a valid date.",
+  },
+  "compte.profil.error.refused": {
+    fr: "Ces informations n'ont pas pu être enregistrées. Vérifiez-les puis réessayez.",
+    en: "These details could not be saved. Check them and try again.",
+  },
+  "compte.profil.error.unavailable": {
+    fr: "Vos informations sont momentanément indisponibles. Merci de réessayer dans quelques instants.",
+    en: "Your details are temporarily unavailable. Please try again in a few moments.",
+  },
+  "compte.demandes.link": {
+    fr: "Mes demandes",
+    en: "My requests",
+  },
+  "compte.demandes.back": {
+    fr: "Retour à mes demandes",
+    en: "Back to my requests",
+  },
+  "compte.demandes.intro": {
+    fr: "Les demandes rattachées à votre compte, de la plus récente à la plus ancienne.",
+    en: "The requests linked to your account, most recent first.",
+  },
+  "compte.demandes.empty": {
+    fr: "Vous n'avez aucune demande pour le moment.",
+    en: "You have no requests yet.",
+  },
+  "compte.demandes.profilRequis": {
+    fr: "Pour retrouver vos demandes, complétez d'abord vos informations.",
+    en: "To find your requests, first complete your details.",
+  },
+  "compte.demandes.profilLink": {
+    fr: "Compléter mes informations",
+    en: "Complete my details",
+  },
+  "compte.demandes.listLabel": {
+    fr: "Liste de vos demandes",
+    en: "List of your requests",
+  },
+  "compte.demandes.more": {
+    fr: "Afficher plus",
+    en: "Show more",
+  },
   "compte.change.submit": {
     fr: "Changer mon mot de passe",
     en: "Change my password",
@@ -4877,6 +5033,45 @@ export const PENDING_TRANSLATION_KEYS: readonly StringKey[] = [
   "compte.account.password",
   "compte.account.totp",
   "compte.account.logout",
+  "compte.profil.completeTitle",
+  "compte.profil.completeIntro",
+  "compte.profil.civilite",
+  "compte.profil.madame",
+  "compte.profil.monsieur",
+  "compte.profil.prenom",
+  "compte.profil.nom",
+  "compte.profil.nomUsage",
+  "compte.profil.dateNaissance",
+  "compte.profil.mobile",
+  "compte.profil.fixe",
+  "compte.profil.adresse1",
+  "compte.profil.adresse2",
+  "compte.profil.codePostal",
+  "compte.profil.ville",
+  "compte.profil.optional",
+  "compte.profil.submitIdentite",
+  "compte.profil.submitCoordonnees",
+  "compte.profil.edit",
+  "compte.profil.editTitle",
+  "compte.profil.cancel",
+  "compte.profil.saved",
+  "compte.profil.readonly",
+  "compte.profil.notFilled",
+  "compte.profil.error.required",
+  "compte.profil.error.civilite",
+  "compte.profil.error.codePostal",
+  "compte.profil.error.phone",
+  "compte.profil.error.date",
+  "compte.profil.error.refused",
+  "compte.profil.error.unavailable",
+  "compte.demandes.link",
+  "compte.demandes.back",
+  "compte.demandes.intro",
+  "compte.demandes.empty",
+  "compte.demandes.profilRequis",
+  "compte.demandes.profilLink",
+  "compte.demandes.listLabel",
+  "compte.demandes.more",
   "compte.change.submit",
   "compte.change.done",
   "compte.totp.statusOn",

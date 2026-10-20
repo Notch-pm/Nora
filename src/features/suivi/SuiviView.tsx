@@ -9,7 +9,7 @@
  *
  * Titres : un seul `h1` (la demande), des `h2` par bloc, un `h3` par message.
  */
-import { useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import type { SuiviDemande, SuiviPiece } from "@fn/_shared/domain/suivi.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { suiviPieceHref } from "@/services/portal/suiviClient.ts";
@@ -17,7 +17,15 @@ import { formatDate, formatDateTime, formatSize, STATUS_KEYS } from "./format.ts
 
 const H2 = "text-[length:var(--pt-h2)] font-bold text-[color:var(--pt-ink)]";
 
-function PieceList({ pieces, label }: { pieces: SuiviPiece[]; label?: string }) {
+function PieceList({
+  pieces,
+  label,
+  pieceHref,
+}: {
+  pieces: SuiviPiece[];
+  label?: string;
+  pieceHref: (pieceId: string) => string;
+}) {
   const { lang } = useLanguage();
   if (pieces.length === 0) return null;
   return (
@@ -28,7 +36,7 @@ function PieceList({ pieces, label }: { pieces: SuiviPiece[]; label?: string }) 
           <li key={piece.id} className="text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
             {/* Redirection vers une URL signée de 60 s : le cookie part tout seul. */}
             <a
-              href={suiviPieceHref(piece.id)}
+              href={pieceHref(piece.id)}
               className="font-semibold text-[color:var(--brand-primary)] underline hover:no-underline"
             >
               {piece.fileName}
@@ -45,11 +53,18 @@ export function SuiviView({
   demande,
   focusTitle,
   onQuit,
+  pieceHref = suiviPieceHref,
+  back,
 }: {
   demande: SuiviDemande;
   /** Vient d'ouvrir l'accès : le focus va au titre, pour que le changement d'écran s'annonce. */
   focusTitle: boolean;
-  onQuit: () => void;
+  /** « Quitter le suivi » : absent quand la vue sert « Mes demandes » (le compte, lui, reste ouvert). */
+  onQuit?: () => void;
+  /** Le lien d'une pièce ; par défaut celui de la session invitée du suivi. */
+  pieceHref?: (pieceId: string) => string;
+  /** Un retour (ex. « Mes demandes »), rendu au-dessus du titre. */
+  back?: ReactNode;
 }) {
   const { lang } = useLanguage();
   const t = useT();
@@ -66,6 +81,7 @@ export function SuiviView({
 
   return (
     <div className="flex flex-col gap-8">
+      {back}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <h1
           ref={titleRef}
@@ -74,13 +90,15 @@ export function SuiviView({
         >
           {t("suivi.viewTitle", { reference: demande.reference })}
         </h1>
-        <button
-          type="button"
-          onClick={onQuit}
-          className="rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] px-4 py-2 text-[length:var(--pt-body)] font-semibold hover:bg-[color:var(--pt-surface)]"
-        >
-          {t("suivi.quit")}
-        </button>
+        {onQuit && (
+          <button
+            type="button"
+            onClick={onQuit}
+            className="rounded-[var(--pt-radius-sm)] border border-[color:var(--pt-border)] px-4 py-2 text-[length:var(--pt-body)] font-semibold hover:bg-[color:var(--pt-surface)]"
+          >
+            {t("suivi.quit")}
+          </button>
+        )}
       </div>
 
       <section aria-labelledby="suivi-demande" className="flex flex-col gap-4">
@@ -134,7 +152,7 @@ export function SuiviView({
           <h2 id="suivi-pieces" className={H2}>
             {t("suivi.pieces")}
           </h2>
-          <PieceList pieces={demande.pieces} />
+          <PieceList pieces={demande.pieces} pieceHref={pieceHref} />
         </section>
       )}
 
@@ -160,7 +178,7 @@ export function SuiviView({
                 <p className="whitespace-pre-line text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
                   {message.body}
                 </p>
-                <PieceList pieces={message.pieces} label={t("suivi.messagePieces")} />
+                <PieceList pieces={message.pieces} label={t("suivi.messagePieces")} pieceHref={pieceHref} />
               </li>
             ))}
           </ol>

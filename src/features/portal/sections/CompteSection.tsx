@@ -4,6 +4,8 @@
  * Le second lien mène au compte citoyen : `/compte` si l'on y est connecté,
  * la connexion sinon (`useAccountHref`).
  *
+ * Connecté, « Mes demandes » s'y ajoute (L3b).
+ *
  * À côté, un lien ACTIF « Suivre une demande » : suivre une demande déposée sans
  * compte (`/suivi`) n'a pas besoin d'espace usager.
  */
@@ -50,6 +52,14 @@ export function CompteSection({ section }: { section: CompteSectionData }) {
         >
           {t("compte.follow")}
         </Link>
+        {account.connected && (
+          <Link
+            to={localizedPath(lang, "/compte/demandes")}
+            className="whitespace-nowrap rounded-[var(--pt-radius-sm)] bg-white px-4 py-2.5 text-center text-[length:var(--pt-body)] font-bold text-[color:var(--pt-ink)] hover:opacity-90"
+          >
+            {t("compte.demandes.link")}
+          </Link>
+        )}
         <Link
           to={account.href}
           className="shrink-0 whitespace-nowrap rounded-[var(--pt-radius-sm)] bg-white px-4 py-2.5 text-center text-[length:var(--pt-body)] font-bold text-[color:var(--pt-ink)] hover:opacity-90"

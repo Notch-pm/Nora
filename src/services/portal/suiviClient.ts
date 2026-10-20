@@ -46,7 +46,7 @@ const KNOWN_FAILURES: readonly SuiviClientFailure[] = [
 ];
 
 /** Un code inconnu (version d'avant, corps illisible) vaut « indisponible » : jamais une chaîne affichée telle quelle. */
-function readFailure(body: unknown): SuiviClientFailure {
+export function readFailure(body: unknown): SuiviClientFailure {
   const code = (body as { error?: { code?: unknown } } | null)?.error?.code;
   return KNOWN_FAILURES.includes(code as SuiviClientFailure)
     ? (code as SuiviClientFailure)
@@ -82,7 +82,7 @@ export type SuiviLoad =
   | { ok: true; demande: SuiviDemande }
   | { ok: false; reason: SuiviClientFailure };
 
-const STATUSES: readonly SuiviStatus[] = ["envoyee", "en_cours", "en_attente", "traitee", "annulee", "archivee"];
+export const STATUSES: readonly SuiviStatus[] = ["envoyee", "en_cours", "en_attente", "traitee", "annulee", "archivee"];
 
 function readPieces(raw: unknown): SuiviPiece[] {
   return Array.isArray(raw)
@@ -100,7 +100,7 @@ function readPieces(raw: unknown): SuiviPiece[] {
  * la liste blanche, voir `toSuiviDemande`). Les listes absentes sont vides :
  * l'écran n'a aucun cas d'absence à porter.
  */
-function readDemande(body: unknown): SuiviDemande | null {
+export function readDemande(body: unknown): SuiviDemande | null {
   const raw = (body as { demande?: Partial<SuiviDemande> } | null)?.demande;
   if (typeof raw !== "object" || raw === null) return null;
   if (typeof raw.reference !== "string" || raw.reference === "") return null;
