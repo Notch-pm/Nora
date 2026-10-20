@@ -181,3 +181,19 @@ describe("Worker complet (worker/index.ts)", () => {
     }
   });
 });
+
+describe("le Worker ne lève jamais", () => {
+  // ANOMALIE A5 (constatée EN PRODUCTION le 2026-10-20 sur test1.edilumen.fr) — `GET /api/v1/session%`
+  // (un « % » isolé), `/api/v1/zzz%E0%A4%A`… répondent « 500 error code: 1101 » de Cloudflare (le Worker
+  // lève) en ~100 ms, sans jamais atteindre portal-api, au lieu d'un JSON d'erreur. Cause probable :
+  // `upstreamRequest` (worker/index.ts, avant le `try`) construit la requête sortante hors de toute garde,
+  // et le runtime refuse l'adresse. On le reproduit ici par une adresse de portal-api illisible, qui lève
+  // de la même façon sous Node : `worker.fetch` doit rendre une réponse, pas rejeter.
+  const env = { PORTAL_API_URL: "pas une url", NORA_PROXY_SECRET: "s".repeat(40), ASSETS: { fetch: async () => new Response("asset") } };
+
+  it.fails("A5 — une construction de requête sortante impossible rend un JSON 5xx, jamais une exception", async () => {
+    const res = await worker.fetch(new Request("https://sceaux.edilumen.fr/api/v1/session"), env);
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect(res.headers.get("content-type")).toMatch(/json/);
+  });
+});

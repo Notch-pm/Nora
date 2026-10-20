@@ -29,7 +29,7 @@ de relais (`worker/proxy.ts`) ; GoTrue, le Socle et Iris sont des modèles du co
 | Anti-fuite | `antiFuite.e2e.test.ts` | deux comptes, deux villes : IDOR, 404 uniformes, sentinelles internes, jeton Iris lié à la session, pas d'identifiant dans les réponses |
 | Sécurité | `securite.e2e.test.ts` | CSRF (15 écritures × 3 variantes), session liée à la ville, inactivité, révocation, verrouillage (y compris en parallèle), énumération, durée plancher 900 ms, freins, corps démesurés, pièces 20 Mo, défi, TOTP |
 | Robustesse | `robustesse.e2e.test.ts` | identifiants forgés, méthodes, anomalies A1 à A3 (`it.fails`) |
-| Relais | `worker/proxy.securite.test.ts` | liste blanche d'en-têtes dans les deux sens, hôte certifié, chemins, 502/503 |
+| Relais | `worker/proxy.securite.test.ts` | liste blanche d'en-têtes dans les deux sens, hôte certifié, chemins, 502/503, A5, O1 |
 | Unitaires | `iris/citizenToken.test.ts`, `iris/mesDemandesService.test.ts`, `socle/citizenContacts.test.ts` | jeton (vecteur partagé avec Iris), liste blanche, URL et statuts |
 | Écrans | `src/features/**/*.test.tsx`, `src/services/portal/depot.espaceUsager.test.ts`, `retour.adversarial.test.ts` | connexion, inscription, confirmation, mot de passe oublié, « Mes demandes », consentements (3 états), démarches réservées ; accessibilité de base (axe-core) |
 
@@ -44,4 +44,5 @@ qui DOIT passer le jour où elle est corrigée (Vitest signalera alors « expect
 | A2 | `domain/profil.ts` `parseIdentite` | date de naissance contrôlée par sa forme seulement (`1990-02-31` passe) |
 | A3 | `portal-api/index.ts` dépôt connecté | `requester` du corps transmis tel quel (relecture L3c M1) |
 | A4 | `services/portal/portalClient.ts` `KNOWN_FAILURES` | `account_required` absent : l'encart « réservée aux connectés » ne s'affiche jamais après un refus serveur |
+| A5 | `worker/index.ts` l. 19 | `upstreamRequest` hors du `try` : une construction de requête qui échoue fait lever le Worker (constaté en production : `GET /api/v1/session%` → 500 « error code: 1101 » Cloudflare, sans JSON) |
 | O1 | `worker/proxy.ts` | `..%2f` n'est pas rejeté dans le chemin relayé (défense en profondeur) |
