@@ -104,14 +104,14 @@ describe("buildRecap", () => {
     session = setConsent(session, "partage", false);
     expect(buildRecap("fr", session).consents).toEqual([
       { kind: "traitement", label: "Traitement de la demande", granted: true, value: "Accepté" },
-      { kind: "partage", label: "Partage aux services de Nantes Métropole", granted: false, value: "Refusé" },
+      { kind: "partage", label: "Partage avec les services de l'organisme « Nantes Métropole »", granted: false, value: "Refusé" },
     ]);
     expect(buildRecap("en", session).consents.map((c) => c.value)).toEqual(["Accepted", "Declined"]);
   });
 
   it("nomme « la collectivité » quand elle n'a pas de nom — jamais une phrase à trou", () => {
     const session = startSession(demarche({ tenantName: "  " }));
-    expect(buildRecap("fr", session).consents[1].label).toBe("Partage aux services de la collectivité");
+    expect(buildRecap("fr", session).consents[1].label).toBe("Partage avec les services de la collectivité");
   });
 
   it("traduit la civilité, laisse le reste tel quel, marque le vide d'un tiret", () => {

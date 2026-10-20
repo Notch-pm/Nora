@@ -43,11 +43,21 @@ export interface ProfilDeps {
  * (relecture de sécurité du 2026-10-20, I3). `undefined` = Socle muet.
  */
 export async function ficheConfirmee(deps: ProfilDeps, accountId: string, contactId: string): Promise<boolean | undefined> {
+  const id = await ficheIdDuSocle(deps, accountId);
+  return id === undefined ? undefined : id === contactId;
+}
+
+/**
+ * L'identifiant de la fiche que le Socle rattache à ce compte (`null` : aucune),
+ * `undefined` si le Socle ne répond pas. Ne dépend que du compte : se lit EN
+ * MÊME TEMPS que la fiche de l'espace, puis se compare (« Mes demandes »).
+ */
+export async function ficheIdDuSocle(deps: ProfilDeps, accountId: string): Promise<string | null | undefined> {
   const reply = await deps.contacts.get(deps.tenantId, accountId);
-  if (reply.kind === "not_found") return false;
+  if (reply.kind === "not_found") return null;
   if (reply.kind !== "ok") return undefined;
   const id = (reply.body as { contact?: { id?: unknown } } | null)?.contact?.id;
-  return id === contactId;
+  return typeof id === "string" ? id : null;
 }
 
 /**

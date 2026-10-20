@@ -1,42 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { requesterValuesFromProfil, type Profil } from "@fn/_shared/domain/profil.ts";
-import { hasPrefillFor, mergePrefill } from "./profilPrefill.ts";
+import { applyLocked, lockedFromProfil } from "./profilPrefill.ts";
 
-describe("mergePrefill", () => {
-  const profil = { nom_usuel: "Durand", prenoms: "Anne", courriel: "a@b.fr" };
+describe("lockedFromProfil", () => {
+  const profil = { nom_usuel: "Durand", prenoms: "Anne", courriel: "a@b.fr", tel_fixe: "  " };
 
-  it("remplit les champs visibles et vides", () => {
-    expect(mergePrefill({}, profil, ["nom_usuel", "prenoms"])).toEqual({ nom_usuel: "Durand", prenoms: "Anne" });
-  });
-
-  it("n'écrase jamais une saisie", () => {
-    expect(mergePrefill({ nom_usuel: "Martin" }, profil, ["nom_usuel", "prenoms"])).toEqual({
-      nom_usuel: "Martin",
-      prenoms: "Anne",
-    });
-  });
-
-  it("une saisie faite d'espaces compte pour vide", () => {
-    expect(mergePrefill({ prenoms: "  " }, profil, ["prenoms"])).toEqual({ prenoms: "Anne" });
+  it("verrouille les champs visibles que la fiche renseigne", () => {
+    expect(lockedFromProfil(profil, ["nom_usuel", "prenoms"])).toEqual({ nom_usuel: "Durand", prenoms: "Anne" });
   });
 
   it("ignore les champs masqués par le paramétrage", () => {
-    expect(mergePrefill({}, profil, ["prenoms"])).toEqual({ prenoms: "Anne" });
-    expect(mergePrefill({}, profil, [])).toEqual({});
+    expect(lockedFromProfil(profil, ["prenoms"])).toEqual({ prenoms: "Anne" });
+    expect(lockedFromProfil(profil, [])).toEqual({});
   });
 
-  it("rend la même référence quand rien ne change", () => {
-    const current = { nom_usuel: "Martin" };
-    expect(mergePrefill(current, profil, ["nom_usuel"])).toBe(current);
+  it("un champ que la fiche ne renseigne pas reste libre", () => {
+    expect(lockedFromProfil(profil, ["tel_fixe", "tel_portable"])).toEqual({});
   });
 
-  it("ne touche pas à l'objet reçu", () => {
-    const current = {};
-    mergePrefill(current, profil, ["prenoms"]);
-    expect(current).toEqual({});
-  });
-
-  it("fonctionne avec les clés produites par requesterValuesFromProfil", () => {
+  it("fonctionne avec les clés produites par requesterValuesFromProfil (celles que le serveur impose)", () => {
     const full: Profil = {
       civilite: "madame",
       prenom: "Anne",
@@ -52,18 +34,27 @@ describe("mergePrefill", () => {
       ville: "Sceaux",
       consentements: { traitement: null, partage: null },
     };
-    const values = requesterValuesFromProfil(full);
-    expect(mergePrefill({}, values, ["civilite", "adresse", "tel_portable"])).toEqual({
+    expect(lockedFromProfil(requesterValuesFromProfil(full), ["civilite", "adresse", "tel_portable"])).toEqual({
       civilite: "madame",
       adresse: "1 rue X, 92330 Sceaux",
     });
   });
 });
 
-describe("hasPrefillFor", () => {
-  it("vrai seulement si un champ visible recevrait une valeur", () => {
-    expect(hasPrefillFor({ prenoms: "Anne" }, ["prenoms"])).toBe(true);
-    expect(hasPrefillFor({ prenoms: "Anne" }, ["nom_usuel"])).toBe(false);
-    expect(hasPrefillFor({ prenoms: " " }, ["prenoms"])).toBe(false);
+describe("applyLocked", () => {
+  it("impose la fiche, même sur une saisie déjà faite", () => {
+    expect(applyLocked({ nom_usuel: "Martin", objet: "x" }, { nom_usuel: "Durand" })).toEqual({ nom_usuel: "Durand", objet: "x" });
+  });
+
+  it("rend la même référence quand rien ne change", () => {
+    const current = { nom_usuel: "Durand" };
+    expect(applyLocked(current, { nom_usuel: "Durand" })).toBe(current);
+    expect(applyLocked(current, {})).toBe(current);
+  });
+
+  it("ne touche pas à l'objet reçu", () => {
+    const current = {};
+    applyLocked(current, { prenoms: "Anne" });
+    expect(current).toEqual({});
   });
 });

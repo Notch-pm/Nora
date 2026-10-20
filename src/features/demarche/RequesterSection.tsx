@@ -60,17 +60,24 @@ function RequesterInput({
   onChange,
   error,
   dense,
+  locked,
 }: {
   field: RequesterField;
   value: string;
   onChange: (value: string) => void;
   error: string | null;
   dense: boolean;
+  /** La valeur vient de la fiche du compte : affichée, pas modifiable (voir `profilPrefill.ts`). */
+  locked: boolean;
 }) {
   const t = useT();
   const inputId = "requerant-" + field.key;
   const className = inputClass + (error !== null ? " " + invalidClass : "");
   const describedBy = error !== null ? inputId + "-erreur" : undefined;
+  // Un champ verrouillé reste un champ (étiquette, tabulation, lecteur d'écran) ;
+  // la civilité s'y lit en toutes lettres, pas en code.
+  const civilite = CIVILITES.find((candidate) => candidate.value === value);
+  const lockedText = field.key === "civilite" && civilite ? t(civilite.key) : value;
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -83,7 +90,15 @@ function RequesterInput({
         )}
         {field.required && <span className="sr-only">{t("form.required")}</span>}
       </label>
-      {field.key === "civilite" ? (
+      {locked ? (
+        <input
+          id={inputId}
+          type="text"
+          readOnly
+          className={inputClass + " cursor-default bg-[color:var(--pt-surface)]"}
+          value={lockedText}
+        />
+      ) : field.key === "civilite" ? (
         <select
           id={inputId}
           className={className}
@@ -140,6 +155,7 @@ export function RequesterSection({
   onAudienceChange,
   fields,
   values,
+  locked = {},
   onChange,
   errors,
   consents,
@@ -156,6 +172,8 @@ export function RequesterSection({
   onAudienceChange: (audience: Audience) => void;
   fields: RequesterField[];
   values: Record<string, string>;
+  /** Les champs remplis par la fiche du compte, verrouillés (dépôt connecté). */
+  locked?: Record<string, string>;
   onChange: (key: string, value: string) => void;
   /** Erreurs de l'identité ET des consentements (clés `consent.<kind>`). */
   errors: FieldErrors;
@@ -264,7 +282,8 @@ export function RequesterSection({
               <RequesterInput
                 key={field.key}
                 field={field}
-                value={values[field.key] ?? ""}
+                value={locked[field.key] ?? values[field.key] ?? ""}
+                locked={Object.prototype.hasOwnProperty.call(locked, field.key)}
                 onChange={(value) => onChange(field.key, value)}
                 error={errorText(lang, errors[field.key])}
                 dense={dense}

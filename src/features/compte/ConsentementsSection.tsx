@@ -11,6 +11,7 @@
  * `domain/consents.ts`, et le serveur compose la phrase et reste juge. Après
  * chaque écriture, l'affichage reprend le profil que le serveur rend.
  */
+import { consentOrganism } from "@/i18n/consentOrganism.ts";
 import { useEffect, useRef, useState } from "react";
 import { CONSENTS, type ConsentKind } from "@fn/_shared/domain/consents.ts";
 import type { Profil } from "@fn/_shared/domain/profil.ts";
@@ -43,7 +44,7 @@ export function ConsentementsSection({
 }) {
   const t = useT();
   const { lang } = useLanguage();
-  const organisme = tenantName.trim() === "" ? t("consent.organismFallback") : tenantName.trim();
+  const organisme = consentOrganism(lang, tenantName);
   const [pending, setPending] = useState<ConsentKind | null>(null);
   const [confirming, setConfirming] = useState<ConsentKind | null>(null);
   const [done, setDone] = useState<StringKey | null>(null);

@@ -43,7 +43,10 @@ export function CompteSection({ section }: { section: CompteSectionData }) {
       </div>
       <div className="flex flex-1 flex-col gap-0.5">
         <h2 className="text-[length:var(--pt-h2)] font-bold text-white">{section.title}</h2>
-        <p className="text-[length:var(--pt-small)] text-white/75">{section.subtitle}</p>
+        {/* Le sous-titre paramétré invite à se connecter : connecté, il mentirait. */}
+        <p className="text-[length:var(--pt-small)] text-white/75">
+          {account.connected ? t("compte.section.connected") : section.subtitle}
+        </p>
       </div>
       <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
         <Link

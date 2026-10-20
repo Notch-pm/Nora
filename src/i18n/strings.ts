@@ -1354,7 +1354,7 @@ export const STRINGS = {
     zh: "我同意此处提供的信息用于处理我的申请。",
   },
   "consent.partage": {
-    fr: "J'accepte de partager ces informations aux services de {organisme} afin d'améliorer le traitement de ma demande et de mes futures demandes.",
+    fr: "J'accepte de partager ces informations avec les services de {organisme} afin d'améliorer le traitement de ma demande et de mes futures demandes.",
     en: "I agree to share this information with the departments of {organisme} to improve the handling of this request and of my future requests.",
     es: "Acepto compartir esta información con los servicios de {organisme} para mejorar la tramitación de mi solicitud y de mis futuras solicitudes.",
     de: "Ich bin damit einverstanden, diese Informationen mit den Dienststellen von {organisme} zu teilen, um die Bearbeitung meines Antrags und meiner künftigen Anträge zu verbessern.",
@@ -1381,7 +1381,7 @@ export const STRINGS = {
     zh: "申请处理",
   },
   "consent.partage.short": {
-    fr: "Partage aux services de {organisme}",
+    fr: "Partage avec les services de {organisme}",
     en: "Sharing with the departments of {organisme}",
     es: "Compartir con los servicios de {organisme}",
     de: "Weitergabe an die Dienststellen von {organisme}",
@@ -1421,6 +1421,12 @@ export const STRINGS = {
   },
   // Le nom de repli quand la collectivité n'a pas de nom — le même qu'Iris,
   // pour que la phrase affichée reste celle qui sera consignée.
+  // Le nom de la collectivité tel qu'il entre dans la phrase : « de l'organisme « X » »
+  // évite « de Agglomération » (recette du 2026-10-20). Iris compose le même.
+  "consent.organismNamed": {
+    fr: "l'organisme « {name} »",
+    en: "{name}",
+  },
   "consent.organismFallback": {
     fr: "la collectivité",
     en: "the local authority",
@@ -4027,6 +4033,10 @@ export const STRINGS = {
     fr: "Suivre ma demande",
     en: "Follow my request",
   },
+  "compte.section.connected": {
+    fr: "Votre compte est ouvert : retrouvez vos demandes et vos informations.",
+    en: "You are signed in: find your requests and your details here.",
+  },
   "compte.follow": {
     fr: "Suivre une demande",
     en: "Follow a request",
@@ -4892,8 +4902,8 @@ export const STRINGS = {
     en: "Complete my details",
   },
   "form.prefilled": {
-    fr: "Informations préremplies depuis votre compte — vous pouvez les modifier pour cette demande.",
-    en: "Details filled in from your account — you can change them for this request.",
+    fr: "Ces informations viennent de votre compte et accompagneront votre demande. Pour les corriger :",
+    en: "These details come from your account and will be sent with your request. To correct them:",
   },
   "error.account_required.title": {
     fr: "Cette démarche est réservée aux usagers connectés",
@@ -5197,6 +5207,8 @@ export const PENDING_TRANSLATION_KEYS: readonly StringKey[] = [
   "access.complete.help",
   "access.complete.link",
   "form.prefilled",
+  "compte.section.connected",
+  "consent.organismNamed",
   "error.account_required.title",
   "error.account_required.detail",
   "compte.consents.title",

@@ -12,6 +12,7 @@
  * l'obligatoire est marqué comme les autres champs (astérisque + texte pour le
  * lecteur d'écran), et l'erreur est reliée à sa case par `aria-describedby`.
  */
+import { consentOrganism } from "@/i18n/consentOrganism.ts";
 import type { ConsentAnswers, ConsentKind } from "@fn/_shared/domain/consents.ts";
 import { CONSENTS, consentErrorKey } from "@fn/_shared/domain/consents.ts";
 import type { FieldErrors } from "@fn/_shared/domain/formulaire.ts";
@@ -39,7 +40,7 @@ export function ConsentFields({
   const { lang } = useLanguage();
   const t = useT();
   // Même repli qu'Iris (`DEFAULT_ORGANISM`) : une phrase à trou ne se signe pas.
-  const organisme = organismName.trim() === "" ? t("consent.organismFallback") : organismName.trim();
+  const organisme = consentOrganism(lang, organismName);
 
   return (
     // Un groupe de cases est un `<fieldset>` à lui seul (RGAA 11.6) — imbriqué

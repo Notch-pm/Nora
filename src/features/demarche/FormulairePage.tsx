@@ -22,7 +22,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { solveChallenge } from "@fn/_shared/ai/challenge.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { errorText } from "@/i18n/t.ts";
-import { organismePath, servedLanguage, splitScopedPath } from "@/i18n/localizedPath.ts";
+import { localizedPath, organismePath, servedLanguage, splitScopedPath } from "@/i18n/localizedPath.ts";
 import { demarcheTitle, errorPageTitle, formulaireTitle, receiptTitle } from "@/i18n/pageTitle.ts";
 import { useDocumentTitle } from "@/i18n/useDocumentTitle.ts";
 import type { FormValues } from "@fn/_shared/domain/conditions.ts";
@@ -45,7 +45,7 @@ import { useConnectedProfil } from "@/features/compte/useConnectedProfil.ts";
 import { requesterValuesFromProfil } from "@fn/_shared/domain/profil.ts";
 import { AccessNotice } from "./AccessNotice.tsx";
 import { accessGate, gateAfterRefusal } from "./accessGate.ts";
-import { hasPrefillFor, mergePrefill } from "./profilPrefill.ts";
+import { applyLocked, lockedFromProfil } from "./profilPrefill.ts";
 import { DemarcheError, DemarcheLoading, DemarcheShell } from "./DemarcheShell.tsx";
 import { ErrorSummary } from "./ErrorSummary.tsx";
 import { FormFieldControl } from "./FormFields.tsx";
@@ -189,24 +189,23 @@ export function FormulairePage() {
     [guestAccess, requesterFields],
   );
 
-  // Le profil préremplit « Vos informations » du public citoyen — une fois par
-  // public, jamais sur une saisie déjà faite, et seulement pour les champs que
-  // le paramétrage affiche. `prefillNote` : au moins un champ a été rempli.
-  const prefilledFor = useRef(new Set<string>());
-  const latestRequesterValues = useRef(requesterValues);
-  latestRequesterValues.current = requesterValues;
-  const [prefillNote, setPrefillNote] = useState(false);
+  // Le profil remplit « Vos informations » du public citoyen, et ces champs
+  // sont verrouillés : le serveur déclare l'identité de la fiche, quoi que dise
+  // le formulaire (voir `profilPrefill.ts`).
+  const lockedValues = useMemo(
+    () =>
+      connected.session !== "account" || connected.profil === null || currentAudience !== "citoyen"
+        ? {}
+        : lockedFromProfil(
+            requesterValuesFromProfil(connected.profil),
+            requesterFields.map((field) => field.key),
+          ),
+    [connected.session, connected.profil, currentAudience, requesterFields],
+  );
+  const prefillNote = Object.keys(lockedValues).length > 0;
   useEffect(() => {
-    if (connected.profil === null || currentAudience !== "citoyen" || requesterFields.length === 0) return;
-    if (prefilledFor.current.has(currentAudience)) return;
-    prefilledFor.current.add(currentAudience);
-    const fromProfil = requesterValuesFromProfil(connected.profil);
-    const keys = requesterFields.map((field) => field.key);
-    if (!hasPrefillFor(fromProfil, keys)) return;
-    if (mergePrefill(latestRequesterValues.current, fromProfil, keys) === latestRequesterValues.current) return;
-    setRequesterValues((previous) => mergePrefill(previous, fromProfil, keys));
-    setPrefillNote(true);
-  }, [connected.profil, currentAudience, requesterFields]);
+    setRequesterValues((previous) => applyLocked(previous, lockedValues));
+  }, [lockedValues]);
 
   // Calculé ici, AVANT les retours anticipés ci-dessous : c'est ce qui permet
   // au titre d'onglet (juste après) et à l'effet de focus (plus bas) de s'en
@@ -577,15 +576,19 @@ export function FormulairePage() {
           }}
           fields={effectiveFields}
           values={requesterValues}
+          locked={lockedValues}
           onChange={setRequesterValue}
           errors={requesterErrors}
           consents={consents}
           onConsentChange={setConsent}
           organismName={tenant.name}
           note={
-            prefillNote && currentAudience === "citoyen" ? (
+            prefillNote ? (
               <p role="status" className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
-                {t("form.prefilled")}
+                {t("form.prefilled")}{" "}
+                <Link to={localizedPath(lang, "/compte")} className="font-semibold underline">
+                  {t("header.account")}
+                </Link>
               </p>
             ) : undefined
           }

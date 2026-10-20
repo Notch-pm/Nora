@@ -9,6 +9,7 @@
  * simplement du récapitulatif serait indiscernable d'un champ qu'on aurait
  * oublié d'afficher.
  */
+import { consentOrganism } from "@/i18n/consentOrganism.ts";
 import type { FieldOriginRecord } from "@fn/_shared/ai/collection.ts";
 import { CONSENTS, type ConsentKind } from "@fn/_shared/domain/consents.ts";
 import type { Field } from "@fn/_shared/domain/formSchema.ts";
@@ -164,7 +165,7 @@ export function buildRecap(lang: string, session: CollectSession): RecapSummary 
         };
 
   // Même repli qu'à l'écran de saisie : la phrase se lit toujours avec un nom.
-  const organisme = demarche.tenantName.trim() === "" ? t(lang, "consent.organismFallback") : demarche.tenantName.trim();
+  const organisme = consentOrganism(lang, demarche.tenantName);
   const consents: RecapConsent[] = CONSENTS.map((def) => {
     const granted = session.consents[def.kind] === true;
     return {

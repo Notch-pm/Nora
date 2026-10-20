@@ -90,7 +90,7 @@ import {
   enregistrerProfil,
   httpStatusForProfilFailure,
   lireProfil,
-  ficheConfirmee,
+  ficheIdDuSocle,
   ficheDuCompte,
   modifierConsentement,
   PROFIL_MESSAGES,
@@ -815,16 +815,21 @@ async function mesDemandesContext(
   const deps = profilDepsFor(request, who.tenant);
   const iris = irisFor(who.tenant.id);
   if (deps === null || iris === null) return { ok: false, response: suiviFailure("not_configured") };
-  const contactId = await spaceContactId(deps, who.accountId);
+  // Trois lectures qui ne dépendent que du compte : EN MÊME TEMPS (recette du
+  // 2026-10-20 — bout à bout, elles dépassaient le délai sur instance froide).
+  // La fiche du Socle n'est lue pour rien que si le profil n'est pas rempli.
+  const [contactId, ficheSocle, email] = await Promise.all([
+    spaceContactId(deps, who.accountId),
+    ficheIdDuSocle(deps, who.accountId),
+    deps.identity.emailOf(who.accountId),
+  ]);
   if (contactId === undefined) return { ok: false, response: suiviFailure("suivi_unavailable") };
   if (contactId === null) return { ok: true, contactId: null };
-  const confirmee = await ficheConfirmee(deps, who.accountId, contactId);
-  if (confirmee === undefined) return { ok: false, response: suiviFailure("suivi_unavailable") };
-  if (!confirmee) {
+  if (ficheSocle === undefined) return { ok: false, response: suiviFailure("suivi_unavailable") };
+  if (ficheSocle !== contactId) {
     console.error("portal-api : la fiche de l'espace n'est plus celle du Socle (rattachement corrigé ou fiche archivée)");
     return { ok: false, response: suiviFailure("suivi_refused") };
   }
-  const email = await deps.identity.emailOf(who.accountId);
   const headers = email === null ? null : await citizenHeaders(who.tenant.id, { kind: "contact", id: contactId, email });
   if (headers === null) return { ok: false, response: suiviFailure("suivi_unavailable") };
   return { ok: true, contactId, headers, iris };

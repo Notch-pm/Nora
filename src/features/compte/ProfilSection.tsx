@@ -25,6 +25,7 @@ import {
   saveCoordonnees,
   saveIdentite,
 } from "@/services/portal/profilClient.ts";
+import { takeEarly } from "@/services/portal/earlyFetch.ts";
 import { accountFailureKey } from "./failureMessage.ts";
 import { Field, FormFeedbackView, PRIMARY_BUTTON, SECONDARY_BUTTON, StatusNote, useFormFeedback } from "./form.tsx";
 import {
@@ -65,7 +66,7 @@ export function ProfilSection({
 
   useEffect(() => {
     let current = true;
-    fetchProfil().then((result) => {
+    takeEarly("profil", fetchProfil).then((result) => {
       if (!current) return;
       if (result.ok) setState({ status: "ready", profil: result.value });
       else if (result.reason === "session_required") onSessionLost();

@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { useLanguage } from "@/i18n/LanguageLayout.tsx";
 import { localizedPath } from "@/i18n/localizedPath.ts";
 import { fetchSessionKind, type SessionKind } from "@/services/portal/accountClient.ts";
+import { takeEarly } from "@/services/portal/earlyFetch.ts";
 
 let known: Promise<SessionKind> | null = null;
 
@@ -26,7 +27,7 @@ export function useSessionKind(): SessionKind | null {
   const [kind, setKind] = useState<SessionKind | null>(null);
   useEffect(() => {
     let current = true;
-    known ??= fetchSessionKind();
+    known ??= takeEarly("session", fetchSessionKind);
     void known.then((result) => {
       if (current) setKind(result);
     });

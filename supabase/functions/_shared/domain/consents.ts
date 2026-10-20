@@ -17,7 +17,7 @@
  *   • `traitement` — utiliser les informations fournies pour instruire la
  *     demande. **Obligatoire** : sans lui, le dépôt n'existe pas, ni à l'écran,
  *     ni au serveur (`normalizeConsents`), ni chez Iris.
- *   • `partage` — partager ces informations aux services de la collectivité,
+ *   • `partage` — partager ces informations avec les services de la collectivité,
  *     pour cette demande et les suivantes. Facultatif, **proposé coché**.
  *
  * ⚠️ Le portail n'envoie JAMAIS le libellé : seulement `[{ kind, granted }]`.

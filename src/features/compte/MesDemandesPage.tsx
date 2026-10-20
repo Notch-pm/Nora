@@ -24,6 +24,7 @@ import {
   fetchMesDemandes,
   maDemandePieceHref,
 } from "@/services/portal/mesDemandesClient.ts";
+import { maDemandeKey, takeEarly } from "@/services/portal/earlyFetch.ts";
 import type { SuiviClientFailure } from "@/services/portal/suiviClient.ts";
 import { AccountFrame, LINK_CLASS, StepTitle, useScreenTitle } from "./AccountFrame.tsx";
 import { SECONDARY_BUTTON } from "./form.tsx";
@@ -79,7 +80,7 @@ function ListScreen() {
 
   useEffect(() => {
     let current = true;
-    fetchMesDemandes().then((result) => {
+    takeEarly("mesDemandes", () => fetchMesDemandes()).then((result) => {
       if (!current) return;
       setState(result.ok ? { status: "ready", ...result.value } : { status: "error", reason: result.reason });
     });
@@ -243,7 +244,7 @@ function DetailScreen() {
   useEffect(() => {
     let current = true;
     setState({ status: "loading" });
-    fetchMaDemande(id).then((result) => {
+    takeEarly(maDemandeKey(id), () => fetchMaDemande(id)).then((result) => {
       if (!current) return;
       setState(result.ok ? { status: "ready", demande: result.value } : { status: "error", reason: result.reason });
     });

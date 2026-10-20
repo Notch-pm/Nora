@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { consentOrganism } from "./consentOrganism.ts";
 import { t } from "./t.ts";
 import { COVERED_LANGUAGES } from "./strings.ts";
 
@@ -14,7 +15,7 @@ import { COVERED_LANGUAGES } from "./strings.ts";
 const IRIS_TRAITEMENT =
   "J'accepte que les informations fournies ici soient utilisées dans le cadre du traitement de ma demande.";
 const IRIS_PARTAGE = (organisme: string) =>
-  `J'accepte de partager ces informations aux services de ${organisme} ` +
+  `J'accepte de partager ces informations avec les services de ${organisme} ` +
   "afin d'améliorer le traitement de ma demande et de mes futures demandes.";
 
 describe("les phrases de consentement sont celles qu'Iris consigne", () => {
@@ -23,7 +24,12 @@ describe("les phrases de consentement sont celles qu'Iris consigne", () => {
   });
 
   it("partage — mot pour mot, le nom de la collectivité interpolé", () => {
-    expect(t("fr", "consent.partage", { organisme: "Nantes Métropole" })).toBe(IRIS_PARTAGE("Nantes Métropole"));
+    // Le nom entre par `consentOrganism`, comme `organismPhrase` côté Iris.
+    expect(t("fr", "consent.partage", { organisme: consentOrganism("fr", "Nantes Métropole") })).toBe(
+      "J'accepte de partager ces informations avec les services de l'organisme « Nantes Métropole » " +
+        "afin d'améliorer le traitement de ma demande et de mes futures demandes.",
+    );
+    expect(consentOrganism("fr", "  ")).toBe("la collectivité");
   });
 
   it("le repli sans nom est celui d'Iris (« la collectivité »)", () => {

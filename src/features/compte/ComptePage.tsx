@@ -18,6 +18,7 @@ import {
   endAccountSession,
   fetchAccount,
 } from "@/services/portal/accountClient.ts";
+import { takeEarly } from "@/services/portal/earlyFetch.ts";
 import { AccountFrame, LINK_CLASS, StepTitle, useScreenTitle } from "./AccountFrame.tsx";
 import type { Profil } from "@fn/_shared/domain/profil.ts";
 import { ChangePasswordForm } from "./ChangePasswordForm.tsx";
@@ -54,7 +55,7 @@ function CompteScreen({ tenantName }: { tenantName: string }) {
 
   useEffect(() => {
     let current = true;
-    fetchAccount().then((result) => {
+    takeEarly("account", fetchAccount).then((result) => {
       if (!current) return;
       setState(result.ok ? { status: "ready", profile: result.value } : { status: "error", reason: result.reason });
     });

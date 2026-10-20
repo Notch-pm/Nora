@@ -1,33 +1,31 @@
 /**
- * « Dites-le nous une fois » : le profil du compte préremplit « Vos
+ * « Dites-le nous une fois » : le profil du compte remplit « Vos
  * informations » d'un dépôt connecté.
  *
+ * Ces champs sont VERROUILLÉS, pas proposés : au dépôt connecté, le serveur
+ * déclare l'identité de la fiche du Socle et ignore ce que le formulaire en dit
+ * (relecture de sécurité L3c, M1/A3). Les laisser modifiables faisait croire
+ * qu'une correction partirait avec la demande (recette du 2026-10-20). Une
+ * correction passe par « Mon compte ».
+ *
  * Deux règles, et elles sont le contrat de l'écran :
- *   • on ne remplit QUE les champs que le paramétrage de la collectivité
- *     affiche (`visibleKeys`) — un champ masqué ne reçoit rien, il partirait
- *     dans la demande sans que l'usager l'ait vu ;
- *   • on n'ÉCRASE JAMAIS une saisie : un champ déjà renseigné (même par le
- *     pré-remplissage de l'assistant) garde sa valeur.
+ *   • on ne verrouille QUE les champs que le paramétrage de la collectivité
+ *     affiche (`visibleKeys`) — un champ masqué ne reçoit rien ;
+ *   • un champ que la fiche ne renseigne pas reste libre : le serveur garde
+ *     alors la saisie de l'usager.
  */
 
-/** Les valeurs fusionnées ; la MÊME référence si rien ne change (pas de rendu inutile). */
-export function mergePrefill(
-  current: Record<string, string>,
-  fromProfil: Record<string, string>,
-  visibleKeys: readonly string[],
-): Record<string, string> {
-  let next: Record<string, string> | null = null;
+/** Les champs visibles que la fiche renseigne, avec leur valeur. */
+export function lockedFromProfil(fromProfil: Record<string, string>, visibleKeys: readonly string[]): Record<string, string> {
+  const out: Record<string, string> = {};
   for (const key of visibleKeys) {
-    const proposed = fromProfil[key];
-    if (typeof proposed !== "string" || proposed.trim() === "") continue;
-    if ((current[key] ?? "").trim() !== "") continue;
-    next ??= { ...current };
-    next[key] = proposed;
+    const value = fromProfil[key];
+    if (typeof value === "string" && value.trim() !== "") out[key] = value;
   }
-  return next ?? current;
+  return out;
 }
 
-/** Au moins un champ visible recevrait une valeur : la phrase « préremplies » n'a de sens que dans ce cas. */
-export function hasPrefillFor(fromProfil: Record<string, string>, visibleKeys: readonly string[]): boolean {
-  return visibleKeys.some((key) => (fromProfil[key] ?? "").trim() !== "");
+/** Les saisies, champs verrouillés imposés ; la MÊME référence si rien ne change (pas de rendu inutile). */
+export function applyLocked(current: Record<string, string>, locked: Record<string, string>): Record<string, string> {
+  return Object.entries(locked).every(([key, value]) => current[key] === value) ? current : { ...current, ...locked };
 }
