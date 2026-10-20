@@ -121,7 +121,9 @@ export function createIdentityProvider(config: IdentityConfig): IdentityProvider
         return id === null ? { kind: "unavailable" } : { kind: "created", userId: id };
       }
       const code = goTrueError(reply.body);
-      if (reply.status === 422 || code.includes("exists") || code.includes("already")) return { kind: "exists" };
+      // Seule « adresse déjà prise » vaut `exists` : un 422 pour une autre raison
+      // (adresse ou mot de passe refusés par GoTrue) est une panne à journaliser.
+      if (code.includes("exists") || code.includes("already")) return { kind: "exists" };
       console.error("portal-api : création d'identité refusée par GoTrue", reply.status, code);
       return { kind: "unavailable" };
     },

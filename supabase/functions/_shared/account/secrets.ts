@@ -46,14 +46,20 @@ async function derive(secret: string, label: string, usage: "aes" | "hmac"): Pro
 }
 
 /** `v1.<iv>.<chiffré>` — la version permet de changer d'algorithme sans tout casser. */
-export async function seal(secret: string, label: string, plaintext: string): Promise<string> {
+/**
+ * `aad` lie le chiffré à son propriétaire (l'identifiant du compte) : un
+ * chiffré recopié sur un autre compte ne se déchiffre pas.
+ */
+export async function seal(secret: string, label: string, plaintext: string, aad = ""): Promise<string> {
   const key = await derive(secret, label, "aes");
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoder.encode(plaintext)));
+  const sealed = new Uint8Array(
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: encoder.encode(aad) }, key, encoder.encode(plaintext)),
+  );
   return `v1.${toBase64Url(iv)}.${toBase64Url(sealed)}`;
 }
 
-export async function unseal(secret: string, label: string, sealed: string): Promise<string | null> {
+export async function unseal(secret: string, label: string, sealed: string, aad = ""): Promise<string | null> {
   const [version, ivText, bodyText] = sealed.split(".");
   if (version !== "v1" || ivText === undefined || bodyText === undefined) return null;
   const iv = fromBase64Url(ivText);
@@ -61,7 +67,7 @@ export async function unseal(secret: string, label: string, sealed: string): Pro
   if (iv === null || body === null || iv.length !== 12) return null;
   try {
     const key = await derive(secret, label, "aes");
-    return decoder.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, body));
+    return decoder.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: encoder.encode(aad) }, key, body));
   } catch {
     return null;
   }

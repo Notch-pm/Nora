@@ -420,6 +420,18 @@ const ACCOUNT_ANONYMOUS_PATHS = new Set([
   "/v1/compte/connexion",
   "/v1/compte/connexion/totp",
 ]);
+/** Ceux qui font écrire à une adresse : défi anti-robot exigé. */
+const ACCOUNT_MAIL_PATHS = new Set([
+  "/v1/compte/inscription",
+  "/v1/compte/confirmation/renvoi",
+  "/v1/compte/mot-de-passe-oublie",
+]);
+/**
+ * Durée plancher des parcours anonymes : avec les courriels en différé, elle
+ * finit d'effacer ce que le temps de réponse dirait d'un compte (bcrypt de
+ * GoTrue pour une adresse connue, écritures en base).
+ */
+const ACCOUNT_RESPONSE_FLOOR_MS = 900;
 const ACCOUNT_POST_PATHS = new Set([
   ...ACCOUNT_ANONYMOUS_PATHS,
   "/v1/compte/mot-de-passe/changement",
@@ -495,8 +507,74 @@ function accountServiceFor(
       trace: traceOf(request.headers, proxy),
       nowSeconds: () => Math.floor(Date.now() / 1000),
       sha256: hashKey,
+      defer: (work) => {
+        const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+        if (typeof runtime?.waitUntil === "function") runtime.waitUntil(work);
+      },
     }),
   };
+}
+
+/**
+ * Les parcours du compte SANS session : inscription, liens, connexion. Le corps
+ * est déjà lu, et l'écriture déjà vérifiée (`checkMutation`) par l'appelant.
+ */
+async function anonymousAccountRoute(
+  request: Request,
+  path: string,
+  body: Record<string, unknown>,
+  socle: ReturnType<typeof socleClient>,
+): Promise<Response> {
+  if (!accountLimiter.allow(await hashKey(addressBucket(visitor(request))))) return accountFailure("account_locked");
+  if (ACCOUNT_MAIL_PATHS.has(path)) {
+    // La porte anti-robot du dépôt, liée à l'adresse saisie (`depositGate.ts`) :
+    // sur chaque parcours qui fait écrire à une adresse.
+    const gate = await checkDepositChallenge({
+      secret: Deno.env.get("ASSISTANT_SIGNING_SECRET") ?? null,
+      required: Deno.env.get("DEPOSIT_CHALLENGE_REQUIRED") === "true",
+      challenge: body.challenge,
+      submissionId: normalizeEmail(body.email) ?? "",
+      nowSeconds: Math.floor(Date.now() / 1000),
+    });
+    if (gate !== "open") {
+      return json(428, { error: { code: "challenge_required", message: "Merci de réessayer." } }, { "Cache-Control": "no-store" });
+    }
+  }
+  const resolved = await tenantOf(request, socle);
+  if (!resolved.ok) return resolved.response;
+  const built = accountServiceFor(request, resolved.tenant);
+  if (!built.ok) return built.response;
+  const service = built.service;
+  const done = (result: { ok: true } | { ok: false; reason: AccountFailure; rules?: string[] }) =>
+    result.ok ? json(200, { ok: true }, { "Cache-Control": "no-store" }) : accountFailure(result.reason, result.rules);
+
+  switch (path) {
+    case "/v1/compte/inscription":
+      return done(await service.register({ email: body.email, cguAccepted: body.cguAccepted }));
+    case "/v1/compte/confirmation":
+      return done(await service.confirm({ token: body.jeton, password: body.password }));
+    case "/v1/compte/confirmation/renvoi":
+      return done(await service.resendConfirmation({ email: body.email }));
+    case "/v1/compte/mot-de-passe-oublie":
+      return done(await service.requestReset({ email: body.email }));
+    case "/v1/compte/mot-de-passe":
+      return done(await service.resetPassword({ token: body.jeton, password: body.password }));
+  }
+
+  const context = sessionContext(request, resolved.tenant.id);
+  if (context === null) return sessionFailure("session_unavailable");
+  if (path === "/v1/compte/connexion") {
+    const login = await service.login({ email: body.email, password: body.password, remember: body.remember });
+    if (!login.ok) return accountFailure(login.reason);
+    if (login.value.kind === "mfa") {
+      return json(200, { authenticated: false, mfaRequired: true, ticket: login.value.ticket }, { "Cache-Control": "no-store" });
+    }
+    return await openAccountSession(request, context, login.value.session);
+  }
+  // /v1/compte/connexion/totp
+  const second = await service.loginTotp({ ticket: body.ticket, code: body.code });
+  if (!second.ok) return accountFailure(second.reason);
+  return await openAccountSession(request, context, second.value);
 }
 
 /** Ouvre la session d'un compte authentifié (et ferme celle que portait ce navigateur). */
@@ -1673,60 +1751,18 @@ Deno.serve(async (request: Request): Promise<Response> => {
       return accountFailure("bad_request");
     }
 
-    // Parcours ANONYMES : frein par visiteur, avant toute lecture.
+    // Parcours ANONYMES : frein par visiteur, avant toute lecture ; durée
+    // plancher sur TOUTES les réponses, refus compris.
     if (ACCOUNT_ANONYMOUS_PATHS.has(path)) {
-      if (!accountLimiter.allow(await hashKey(addressBucket(visitor(request))))) return accountFailure("account_locked");
-      if (path === "/v1/compte/inscription") {
-        // La porte anti-robot du dépôt, liée à l'adresse saisie (`depositGate.ts`).
-        const gate = await checkDepositChallenge({
-          secret: Deno.env.get("ASSISTANT_SIGNING_SECRET") ?? null,
-          required: Deno.env.get("DEPOSIT_CHALLENGE_REQUIRED") === "true",
-          challenge: body.challenge,
-          submissionId: normalizeEmail(body.email) ?? "",
-          nowSeconds: Math.floor(Date.now() / 1000),
-        });
-        if (gate !== "open") {
-          return json(428, { error: { code: "challenge_required", message: "Merci de réessayer." } }, { "Cache-Control": "no-store" });
-        }
-      }
-      const resolved = await tenantOf(request, socle);
-      if (!resolved.ok) return resolved.response;
-      const built = accountServiceFor(request, resolved.tenant);
-      if (!built.ok) return built.response;
-      const service = built.service;
-      const done = (result: { ok: true } | { ok: false; reason: AccountFailure; rules?: string[] }) =>
-        result.ok ? json(200, { ok: true }, { "Cache-Control": "no-store" }) : accountFailure(result.reason, result.rules);
-
-      switch (path) {
-        case "/v1/compte/inscription":
-          return done(await service.register({ email: body.email, password: body.password, cguAccepted: body.cguAccepted }));
-        case "/v1/compte/confirmation":
-          return done(await service.confirm(body.jeton));
-        case "/v1/compte/confirmation/renvoi":
-          return done(await service.resendConfirmation({ email: body.email }));
-        case "/v1/compte/mot-de-passe-oublie":
-          return done(await service.requestReset({ email: body.email }));
-        case "/v1/compte/mot-de-passe":
-          return done(await service.resetPassword({ token: body.jeton, password: body.password }));
-      }
-
-      const context = sessionContext(request, resolved.tenant.id);
-      if (context === null) return sessionFailure("session_unavailable");
-      if (path === "/v1/compte/connexion") {
-        const login = await service.login({ email: body.email, password: body.password, remember: body.remember });
-        if (!login.ok) return accountFailure(login.reason);
-        if (login.value.kind === "mfa") {
-          return json(200, { authenticated: false, mfaRequired: true, ticket: login.value.ticket }, { "Cache-Control": "no-store" });
-        }
-        return await openAccountSession(request, context, login.value.session);
-      }
-      // /v1/compte/connexion/totp
-      const second = await service.loginTotp({ ticket: body.ticket, code: body.code });
-      if (!second.ok) return accountFailure(second.reason);
-      return await openAccountSession(request, context, second.value);
+      const started = Date.now();
+      const response = await anonymousAccountRoute(request, path, body, socle);
+      const wait = ACCOUNT_RESPONSE_FLOOR_MS - (Date.now() - started);
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      return response;
     }
 
     // Parcours CONNECTÉS.
+
     const who = await accountSession(request, socle);
     if (!who.ok) return who.response;
     const built = accountServiceFor(request, who.tenant);
@@ -1738,7 +1774,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       case "/v1/compte/mot-de-passe/changement":
         return done(await service.changePassword(who.accountId, who.idHash, { current: body.current, password: body.password }));
       case "/v1/compte/totp/activation": {
-        const started = await service.totpStart(who.accountId, { password: body.password });
+        const started = await service.totpStart(who.accountId, { password: body.password, code: body.code });
         return started.ok
           ? json(200, { secret: started.value.secret, uri: started.value.uri }, { "Cache-Control": "no-store" })
           : accountFailure(started.reason);

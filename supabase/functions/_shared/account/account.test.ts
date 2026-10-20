@@ -34,6 +34,13 @@ describe("secrets", () => {
     expect(await unseal(SECRET, "totp", sealed.slice(0, -2) + "AA")).toBeNull();
   });
 
+  it("un chiffré lié à un compte ne se déchiffre pas pour un autre", async () => {
+    const sealed = await seal(SECRET, "totp", "JBSWY3DPEHPK3PXP", "compte-a");
+    expect(await unseal(SECRET, "totp", sealed, "compte-a")).toBe("JBSWY3DPEHPK3PXP");
+    expect(await unseal(SECRET, "totp", sealed, "compte-b")).toBeNull();
+    expect(await unseal(SECRET, "totp", sealed)).toBeNull();
+  });
+
   it("un ticket signé vaut jusqu'à son échéance, et pas pour un autre usage", async () => {
     const token = await signToken(SECRET, "mfa", { sub: "a", exp: 1000 });
     expect(await verifyToken(SECRET, "mfa", token, 999)).toEqual({ sub: "a", exp: 1000 });

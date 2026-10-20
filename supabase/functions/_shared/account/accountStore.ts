@@ -11,6 +11,8 @@ export interface AccountByEmail {
   accountId: string;
   confirmed: boolean;
   active: boolean;
+  /** Le compte a-t-il un espace dans la collectivité de la requête ? */
+  hasSpace: boolean;
 }
 
 export interface LoginState {
@@ -27,12 +29,15 @@ export interface TotpState {
 
 export interface AccountStore {
   register(accountId: string, emailHash: string, tenantId: string, cguVersion: string, trace: RequestTrace): Promise<StoreResult<boolean>>;
-  byEmail(emailHash: string): Promise<StoreResult<AccountByEmail | null>>;
+  byEmail(emailHash: string, tenantId: string): Promise<StoreResult<AccountByEmail | null>>;
   confirm(accountId: string, tenantId: string, trace: RequestTrace): Promise<StoreResult<boolean>>;
-  forLogin(accountId: string, tenantId: string): Promise<StoreResult<LoginState | null>>;
-  loginLocked(emailHash: string): Promise<StoreResult<boolean>>;
-  loginFailed(emailHash: string, tenantId: string, trace: RequestTrace): Promise<StoreResult<boolean>>;
+  forLogin(accountId: string): Promise<StoreResult<LoginState | null>>;
+  ensureSpace(accountId: string, tenantId: string): Promise<StoreResult<null>>;
+  /** Compte une tentative AVANT la vérification ; `false` = adresse verrouillée. */
+  loginAttempt(emailHash: string, tenantId: string, trace: RequestTrace): Promise<StoreResult<boolean>>;
   loginSucceeded(emailHash: string): Promise<StoreResult<null>>;
+  /** Un courriel de compte vers cette adresse est-il encore permis (5 par heure) ? */
+  mailAllowed(emailHash: string): Promise<StoreResult<boolean>>;
   passwordChanged(accountId: string, tenantId: string, trace: RequestTrace, keepIdHash: string | null): Promise<StoreResult<number>>;
   event(event: string, tenantId: string, accountId: string | null, trace: RequestTrace): Promise<StoreResult<null>>;
   totp(accountId: string): Promise<StoreResult<TotpState>>;
@@ -106,17 +111,25 @@ export function createAccountStore(config: AccountStoreConfig): AccountStore {
         p_cgu_version: cguVersion,
         ...trace(t),
       }),
-    async byEmail(emailHash) {
-      const r = await rpc("citizen_account_by_email", { p_email_hash: emailHash });
+    async byEmail(emailHash, tenantId) {
+      const r = await rpc("citizen_account_by_email", { p_email_hash: emailHash, p_tenant_id: tenantId });
       if (!r.ok) return r;
       const row = first(r.value);
       if (row === null || typeof row.account_id !== "string") return { ok: true, value: null };
-      return { ok: true, value: { accountId: row.account_id, confirmed: row.confirmed === true, active: row.active === true } };
+      return {
+        ok: true,
+        value: {
+          accountId: row.account_id,
+          confirmed: row.confirmed === true,
+          active: row.active === true,
+          hasSpace: row.has_space === true,
+        },
+      };
     },
     confirm: (accountId, tenantId, t) =>
       bool("citizen_account_confirm", { p_account_id: accountId, p_tenant_id: tenantId, ...trace(t) }),
-    async forLogin(accountId, tenantId) {
-      const r = await rpc("citizen_account_for_login", { p_account_id: accountId, p_tenant_id: tenantId });
+    async forLogin(accountId) {
+      const r = await rpc("citizen_account_for_login", { p_account_id: accountId });
       if (!r.ok) return r;
       const row = first(r.value);
       if (row === null) return { ok: true, value: null };
@@ -125,10 +138,12 @@ export function createAccountStore(config: AccountStoreConfig): AccountStore {
         value: { confirmed: row.confirmed === true, active: row.active === true, totpEnabled: row.totp_enabled === true },
       };
     },
-    loginLocked: (emailHash) => bool("citizen_login_locked", { p_email_hash: emailHash }),
-    loginFailed: (emailHash, tenantId, t) =>
-      bool("citizen_login_failed", { p_email_hash: emailHash, p_tenant_id: tenantId, ...trace(t) }),
+    ensureSpace: (accountId, tenantId) =>
+      nothing("citizen_space_ensure", { p_account_id: accountId, p_tenant_id: tenantId }),
+    loginAttempt: (emailHash, tenantId, t) =>
+      bool("citizen_login_attempt", { p_email_hash: emailHash, p_tenant_id: tenantId, ...trace(t) }),
     loginSucceeded: (emailHash) => nothing("citizen_login_succeeded", { p_email_hash: emailHash }),
+    mailAllowed: (emailHash) => bool("citizen_mail_allowed", { p_email_hash: emailHash }),
     async passwordChanged(accountId, tenantId, t, keepIdHash) {
       const r = await rpc("citizen_password_changed", {
         p_account_id: accountId,

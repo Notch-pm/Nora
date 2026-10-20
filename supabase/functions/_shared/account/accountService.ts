@@ -1,22 +1,34 @@
 /**
  * Les parcours du compte citoyen (espace usager, lot L3a) — inscription,
- * confirmation de l'adresse, connexion (avec second facteur facultatif), mot de
- * passe oublié, changement de mot de passe, double authentification.
+ * confirmation de l'adresse (où l'on choisit son mot de passe), connexion avec
+ * second facteur facultatif, mot de passe oublié, changement de mot de passe,
+ * double authentification.
  *
  * Tout ce qui parle réseau est INJECTÉ (`AccountDeps`) : GoTrue, la base Nora,
  * l'envoi de courriels. Les règles se testent donc sans rien de tout cela
  * (`accountService.test.ts`). La session elle-même est ouverte par portal-api
  * (`session/`) : ce service dit seulement QUI s'est authentifié, et comment.
  *
- * Règles qui tiennent ici, et nulle part ailleurs :
+ * Règles qui tiennent ici, et nulle part ailleurs (relecture de sécurité du
+ * 2026-10-20 comprise) :
  *   · rien ne révèle si une adresse a un compte — inscription, mot de passe
- *     oublié et échec de connexion répondent pareil ; seul le titulaire de
- *     l'adresse l'apprend, par courriel ;
- *   · 10 échecs en 15 minutes verrouillent l'adresse 15 minutes (CCTP 6.3),
- *     compte ou non ; les mauvais codes TOTP comptent aussi ;
+ *     oublié, renvoi de lien et échec de connexion répondent pareil, et les
+ *     courriels partent EN DIFFÉRÉ (`defer`) : la durée de réponse ne trahit
+ *     pas davantage ;
+ *   · l'inscription ne prend PAS de mot de passe : il se choisit au lien de
+ *     confirmation. Sinon, on pré-inscrit l'adresse d'un autre avec le sien,
+ *     et l'on récupère le compte le jour où il le confirme ;
+ *   · un lien de compte ne part que par le serveur d'envoi d'une collectivité
+ *     où le compte a un ESPACE — une autre collectivité ne lit pas le lien d'un
+ *     citoyen qui n'est pas le sien ;
+ *   · chaque tentative (mot de passe, code TOTP) est COMPTÉE AVANT d'être
+ *     vérifiée : au-delà de 10 en 15 minutes, l'adresse est verrouillée 15
+ *     minutes (CCTP 6.3) — en parallèle comme en série ;
+ *   · au plus 5 courriels de compte par adresse et par heure ;
  *   · un mot de passe changé ou réinitialisé ferme les AUTRES sessions, et le
- *     titulaire en est averti par courriel ;
- *   · activer ou retirer la double authentification exige le mot de passe.
+ *     titulaire en est averti ;
+ *   · activer, changer d'appareil ou retirer la double authentification exige
+ *     le mot de passe — et le code actuel quand elle est déjà active.
  */
 import type { RequestTrace } from "../session/sessionStore.ts";
 import type { AccountStore } from "./accountStore.ts";
@@ -33,7 +45,7 @@ import { type PasswordRule, unmetPasswordRules } from "./password.ts";
 import { seal, signToken, unseal, verifyToken } from "./secrets.ts";
 import { matchTotp, newTotpSecret, otpauthUri } from "./totp.ts";
 
-/** Version des CGU acceptées à l'inscription (`docs/cgu` du portail). */
+/** Version des CGU acceptées à l'inscription (page `/compte/cgu` du portail). */
 export const CGU_VERSION = "2026-10";
 
 /** Durée du ticket de second facteur, entre le mot de passe et le code. */
@@ -53,6 +65,7 @@ export type AccountFailure =
   | "mfa_expired"
   | "totp_invalid"
   | "totp_not_pending"
+  | "too_many_emails"
   | "mail_unavailable"
   | "account_unavailable";
 
@@ -77,6 +90,12 @@ export interface AccountDeps {
   identity: IdentityProvider;
   store: AccountStore;
   mailer: AccountMailer;
+  /**
+   * Exécute un travail APRÈS la réponse (`EdgeRuntime.waitUntil`) : les
+   * courriels partent hors du temps de réponse, qui ne dit donc rien de
+   * l'existence d'un compte.
+   */
+  defer: (work: Promise<unknown>) => void;
   /** `NORA_AUTH_SECRET` (32 caractères au moins). */
   authSecret: string;
   tenant: { id: string; name: string };
@@ -88,12 +107,22 @@ export interface AccountDeps {
   sha256: (input: string) => Promise<string>;
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/**
+ * Une adresse ordinaire, sans rien que nodemailer pourrait lire comme une
+ * seconde destination (`<`, `>`, `,`, `;`, guillemets, espaces).
+ */
+const EMAIL_RE = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 
 export function normalizeEmail(input: unknown): string | null {
   if (typeof input !== "string") return null;
   const email = input.trim().toLowerCase();
   return email.length <= 254 && EMAIL_RE.test(email) ? email : null;
+}
+
+/** Un mot de passe que personne ne connaît, posé à la création de l'identité. */
+function unknownPassword(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("") + "aA1!";
 }
 
 function fail<T>(reason: AccountFailure, rules?: PasswordRule[]): AccountResult<T> {
@@ -104,83 +133,163 @@ function ok<T>(value: T): AccountResult<T> {
   return { ok: true, value };
 }
 
+function validToken(token: unknown): token is string {
+  return typeof token === "string" && token.length >= 8 && token.length <= 200;
+}
+
 export function createAccountService(deps: AccountDeps) {
   const { identity, store, mailer, trace } = deps;
+  const tenantId = deps.tenant.id;
   const messageContext: MessageContext = { tenantName: deps.tenant.name, portalUrl: deps.portalUrl };
   const emailHash = (email: string) => deps.sha256(`email:${email}`);
 
-  /** Le mot de passe d'un compte déjà connu (re-authentification). */
+  /** Envoi différé : ni sa durée ni son échec ne remontent dans la réponse. */
+  function sendLater(email: string, compose: () => Promise<AccountMessage | null>): void {
+    deps.defer(
+      (async () => {
+        const message = await compose();
+        if (message !== null) await mailer.send(email, message);
+      })().catch(() => {}),
+    );
+  }
+
+  function confirmationLater(email: string): void {
+    sendLater(email, async () => {
+      const token = await identity.linkToken("magiclink", email);
+      return token === null || token === "unavailable" ? null : confirmationMessage(messageContext, token);
+    });
+  }
+
+  /**
+   * Préalable commun aux parcours qui écrivent à une adresse : adresse bien
+   * formée, serveur d'envoi présent, quota de l'adresse non atteint — dans cet
+   * ordre, et pour TOUTE adresse (le quota ne dit rien d'un compte).
+   */
+  async function mailable(input: unknown): Promise<AccountResult<{ email: string; hash: string }>> {
+    const email = normalizeEmail(input);
+    if (email === null) return fail("email_invalid");
+    if (!(await mailer.ready())) return fail("mail_unavailable");
+    const hash = await emailHash(email);
+    const allowed = await store.mailAllowed(hash);
+    if (!allowed.ok) return fail("account_unavailable");
+    if (!allowed.value) return fail("too_many_emails");
+    return ok({ email, hash });
+  }
+
+  /** Le mot de passe d'un compte déjà connecté (re-authentification), tentative comptée. */
   async function passwordMatches(accountId: string, password: string): Promise<AccountResult<string>> {
     const email = await identity.emailOf(accountId);
     if (email === null) return fail("account_unavailable");
+    const attempt = await store.loginAttempt(await emailHash(email), tenantId, trace);
+    if (!attempt.ok) return fail("account_unavailable");
+    if (!attempt.value) return fail("account_locked");
     const check = await identity.checkPassword(email, password);
     if (check.kind === "unavailable") return fail("account_unavailable");
     if (check.kind !== "ok" || check.userId !== accountId) {
-      await store.loginFailed(await emailHash(email), deps.tenant.id, trace);
+      await store.event("login_failed", tenantId, accountId, trace);
       return fail("credentials_invalid");
     }
     return ok(email);
   }
 
-  async function notify(accountId: string, change: "password" | "totp_enabled" | "totp_disabled", email?: string) {
-    const to = email ?? (await identity.emailOf(accountId));
-    if (to !== null) await mailer.send(to, securityNoticeMessage(messageContext, change));
+  /** Un code TOTP du secret actif, consommé (jamais deux fois). */
+  async function activeCodeMatches(accountId: string, code: unknown): Promise<AccountResult<null>> {
+    if (typeof code !== "string") return fail("totp_invalid");
+    const state = await store.totp(accountId);
+    if (!state.ok) return fail("account_unavailable");
+    const secret = state.value.secretEnc && (await unseal(deps.authSecret, TOTP_SEAL_LABEL, state.value.secretEnc, accountId));
+    if (!secret) return fail("account_unavailable");
+    const step = await matchTotp(secret, code, deps.nowSeconds());
+    const used = step === null ? null : await store.totpUseStep(accountId, step);
+    if (used === null || !used.ok || !used.value) {
+      await store.event("totp_failed", tenantId, accountId, trace);
+      return fail("totp_invalid");
+    }
+    return ok(null);
   }
 
-  async function sendConfirmation(email: string): Promise<boolean> {
-    const token = await identity.linkToken("magiclink", email);
-    if (token === null || token === "unavailable") return false;
-    return mailer.send(email, confirmationMessage(messageContext, token));
+  function notify(accountId: string, change: "password" | "totp_enabled" | "totp_disabled", email?: string): void {
+    deps.defer(
+      (async () => {
+        const to = email ?? (await identity.emailOf(accountId));
+        if (to !== null) await mailer.send(to, securityNoticeMessage(messageContext, change));
+      })().catch(() => {}),
+    );
+  }
+
+  /** Authentification complète : l'espace dans la collectivité existe, le verrou de l'adresse tombe. */
+  async function complete(accountId: string, hash: string, amr: string[], remember: boolean): Promise<AccountResult<Authenticated>> {
+    const space = await store.ensureSpace(accountId, tenantId);
+    if (!space.ok) return fail("account_unavailable");
+    await store.loginSucceeded(hash);
+    return ok({ accountId, amr, remember });
   }
 
   return {
     /**
-     * Inscription. Réponse IDENTIQUE que l'adresse soit libre ou non : le
-     * titulaire reçoit soit le lien de confirmation, soit « vous avez déjà un
-     * compte » (soit, pour un compte jamais confirmé, un nouveau lien).
+     * Inscription : adresse + CGU, PAS de mot de passe. Réponse identique
+     * quelle que soit l'adresse ; le titulaire reçoit le lien pour choisir son
+     * mot de passe, ou « vous avez déjà un compte ».
      */
-    async register(input: { email: unknown; password: unknown; cguAccepted: unknown }): Promise<AccountResult<null>> {
-      const email = normalizeEmail(input.email);
-      if (email === null) return fail("email_invalid");
-      if (typeof input.password !== "string") return fail("bad_request");
-      const rules = unmetPasswordRules(input.password);
-      if (rules.length > 0) return fail("password_weak", rules);
+    async register(input: { email: unknown; cguAccepted: unknown }): Promise<AccountResult<null>> {
+      if (normalizeEmail(input.email) === null) return fail("email_invalid");
       if (input.cguAccepted !== true) return fail("cgu_required");
-      if (!(await mailer.ready())) return fail("mail_unavailable");
+      const target = await mailable(input.email);
+      if (!target.ok) return target;
+      const { email, hash } = target.value;
 
-      const hash = await emailHash(email);
-      const known = await store.byEmail(hash);
+      const known = await store.byEmail(hash, tenantId);
       if (!known.ok) return fail("account_unavailable");
-      if (known.value !== null) {
-        const sent = known.value.confirmed
-          ? await mailer.send(email, alreadyRegisteredMessage(messageContext))
-          : await sendConfirmation(email);
-        return sent ? ok(null) : fail("mail_unavailable");
+      const account = known.value;
+      if (account !== null) {
+        if (account.confirmed) sendLater(email, async () => alreadyRegisteredMessage(messageContext));
+        // Jamais confirmé : un nouveau lien, mais seulement depuis une
+        // collectivité où il a été ouvert.
+        else if (account.active && account.hasSpace) confirmationLater(email);
+        return ok(null);
       }
 
-      const created = await identity.createUser(email, input.password);
+      const created = await identity.createUser(email, unknownPassword());
       if (created.kind === "unavailable") return fail("account_unavailable");
       if (created.kind === "exists") {
         // GoTrue connaît l'adresse, la base Nora non : une inscription
-        // interrompue entre les deux. Le titulaire la reprend par « mot de
-        // passe oublié » ; on ne crée rien de plus ici.
+        // interrompue entre les deux. Rien à envoyer qui ait un sens ; le
+        // journal le dit à l'exploitant.
         console.error("portal-api : identité GoTrue sans compte citoyen (inscription interrompue)");
-        return (await mailer.send(email, alreadyRegisteredMessage(messageContext))) ? ok(null) : fail("mail_unavailable");
+        return ok(null);
       }
-      const registered = await store.register(created.userId, hash, deps.tenant.id, CGU_VERSION, trace);
+      const registered = await store.register(created.userId, hash, tenantId, CGU_VERSION, trace);
       if (!registered.ok) return fail("account_unavailable");
-      return (await sendConfirmation(email)) ? ok(null) : fail("mail_unavailable");
+      confirmationLater(email);
+      return ok(null);
     },
 
-    /** Le lien de confirmation : l'adresse est confirmée, l'usager se connecte ensuite. */
-    async confirm(token: unknown): Promise<AccountResult<null>> {
-      if (typeof token !== "string" || token.length < 8 || token.length > 200) return fail("link_invalid");
-      const verified = await identity.verifyLink("magiclink", token);
+    /** Le lien de confirmation, où l'usager CHOISIT son mot de passe. */
+    async confirm(input: { token: unknown; password: unknown }): Promise<AccountResult<null>> {
+      if (typeof input.password !== "string") return fail("bad_request");
+      const rules = unmetPasswordRules(input.password);
+      if (rules.length > 0) return fail("password_weak", rules);
+      if (!validToken(input.token)) return fail("link_invalid");
+      const verified = await identity.verifyLink("magiclink", input.token);
       if (verified.kind === "unavailable") return fail("account_unavailable");
       if (verified.kind === "invalid") return fail("link_invalid");
-      const confirmed = await store.confirm(verified.userId, deps.tenant.id, trace);
+      if (!(await identity.setPassword(verified.userId, input.password))) return fail("account_unavailable");
+      const confirmed = await store.confirm(verified.userId, tenantId, trace);
       if (!confirmed.ok) return fail("account_unavailable");
       return confirmed.value ? ok(null) : fail("link_invalid");
+    },
+
+    /** Renvoyer le lien de confirmation : même réponse pour toute adresse bien formée. */
+    async resendConfirmation(input: { email: unknown }): Promise<AccountResult<null>> {
+      const target = await mailable(input.email);
+      if (!target.ok) return target;
+      const known = await store.byEmail(target.value.hash, tenantId);
+      if (!known.ok) return fail("account_unavailable");
+      const account = known.value;
+      if (account !== null && account.active && !account.confirmed && account.hasSpace) {
+        confirmationLater(target.value.email);
+      }
+      return ok(null);
     },
 
     async login(input: { email: unknown; password: unknown; remember: unknown }): Promise<AccountResult<LoginOutcome>> {
@@ -190,109 +299,88 @@ export function createAccountService(deps: AccountDeps) {
       }
       const remember = input.remember === true;
       const hash = await emailHash(email);
-      const locked = await store.loginLocked(hash);
-      if (!locked.ok) return fail("account_unavailable");
-      if (locked.value) return fail("account_locked");
+      const attempt = await store.loginAttempt(hash, tenantId, trace);
+      if (!attempt.ok) return fail("account_unavailable");
+      if (!attempt.value) return fail("account_locked");
 
       const check = await identity.checkPassword(email, input.password);
       if (check.kind === "unavailable") return fail("account_unavailable");
       if (check.kind === "invalid") {
-        const nowLocked = await store.loginFailed(hash, deps.tenant.id, trace);
-        return fail(nowLocked.ok && nowLocked.value ? "account_locked" : "credentials_invalid");
+        await store.event("login_failed", tenantId, null, trace);
+        return fail("credentials_invalid");
       }
-      // Mot de passe juste, adresse jamais confirmée : on peut le dire, celui
-      // qui lit ceci connaît le mot de passe.
+      // Mot de passe juste, adresse jamais confirmée : celui qui lit ceci
+      // connaît le mot de passe, on peut le lui dire.
       if (check.kind === "unconfirmed") return fail("account_unconfirmed");
 
-      const state = await store.forLogin(check.userId, deps.tenant.id);
+      const state = await store.forLogin(check.userId);
       if (!state.ok) return fail("account_unavailable");
       if (state.value === null || !state.value.active) return fail("credentials_invalid");
       if (!state.value.confirmed) return fail("account_unconfirmed");
-      await store.loginSucceeded(hash);
 
       if (state.value.totpEnabled) {
         const ticket = await signToken(deps.authSecret, MFA_TICKET_LABEL, {
           sub: check.userId,
-          t: deps.tenant.id,
+          t: tenantId,
           h: hash,
           r: remember,
           exp: deps.nowSeconds() + MFA_TICKET_SECONDS,
         });
         return ok({ kind: "mfa", ticket });
       }
-      return ok({ kind: "session", session: { accountId: check.userId, amr: ["pwd"], remember } });
+      const done = await complete(check.userId, hash, ["pwd"], remember);
+      return done.ok ? ok({ kind: "session", session: done.value }) : done;
     },
 
-    /** Le second facteur, après un mot de passe juste. */
+    /** Le second facteur, après un mot de passe juste. Chaque code essayé compte. */
     async loginTotp(input: { ticket: unknown; code: unknown }): Promise<AccountResult<Authenticated>> {
-      if (typeof input.ticket !== "string" || typeof input.code !== "string") return fail("mfa_expired");
+      if (typeof input.ticket !== "string") return fail("mfa_expired");
       const payload = await verifyToken(deps.authSecret, MFA_TICKET_LABEL, input.ticket, deps.nowSeconds());
-      if (payload === null || payload.t !== deps.tenant.id || typeof payload.sub !== "string" || typeof payload.h !== "string") {
+      if (payload === null || payload.t !== tenantId || typeof payload.sub !== "string" || typeof payload.h !== "string") {
         return fail("mfa_expired");
       }
-      const accountId = payload.sub;
-      const locked = await store.loginLocked(payload.h);
-      if (!locked.ok) return fail("account_unavailable");
-      if (locked.value) return fail("account_locked");
-
-      const state = await store.totp(accountId);
-      if (!state.ok) return fail("account_unavailable");
-      const secret = state.value.secretEnc && (await unseal(deps.authSecret, TOTP_SEAL_LABEL, state.value.secretEnc));
-      if (!secret) return fail("account_unavailable");
-      const step = await matchTotp(secret, input.code, deps.nowSeconds());
-      const used = step === null ? null : await store.totpUseStep(accountId, step);
-      if (used === null || !used.ok || !used.value) {
-        await store.event("totp_failed", deps.tenant.id, accountId, trace);
-        const nowLocked = await store.loginFailed(payload.h, deps.tenant.id, trace);
-        return fail(nowLocked.ok && nowLocked.value ? "account_locked" : "totp_invalid");
-      }
-      await store.loginSucceeded(payload.h);
-      return ok({ accountId, amr: ["pwd", "totp"], remember: payload.r === true });
-    },
-
-    /** Renvoyer le lien de confirmation : même réponse pour toute adresse bien formée. */
-    async resendConfirmation(input: { email: unknown }): Promise<AccountResult<null>> {
-      const email = normalizeEmail(input.email);
-      if (email === null) return fail("email_invalid");
-      if (!(await mailer.ready())) return fail("mail_unavailable");
-      const known = await store.byEmail(await emailHash(email));
-      if (!known.ok) return fail("account_unavailable");
-      if (known.value !== null && known.value.active && !known.value.confirmed) await sendConfirmation(email);
-      return ok(null);
+      const attempt = await store.loginAttempt(payload.h, tenantId, trace);
+      if (!attempt.ok) return fail("account_unavailable");
+      if (!attempt.value) return fail("account_locked");
+      const code = await activeCodeMatches(payload.sub, input.code);
+      if (!code.ok) return code;
+      return complete(payload.sub, payload.h, ["pwd", "totp"], payload.r === true);
     },
 
     /** Mot de passe oublié : même réponse pour toute adresse bien formée. */
     async requestReset(input: { email: unknown }): Promise<AccountResult<null>> {
-      const email = normalizeEmail(input.email);
-      if (email === null) return fail("email_invalid");
-      if (!(await mailer.ready())) return fail("mail_unavailable");
-      const known = await store.byEmail(await emailHash(email));
+      const target = await mailable(input.email);
+      if (!target.ok) return target;
+      const { email, hash } = target.value;
+      const known = await store.byEmail(hash, tenantId);
       if (!known.ok) return fail("account_unavailable");
       const account = known.value;
-      if (account === null || !account.active) return ok(null);
-      await store.event("password_reset_requested", deps.tenant.id, account.accountId, trace);
+      if (account === null || !account.active || !account.hasSpace) return ok(null);
+      await store.event("password_reset_requested", tenantId, account.accountId, trace);
       if (!account.confirmed) {
-        await sendConfirmation(email);
+        confirmationLater(email);
         return ok(null);
       }
-      const token = await identity.linkToken("recovery", email);
-      if (token !== null && token !== "unavailable") await mailer.send(email, recoveryMessage(messageContext, token));
+      sendLater(email, async () => {
+        const token = await identity.linkToken("recovery", email);
+        return token === null || token === "unavailable" ? null : recoveryMessage(messageContext, token);
+      });
       return ok(null);
     },
 
-    /** Le lien de réinitialisation : nouveau mot de passe, et toutes les sessions fermées. */
+    /** Le lien de réinitialisation : nouveau mot de passe, toutes les sessions fermées, verrou levé. */
     async resetPassword(input: { token: unknown; password: unknown }): Promise<AccountResult<null>> {
       if (typeof input.password !== "string") return fail("bad_request");
       const rules = unmetPasswordRules(input.password);
       if (rules.length > 0) return fail("password_weak", rules);
-      if (typeof input.token !== "string" || input.token.length < 8 || input.token.length > 200) return fail("link_invalid");
+      if (!validToken(input.token)) return fail("link_invalid");
       const verified = await identity.verifyLink("recovery", input.token);
       if (verified.kind === "unavailable") return fail("account_unavailable");
       if (verified.kind === "invalid") return fail("link_invalid");
       if (!(await identity.setPassword(verified.userId, input.password))) return fail("account_unavailable");
-      const changed = await store.passwordChanged(verified.userId, deps.tenant.id, trace, null);
+      const changed = await store.passwordChanged(verified.userId, tenantId, trace, null);
       if (!changed.ok) return fail("account_unavailable");
-      await notify(verified.userId, "password");
+      notify(verified.userId, "password");
       return ok(null);
     },
 
@@ -308,9 +396,9 @@ export function createAccountService(deps: AccountDeps) {
       const matched = await passwordMatches(accountId, input.current);
       if (!matched.ok) return matched;
       if (!(await identity.setPassword(accountId, input.password))) return fail("account_unavailable");
-      const changed = await store.passwordChanged(accountId, deps.tenant.id, trace, currentIdHash);
+      const changed = await store.passwordChanged(accountId, tenantId, trace, currentIdHash);
       if (!changed.ok) return fail("account_unavailable");
-      await notify(accountId, "password", matched.value);
+      notify(accountId, "password", matched.value);
       return ok(null);
     },
 
@@ -321,13 +409,25 @@ export function createAccountService(deps: AccountDeps) {
       return ok({ email, totpEnabled: totp.value.enabled });
     },
 
-    /** Étape 1 de l'activation : mot de passe exigé ; rend le secret à scanner. */
-    async totpStart(accountId: string, input: { password: unknown }): Promise<AccountResult<{ secret: string; uri: string }>> {
+    /**
+     * Étape 1 de l'activation — ou du changement d'appareil : mot de passe
+     * exigé, et le code ACTUEL si la double authentification est déjà active.
+     */
+    async totpStart(
+      accountId: string,
+      input: { password: unknown; code?: unknown },
+    ): Promise<AccountResult<{ secret: string; uri: string }>> {
       if (typeof input.password !== "string") return fail("bad_request");
       const matched = await passwordMatches(accountId, input.password);
       if (!matched.ok) return matched;
+      const state = await store.totp(accountId);
+      if (!state.ok) return fail("account_unavailable");
+      if (state.value.enabled) {
+        const code = await activeCodeMatches(accountId, input.code);
+        if (!code.ok) return code;
+      }
       const secret = newTotpSecret();
-      const pending = await store.totpSetPending(accountId, await seal(deps.authSecret, TOTP_SEAL_LABEL, secret));
+      const pending = await store.totpSetPending(accountId, await seal(deps.authSecret, TOTP_SEAL_LABEL, secret, accountId));
       if (!pending.ok) return fail("account_unavailable");
       return ok({ secret, uri: otpauthUri(secret, matched.value, deps.tenant.name) });
     },
@@ -337,14 +437,15 @@ export function createAccountService(deps: AccountDeps) {
       if (typeof input.code !== "string") return fail("totp_invalid");
       const state = await store.totp(accountId);
       if (!state.ok) return fail("account_unavailable");
-      const pending = state.value.pendingEnc && (await unseal(deps.authSecret, TOTP_SEAL_LABEL, state.value.pendingEnc));
+      const pending =
+        state.value.pendingEnc && (await unseal(deps.authSecret, TOTP_SEAL_LABEL, state.value.pendingEnc, accountId));
       if (!pending) return fail("totp_not_pending");
       const step = await matchTotp(pending, input.code, deps.nowSeconds());
       if (step === null) return fail("totp_invalid");
-      const enabled = await store.totpEnable(accountId, step, deps.tenant.id, trace);
+      const enabled = await store.totpEnable(accountId, step, tenantId, trace);
       if (!enabled.ok) return fail("account_unavailable");
       if (!enabled.value) return fail("totp_not_pending");
-      await notify(accountId, "totp_enabled");
+      notify(accountId, "totp_enabled");
       return ok(null);
     },
 
@@ -353,16 +454,11 @@ export function createAccountService(deps: AccountDeps) {
       if (typeof input.password !== "string" || typeof input.code !== "string") return fail("bad_request");
       const matched = await passwordMatches(accountId, input.password);
       if (!matched.ok) return matched;
-      const state = await store.totp(accountId);
-      if (!state.ok) return fail("account_unavailable");
-      const secret = state.value.secretEnc && (await unseal(deps.authSecret, TOTP_SEAL_LABEL, state.value.secretEnc));
-      if (!secret) return fail("totp_not_pending");
-      const step = await matchTotp(secret, input.code, deps.nowSeconds());
-      const used = step === null ? null : await store.totpUseStep(accountId, step);
-      if (used === null || !used.ok || !used.value) return fail("totp_invalid");
-      const disabled = await store.totpDisable(accountId, deps.tenant.id, trace);
+      const code = await activeCodeMatches(accountId, input.code);
+      if (!code.ok) return code;
+      const disabled = await store.totpDisable(accountId, tenantId, trace);
       if (!disabled.ok || !disabled.value) return fail("account_unavailable");
-      await notify(accountId, "totp_disabled", matched.value);
+      notify(accountId, "totp_disabled", matched.value);
       return ok(null);
     },
   };
@@ -387,6 +483,7 @@ export function httpStatusForAccountFailure(failure: AccountFailure): number {
     case "link_invalid":
       return 410;
     case "account_locked":
+    case "too_many_emails":
       return 429;
     case "mail_unavailable":
     case "account_unavailable":
@@ -407,6 +504,7 @@ export const ACCOUNT_MESSAGES: Record<AccountFailure, string> = {
   mfa_expired: "La connexion a expiré. Merci de saisir à nouveau votre mot de passe.",
   totp_invalid: "Ce code n'est pas valable.",
   totp_not_pending: "Aucune activation n'est en cours. Merci de recommencer.",
+  too_many_emails: "Trop de courriels envoyés à cette adresse : réessayez dans une heure.",
   mail_unavailable: "Le service est momentanément indisponible. Merci de réessayer plus tard.",
   account_unavailable: "Le service est momentanément indisponible. Merci de réessayer dans quelques instants.",
 };
