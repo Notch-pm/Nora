@@ -22,6 +22,7 @@ import {
   type DemandeResume,
   fetchMaDemande,
   fetchMesDemandes,
+  postMaDemandeMessage,
   maDemandePieceHref,
 } from "@/services/portal/mesDemandesClient.ts";
 import { maDemandeKey, takeEarly } from "@/services/portal/earlyFetch.ts";
@@ -292,6 +293,13 @@ function DetailScreen() {
       focusTitle
       back={back}
       pieceHref={(pieceId) => maDemandePieceHref(id, pieceId)}
+      onReply={async (reply) => {
+        const sent = await postMaDemandeMessage(id, reply);
+        if (!sent.ok) return sent.reason;
+        const loaded = await fetchMaDemande(id);
+        if (loaded.ok) setState({ status: "ready", demande: loaded.value });
+        return null;
+      }}
     />
   );
 }

@@ -49,7 +49,7 @@ export function SuiviPage() {
   const { lang, serve } = useLanguage();
   const t = useT();
   const { state: tenantState, retry: retryTenant } = useAccessibilite(lang);
-  const { state, submit, quit, retry } = useSuivi();
+  const { state, submit, quit, retry, reply } = useSuivi();
   const [formErrors, setFormErrors] = useState(0);
   // Vrai entre la saisie réussie et l'affichage de la vue : c'est alors, et
   // alors seulement, que le focus va au titre (un rechargement n'y touche pas).
@@ -145,6 +145,7 @@ export function SuiviPage() {
 
       {state.status === "ready" && (
         <SuiviView
+          onReply={reply}
           demande={state.demande}
           focusTitle={justOpened.current}
           onQuit={() => {

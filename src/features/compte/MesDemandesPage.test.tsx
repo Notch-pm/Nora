@@ -176,7 +176,7 @@ describe("détail", () => {
       ok: true,
       value: demande({
         closureText: evil,
-        messages: [{ id: "m1", subject: evil, body: evil, sentAt: "2026-10-02T09:00:00.000Z", pieces: [] }],
+        messages: [{ id: "m1", direction: "agent", subject: evil, body: evil, sentAt: "2026-10-02T09:00:00.000Z", pieces: [] }],
       }),
     });
     const { container } = renderAt("/compte/demandes/" + ID_A);
@@ -211,8 +211,8 @@ describe("détail", () => {
       ok: true,
       value: demande({
         messages: [
-          { id: "m2", subject: "Second", body: "b", sentAt: "2026-10-05T09:00:00.000Z", pieces: [] },
-          { id: "m1", subject: "Premier", body: "a", sentAt: "2026-10-02T09:00:00.000Z", pieces: [] },
+          { id: "m2", direction: "agent", subject: "Second", body: "b", sentAt: "2026-10-05T09:00:00.000Z", pieces: [] },
+          { id: "m1", direction: "agent", subject: "Premier", body: "a", sentAt: "2026-10-02T09:00:00.000Z", pieces: [] },
         ],
       }),
     });

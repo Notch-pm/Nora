@@ -237,6 +237,80 @@ describe("profil, dépôt connecté et « Mes demandes »", () => {
   });
 });
 
+describe("l'usager répond en ligne (L4b)", () => {
+  const UPLOAD = "11111111-2222-4333-8444-555555555555";
+
+  async function guestOn(status = "en_attente") {
+    const reply = await world.browser().send("/v1/demandes", { json: depot({ guestAccess: true }) });
+    const reference = reply.body.receipt.reference as string;
+    const request = [...world.iris.requests.values()].find((r) => r.reference === reference)!;
+    request.status = status;
+    const visitor = world.browser(SCEAUX, "198.51.100.71");
+    expect((await visitor.send("/v1/suivi", { json: { reference, email: "visiteur@example.org", code: "ABCD-EFGH-JK" } })).status).toBe(200);
+    return { visitor, request };
+  }
+
+  it("invité : le message part avec le jeton de SA demande ; la demande en attente repasse en instruction ; la vue le montre", async () => {
+    const { visitor, request } = await guestOn();
+    const sent = await visitor.send("/v1/suivi/demande/messages", { json: { texte: "  Voici le justificatif.  ", pieces: [UPLOAD] } });
+    expect(sent.status).toBe(201);
+    expect(request.citizenMessages).toHaveLength(1);
+    expect(request.citizenMessages[0]).toMatchObject({ body: "Voici le justificatif.", author: "invite", uploads: [UPLOAD] });
+    expect(request.status).toBe("en_instruction");
+    const view = await visitor.send("/v1/suivi/demande");
+    expect(view.body.demande.messages.at(-1)).toMatchObject({ direction: "usager", body: "Voici le justificatif." });
+  });
+
+  it("compte : répond sur une demande de SA fiche ; pas sur celle d'un autre (404)", async () => {
+    const browser = world.browser();
+    await withProfile(world, browser, EMAIL);
+    expect((await browser.send("/v1/demandes", { json: depot() })).status).toBe(201);
+    const list = await browser.send("/v1/compte/demandes");
+    const id = list.body.demandes[0].id as string;
+    const sent = await browser.send(`/v1/compte/demandes/${id}/messages`, { json: { texte: "Bonjour" } });
+    expect(sent.status).toBe(201);
+    const mine = world.iris.requests.get(id)!;
+    expect(mine.citizenMessages[0]).toMatchObject({ author: "compte" });
+
+    const other = world.browser(SCEAUX, "198.51.100.72");
+    await withProfile(world, other, "autre.personne@example.org");
+    const refused = await other.send(`/v1/compte/demandes/${id}/messages`, { json: { texte: "Intrusion" } });
+    expect(refused.status).toBe(404);
+    expect(mine.citizenMessages).toHaveLength(1);
+  });
+
+  it("demande close : 409 suivi_closed, rien n'est enregistré", async () => {
+    const { visitor, request } = await guestOn("resolue_positive");
+    const reply = await visitor.send("/v1/suivi/demande/messages", { json: { texte: "Encore une chose" } });
+    expect(reply.status).toBe(409);
+    expect(reply.body.error.code).toBe("suivi_closed");
+    expect(request.citizenMessages).toHaveLength(0);
+  });
+
+  it("saisie bornée avant Iris : vide, trop long, 6 pièces, pièce non uuid ou en double → 400 sans appel", async () => {
+    const { visitor, request } = await guestOn();
+    for (const json of [
+      { texte: "   " },
+      { texte: "x".repeat(5001) },
+      { texte: "ok", pieces: Array.from({ length: 6 }, (_, i) => `11111111-2222-4333-8444-55555555555${i}`) },
+      { texte: "ok", pieces: ["pas-un-uuid"] },
+      { texte: "ok", pieces: [UPLOAD, UPLOAD] },
+    ]) {
+      expect((await visitor.send("/v1/suivi/demande/messages", { json })).status, JSON.stringify(json).slice(0, 40)).toBe(400);
+    }
+    expect(request.citizenMessages).toHaveLength(0);
+  });
+
+  it("sans en-tête anti-CSRF, sans session, ou après une coupure : rien ne part", async () => {
+    const { visitor, request } = await guestOn();
+    expect((await visitor.send("/v1/suivi/demande/messages", { json: { texte: "a" }, mutationHeader: false })).status).toBe(403);
+    expect((await world.browser(SCEAUX, "198.51.100.73").send("/v1/suivi/demande/messages", { json: { texte: "a" } })).status).toBe(401);
+    world.iris.revoke(request);
+    expect((await visitor.send("/v1/suivi/demande/messages", { json: { texte: "a" } })).status).not.toBe(201);
+    expect(request.citizenMessages).toHaveLength(0);
+  });
+});
+
 describe("accès invité : coupure, nouveau code, code perdu (L4a)", () => {
   async function guestSession() {
     const reply = await world.browser().send("/v1/demandes", { json: depot({ guestAccess: true }) });

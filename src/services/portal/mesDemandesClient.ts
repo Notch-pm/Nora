@@ -9,6 +9,7 @@
 import type { SuiviDemande, SuiviStatus } from "@fn/_shared/domain/suivi.ts";
 import { ACCOUNT_API_BASE } from "./accountClient.ts";
 import { readDemande, readFailure, STATUSES, type SuiviClientFailure } from "./suiviClient.ts";
+export { postMaDemandeMessage } from "./suiviClient.ts";
 
 /** Une demande dans la liste. `id` sert à ouvrir le détail. */
 export interface DemandeResume {

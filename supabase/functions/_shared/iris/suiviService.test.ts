@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { IrisClient, IrisReply } from "./irisClient.ts";
-import { pieceUrl, readDemande, resendAccess, verifyAccess } from "./suiviService.ts";
-import { parseSuiviAccess, suiviStatusOf, toSuiviDemande } from "../domain/suivi.ts";
+import { pieceUrl, postMessage, readDemande, resendAccess, verifyAccess } from "./suiviService.ts";
+import { parseSuiviAccess, parseSuiviReply, suiviCanReply, suiviStatusOf, toSuiviDemande } from "../domain/suivi.ts";
 
 const REQUEST_ID = "11111111-1111-4111-8111-111111111111";
 const PIECE_ID = "22222222-2222-4222-8222-222222222222";
 
 function fakeIris(reply: IrisReply) {
-  const calls: { method: string; path: string; body?: unknown }[] = [];
+  const calls: { method: string; path: string; body?: unknown; headers?: Record<string, string> }[] = [];
   const client: IrisClient = {
-    post(path, body) {
-      calls.push({ method: "POST", path, body });
+    post(path, body, headers) {
+      calls.push({ method: "POST", path, body, ...(headers ? { headers } : {}) });
       return Promise.resolve(reply);
     },
     get(path) {
@@ -36,7 +36,7 @@ const VIEW = {
     closure_motif: "doublon",
     attachments: [{ id: PIECE_ID, file_name: "photo.jpg", mime_type: "image/jpeg", size: 1000, storage_path: "x" }],
     messages: [
-      { id: "m1", subject: "Précision", body: "Pouvez-vous…", sent_at: "2026-10-02T08:00:00Z", sent_by: "agent", attachments: [] },
+      { id: "m1", subject: "Précision", body: "Pouvez-vous…", sent_at: "2026-10-02T08:00:00Z", sent_by: "Agent Martin Dupont", attachments: [] },
     ],
   },
 };
@@ -78,7 +78,7 @@ describe("readDemande", () => {
     if (!result.ok) throw new Error("refusé");
     expect(result.value.status).toBe("en_attente");
     const text = JSON.stringify(result.value);
-    for (const leak of [REQUEST_ID, "doublon", "agent", "storage_path"]) expect(text).not.toContain(leak);
+    for (const leak of [REQUEST_ID, "doublon", "Martin Dupont", "sent_by", "storage_path"]) expect(text).not.toContain(leak);
     expect(result.value.pieces).toEqual([{ id: PIECE_ID, fileName: "photo.jpg", mimeType: "image/jpeg", size: 1000 }]);
   });
 
@@ -139,5 +139,54 @@ describe("resendAccess (code perdu, Iris 2.8.0)", () => {
   it("une panne d'Iris n'est pas un refus", async () => {
     expect(await resendAccess(input, fakeIris({ kind: "unreachable" }).client)).toEqual({ ok: false, reason: "suivi_unavailable" });
     expect(await resendAccess(input, fakeIris({ kind: "not_found" }).client)).toEqual({ ok: false, reason: "suivi_refused" });
+  });
+});
+
+describe("répondre en ligne (L4b)", () => {
+  const ID = "33333333-3333-4333-8333-333333333333";
+  const UP = "44444444-4444-4444-8444-444444444444";
+
+  it("parseSuiviReply : texte borné, 5 pièces uuid distinctes au plus", () => {
+    expect(parseSuiviReply({ texte: "  Bonjour  ", pieces: [UP] })).toEqual({ texte: "Bonjour", pieces: [UP] });
+    expect(parseSuiviReply({ texte: "ok" })).toEqual({ texte: "ok", pieces: [] });
+    for (const bad of [null, [], {}, { texte: " " }, { texte: "x".repeat(5001) }, { texte: "ok", pieces: [UP, UP] },
+      { texte: "ok", pieces: ["x"] }, { texte: "ok", pieces: Array(6).fill(0).map((_, i) => UP.slice(0, -1) + i) }, { texte: "ok", pieces: "x" }]) {
+      expect(parseSuiviReply(bad), JSON.stringify(bad)?.slice(0, 30)).toBeNull();
+    }
+  });
+
+  it("suiviCanReply : seulement une demande ouverte", () => {
+    expect(["envoyee", "en_cours", "en_attente"].every((s) => suiviCanReply(s as never))).toBe(true);
+    expect(["traitee", "annulee", "archivee"].some((s) => suiviCanReply(s as never))).toBe(false);
+  });
+
+  it("toSuiviDemande : la direction d'un message ; « agent » par défaut (Iris d'avant 2.9.0)", () => {
+    const body = { request: { reference: "R", status: "en_attente", received_at: "x", updated_at: "y", messages: [
+      { id: "a", sent_at: "1", subject: "S", body: "b" },
+      { id: "b", sent_at: "2", direction: "usager", subject: null, body: "c" },
+    ] } };
+    expect(toSuiviDemande(body)!.messages.map((m) => m.direction)).toEqual(["agent", "usager"]);
+  });
+
+  it("postMessage : le jeton et le corps partent ; 409 → close, 429 → freinée, 400 → saisie, 404 → refus, panne → indisponible", async () => {
+    const ok = fakeIris({ kind: "ok", body: {} });
+    expect(await postMessage(ID, { texte: "t", pieces: [UP] }, ok.client, { "X-Citizen-Token": "jeton" })).toEqual({ ok: true });
+    expect(ok.calls[0]).toEqual({
+      method: "POST",
+      path: `/v1/citizen/requests/${ID}/messages`,
+      body: { body: "t", attachments: [{ upload_id: UP }] },
+      headers: { "X-Citizen-Token": "jeton" },
+    });
+    const cases: [IrisReply, string][] = [
+      [{ kind: "rejected", status: 409, message: null }, "suivi_closed"],
+      [{ kind: "rejected", status: 429, message: null }, "suivi_too_many_attempts"],
+      [{ kind: "rejected", status: 400, message: null }, "bad_request"],
+      [{ kind: "not_found" }, "suivi_refused"],
+      [{ kind: "unreachable" }, "suivi_unavailable"],
+    ];
+    for (const [reply, reason] of cases) {
+      expect(await postMessage(ID, { texte: "t", pieces: [] }, fakeIris(reply).client, {})).toEqual({ ok: false, reason });
+    }
+    expect(await postMessage("pas-un-id", { texte: "t", pieces: [] }, ok.client, {})).toEqual({ ok: false, reason: "suivi_refused" });
   });
 });

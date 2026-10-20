@@ -43,7 +43,8 @@ export type IrisReply =
   | { kind: "unexpected" };
 
 export interface IrisClient {
-  post(path: string, body: unknown): Promise<IrisReply>;
+  /** `headers` : le jeton court de la vue usager quand l'écriture est celle d'un usager (Iris 2.9.0). */
+  post(path: string, body: unknown, headers?: Record<string, string>): Promise<IrisReply>;
   /**
    * Lecture (vue usager, contrat Iris 2.6.0+). `headers` porte le jeton court
    * de la vue usager (`X-Citizen-Token`, contrat 2.7.0).
@@ -147,10 +148,10 @@ export function createIrisClient(config: IrisClientConfig): IrisClient {
   }
 
   return {
-    post(path: string, body: unknown): Promise<IrisReply> {
+    post(path: string, body: unknown, headers: Record<string, string> = {}): Promise<IrisReply> {
       return send(path, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
     },

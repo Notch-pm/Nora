@@ -10,11 +10,12 @@
  * statut est dit par le serveur ; ce hook ne fait que sérialiser les appels.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { SuiviAccess, SuiviDemande } from "@fn/_shared/domain/suivi.ts";
+import type { SuiviAccess, SuiviDemande, SuiviReply } from "@fn/_shared/domain/suivi.ts";
 import {
   endSuivi,
   fetchSuiviDemande,
   openSuivi,
+  postSuiviMessage,
   type SuiviClientFailure,
 } from "@/services/portal/suiviClient.ts";
 
@@ -31,6 +32,8 @@ export function useSuivi(): {
   submit: (access: SuiviAccess) => Promise<SuiviClientFailure | null>;
   quit: () => Promise<void>;
   retry: () => void;
+  /** Répond (L4b) puis relit la demande ; rend l'échec à afficher, ou `null`. */
+  reply: (reply: SuiviReply) => Promise<SuiviClientFailure | null>;
 } {
   const [state, setState] = useState<SuiviState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -72,5 +75,15 @@ export function useSuivi(): {
     setState({ status: "form", expired: false });
   }, []);
 
-  return { state, submit, quit, retry: () => setAttempt((n) => n + 1) };
+  const reply = useCallback(async (input: SuiviReply): Promise<SuiviClientFailure | null> => {
+    const sent = await postSuiviMessage(input);
+    if (!sent.ok) return sent.reason;
+    // Le message est enregistré : la relecture le montre. Une relecture en échec
+    // ne défait pas l'envoi — la vue d'avant reste, l'usager rechargera.
+    const loaded = await fetchSuiviDemande();
+    if (loaded.ok) setState({ status: "ready", demande: loaded.demande });
+    return null;
+  }, []);
+
+  return { state, submit, quit, retry: () => setAttempt((n) => n + 1), reply };
 }

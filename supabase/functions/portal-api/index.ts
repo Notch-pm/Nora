@@ -70,7 +70,7 @@ import {
   traceOf,
 } from "../_shared/session/sessionService.ts";
 import { sessionPolicyFromEnv } from "../_shared/session/sessionPolicy.ts";
-import { pieceUrl, readDemande, resendAccess, verifyAccess } from "../_shared/iris/suiviService.ts";
+import { pieceUrl, postMessage, readDemande, resendAccess, verifyAccess } from "../_shared/iris/suiviService.ts";
 import {
   ACCOUNT_MESSAGES,
   type AccountFailure,
@@ -105,6 +105,7 @@ import {
   httpStatusForSuiviFailure,
   parseSuiviAccess,
   parseSuiviRenvoi,
+  parseSuiviReply,
   SUIVI_MESSAGES,
   type SuiviFailure,
 } from "../_shared/domain/suivi.ts";
@@ -664,6 +665,24 @@ async function accountSession(
 const suiviLimiter = createRateLimiter({ windowMs: 10 * 60_000, max: 10 });
 /** « Code perdu » par visiteur : Iris limite aussi à 3 renvois par demande et par 24 h. */
 const renvoiLimiter = createRateLimiter({ windowMs: 60 * 60_000, max: 5 });
+/** Réponses en ligne par visiteur : Iris borne aussi à 10 par heure et par demande. */
+const replyLimiter = createRateLimiter({ windowMs: 60 * 60_000, max: 30 });
+
+/** Le corps d'une réponse de l'usager, ou la réponse d'échec (anti-CSRF, frein, saisie). */
+async function readReply(request: Request): Promise<{ ok: true; reply: import("../_shared/domain/suivi.ts").SuiviReply } | { ok: false; response: Response }> {
+  if (!checkMutation(request.headers, proxyOf(request)).ok) return { ok: false, response: sessionFailure("csrf_rejected") };
+  if (!replyLimiter.allow(await hashKey(addressBucket(visitor(request))))) {
+    return { ok: false, response: suiviFailure("suivi_too_many_attempts") };
+  }
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return { ok: false, response: suiviFailure("bad_request") };
+  }
+  const reply = parseSuiviReply(body);
+  return reply === null ? { ok: false, response: suiviFailure("bad_request") } : { ok: true, reply };
+}
 
 const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -1968,6 +1987,20 @@ Deno.serve(async (incoming: Request): Promise<Response> => {
     return json(200, { profil: result.profil }, { "Cache-Control": "private, no-store" });
   }
 
+  // ── POST /v1/compte/demandes/{id}/messages — le compte répond (L4b). Iris
+  // revérifie que la demande est de SA fiche (jeton `contact:`).
+  const maReponse = path.match(/^\/v1\/compte\/demandes\/([0-9a-f-]{36})\/messages$/i);
+  if (maReponse && request.method === "POST") {
+    const read = await readReply(request);
+    if (!read.ok) return read.response;
+    const ctx = await mesDemandesContext(request, socle);
+    if (!ctx.ok) return ctx.response;
+    if (ctx.contactId === null) return suiviFailure("suivi_refused");
+    const sent = await postMessage(maReponse[1], read.reply, ctx.iris, ctx.headers);
+    if (!sent.ok) return suiviFailure(sent.reason);
+    return json(201, { sent: true }, { "Cache-Control": "no-store" });
+  }
+
   // ── /v1/compte/demandes[/{id}[/pieces/{id}]] — « Mes demandes » (lot L3b). ─
   const mesDemandesMatch = path.match(/^\/v1\/compte\/demandes(?:\/([0-9a-f-]{36})(?:\/pieces\/([0-9a-f-]{36}))?)?$/i);
   if (mesDemandesMatch && request.method === "GET") {
@@ -2132,6 +2165,19 @@ Deno.serve(async (incoming: Request): Promise<Response> => {
     return json(202, { accepted: true }, { "Cache-Control": "no-store" });
   }
 
+  // ── POST /v1/suivi/demande/messages — l'invité répond sur SA demande (L4b).
+  // La demande vient de la session, jamais du navigateur.
+  if (request.method === "POST" && path === "/v1/suivi/demande/messages") {
+    const read = await readReply(request);
+    if (!read.ok) return read.response;
+    const guest = await guestDemande(request, socle);
+    if (!guest.ok) return guest.response;
+    const headers = (await citizenHeaders(guest.tenantId, { kind: "request", id: guest.requestId, version: guest.version })) ?? {};
+    const sent = await postMessage(guest.requestId, read.reply, guest.iris, headers);
+    if (!sent.ok) return suiviFailure(sent.reason);
+    return json(201, { sent: true }, { "Cache-Control": "no-store" });
+  }
+
   // ── GET /v1/suivi/demande — la demande que tient la session invitée.
   if (request.method === "GET" && path === "/v1/suivi/demande") {
     const guest = await guestDemande(request, socle);
@@ -2163,6 +2209,7 @@ Deno.serve(async (incoming: Request): Promise<Response> => {
     || path === "/v1/courrier" || path === "/v1/courriers"
     || path === "/v1/session" || path === "/v1/session/fin"
     || path === "/v1/suivi" || path === "/v1/suivi/renvoi" || path === "/v1/suivi/demande" || suiviPiece !== null
+    || path === "/v1/suivi/demande/messages" || maReponse !== null
     || path === "/v1/compte" || ACCOUNT_POST_PATHS.has(path)
     || path === "/v1/compte/profil" || mesDemandesMatch !== null || path === "/v1/compte/consentements"
   ) {

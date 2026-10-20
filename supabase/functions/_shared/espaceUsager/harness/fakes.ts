@@ -369,6 +369,8 @@ export interface IrisRequest {
   accessVersion: number;
   revoked: boolean;
   emails: { id: string; to: string; subject: string; body: string; sentAt: string }[];
+  /** Messages écrits par l'usager en ligne (Iris 2.9.0) : par son compte (fiche) ou par le code. */
+  citizenMessages: { id: string; body: string; createdAt: string; author: "compte" | "invite"; contactId: string | null; uploads: string[] }[];
   attachments: { id: string; fileName: string; kind: "demande" | "instruction_interne" }[];
 }
 
@@ -424,6 +426,7 @@ export class FakeIris {
       accessVersion: 1,
       revoked: false,
       emails: [],
+      citizenMessages: [],
       attachments: [],
       ...partial,
     };
@@ -518,6 +521,36 @@ export class FakeIris {
       return json(202, { accepted: true });
     }
 
+    const reply = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})\/messages$/i);
+    if (method === "POST" && reply) {
+      const token = headers["x-citizen-token"] ?? null;
+      this.tokensSeen.push(token);
+      const subject = await this.subject(token, tenantId);
+      const r = this.requests.get(reply[1]);
+      if (!subject || !r || r.tenantId !== tenantId) return json(404, { error: { code: "not_found" } });
+      const own = subject.kind === "contact"
+        ? r.contactId === subject.id && r.citizenVisible
+        : subject.id === r.id && r.source === "portail-citoyen" && r.codeHash !== null && !r.revoked
+          && (subject.version === null || subject.version === r.accessVersion);
+      if (!own) return json(404, { error: { code: "not_found" } });
+      if (["resolue_positive", "resolue_negative", "annulee", "archivee"].includes(r.status)) {
+        return json(409, { error: { code: "conflict" } });
+      }
+      const input = body as { body?: unknown; attachments?: { upload_id: string }[] };
+      if (typeof input?.body !== "string" || input.body.trim() === "") return json(400, { error: { code: "bad_request" } });
+      const message = {
+        id: crypto.randomUUID(),
+        body: input.body,
+        createdAt: new Date().toISOString(),
+        author: subject.kind === "contact" ? ("compte" as const) : ("invite" as const),
+        contactId: subject.kind === "contact" ? subject.id : null,
+        uploads: (input.attachments ?? []).map((a) => a.upload_id),
+      };
+      r.citizenMessages.push(message);
+      if (r.status === "en_attente") r.status = "en_instruction";
+      return json(201, { message: { id: message.id, attachments: message.uploads.length } });
+    }
+
     const one = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})$/i);
     const file = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})\/attachments\/([0-9a-f-]{36})$/i);
     const list = path.match(/^\/v1\/citizen\/contacts\/([0-9a-f-]{36})\/requests$/i);
@@ -555,7 +588,12 @@ export class FakeIris {
           ...this.summary(r),
           closure_text: r.closedAt ? r.closureText : null,
           attachments: r.attachments.filter((a) => a.kind === "demande").map((a) => ({ id: a.id, file_name: a.fileName, mime_type: "application/pdf", size: 10 })),
-          messages: emails.map((e) => ({ id: e.id, subject: e.subject, body: e.body, sent_at: e.sentAt, attachments: [] })),
+          messages: [
+            ...emails.map((e) => ({ id: e.id, direction: "agent", subject: e.subject, body: e.body, sent_at: e.sentAt, attachments: [] })),
+            ...r.citizenMessages
+              .filter((m) => (subject?.kind === "contact" ? m.author === "compte" && m.contactId === subject.id : m.author === "invite"))
+              .map((m) => ({ id: m.id, direction: "usager", subject: null, body: m.body, sent_at: m.createdAt, attachments: [] })),
+          ],
           ...(this.leakExtras
             ? { closure_motif: r.closureMotif, internal_notes: r.internalNotes, assigned_to: r.assignedTo, request_messages: r.internalNotes, storage_path: "org/x/y.pdf" }
             : {}),

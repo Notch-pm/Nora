@@ -26,7 +26,7 @@ const inputClass =
 const invalidClass = "border-red-500 focus:border-red-500 focus:ring-red-500/30";
 
 /** Ce que l'écran dit d'un fichier refusé — le code vient du serveur, la phrase d'ici. */
-const PIECE_FAILURE_KEYS: Record<PieceUploadFailure, StringKey> = {
+export const PIECE_FAILURE_KEYS: Record<PieceUploadFailure, StringKey> = {
   piece_too_large: "form.piece.tooLarge",
   piece_unsupported: "form.piece.unsupported",
   piece_rejected: "form.piece.unsupported",

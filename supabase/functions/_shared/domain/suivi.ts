@@ -47,6 +47,9 @@ export interface SuiviPiece {
 
 export interface SuiviMessage {
   id: string;
+  /** `agent` : reçu de la collectivité ; `usager` : écrit en ligne par l'usager (Iris 2.9.0, lot L4b). */
+  direction: "agent" | "usager";
+  /** Objet du courriel reçu ; vide pour un message de l'usager. */
   subject: string;
   body: string;
   sentAt: string;
@@ -86,7 +89,9 @@ export type SuiviFailure =
   /** Le portail n'a pas sa configuration. */
   | "not_configured"
   /** Corps illisible. */
-  | "bad_request";
+  | "bad_request"
+  /** La demande est close : elle ne reçoit plus de message (L4b). */
+  | "suivi_closed";
 
 export const SUIVI_MESSAGES: Record<SuiviFailure, string> = {
   suivi_refused:
@@ -95,6 +100,7 @@ export const SUIVI_MESSAGES: Record<SuiviFailure, string> = {
   suivi_unavailable: "Le suivi est momentanément indisponible. Merci de réessayer dans quelques instants.",
   not_configured: "Le suivi n'est pas disponible sur ce site.",
   bad_request: "Ces informations n'ont pas pu être lues.",
+  suivi_closed: "Cette demande est close : elle ne reçoit plus de message.",
 };
 
 export function httpStatusForSuiviFailure(failure: SuiviFailure): number {
@@ -109,7 +115,39 @@ export function httpStatusForSuiviFailure(failure: SuiviFailure): number {
       return 503;
     case "bad_request":
       return 400;
+    case "suivi_closed":
+      return 409;
   }
+}
+
+/** Une demande qui reçoit encore un message : ni traitée, ni annulée, ni archivée (L4b). */
+export function suiviCanReply(status: SuiviStatus): boolean {
+  return status === "envoyee" || status === "en_cours" || status === "en_attente";
+}
+
+export const SUIVI_MESSAGE_MAX_CHARS = 5000;
+export const SUIVI_MESSAGE_MAX_PIECES = 5;
+
+/** Le message que l'usager écrit : un texte, et les pièces déjà déposées (`uploadId` rendus par `/v1/demandes/pieces`). */
+export interface SuiviReply {
+  texte: string;
+  pieces: string[];
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** La réponse, bornée comme chez Iris ; `null` si elle ne l'est pas. */
+export function parseSuiviReply(body: unknown): SuiviReply | null {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
+  const record = body as Record<string, unknown>;
+  const texte = typeof record.texte === "string" ? record.texte.trim() : "";
+  if (texte === "" || texte.length > SUIVI_MESSAGE_MAX_CHARS) return null;
+  const raw = record.pieces ?? [];
+  if (!Array.isArray(raw) || raw.length > SUIVI_MESSAGE_MAX_PIECES) return null;
+  if (!raw.every((id) => typeof id === "string" && UUID_RE.test(id))) return null;
+  const pieces = raw as string[];
+  if (new Set(pieces).size !== pieces.length) return null;
+  return { texte, pieces };
 }
 
 function text(value: unknown, max: number): string | null {
@@ -188,6 +226,8 @@ export function toSuiviDemande(body: unknown): SuiviDemande | null {
           .filter((m) => typeof m.id === "string" && typeof m.sent_at === "string")
           .map((m) => ({
             id: m.id as string,
+            // Une Iris d'avant 2.9.0 ne servait que des messages reçus.
+            direction: m.direction === "usager" ? ("usager" as const) : ("agent" as const),
             subject: typeof m.subject === "string" ? m.subject : "",
             body: typeof m.body === "string" ? m.body : "",
             sentAt: m.sent_at as string,

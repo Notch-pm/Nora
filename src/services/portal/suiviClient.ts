@@ -13,7 +13,7 @@
  * Les écritures portent `x-nora-request: 1` : sans lui le serveur répond
  * `csrf_rejected` (un formulaire d'un autre site ne peut pas poser cet en-tête).
  */
-import type { SuiviAccess, SuiviDemande, SuiviFailure, SuiviPiece, SuiviStatus } from "@fn/_shared/domain/suivi.ts";
+import type { SuiviAccess, SuiviDemande, SuiviFailure, SuiviPiece, SuiviReply, SuiviStatus } from "@fn/_shared/domain/suivi.ts";
 
 /** La base du suivi : le relais de même origine, jamais l'adresse directe de l'API. */
 export const SUIVI_API_BASE = "/api";
@@ -39,6 +39,7 @@ const KNOWN_FAILURES: readonly SuiviClientFailure[] = [
   "suivi_unavailable",
   "not_configured",
   "bad_request",
+  "suivi_closed",
   "session_required",
   "csrf_rejected",
   "session_unavailable",
@@ -141,6 +142,7 @@ export function readDemande(body: unknown): SuiviDemande | null {
           .filter((m) => typeof m === "object" && m !== null && typeof m.id === "string" && typeof m.sentAt === "string")
           .map((m) => ({
             id: m.id,
+            direction: m.direction === "usager" ? ("usager" as const) : ("agent" as const),
             subject: typeof m.subject === "string" ? m.subject : "",
             body: typeof m.body === "string" ? m.body : "",
             sentAt: m.sentAt,
@@ -148,6 +150,38 @@ export function readDemande(body: unknown): SuiviDemande | null {
           }))
       : [],
   };
+}
+
+/**
+ * L'usager répond (L4b). `ok` : le message est enregistré chez Iris ; la vue
+ * se relit ensuite pour le montrer.
+ */
+async function postReply(url: string, reply: SuiviReply): Promise<{ ok: true } | { ok: false; reason: SuiviClientFailure }> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...REQUEST_HEADER },
+      body: JSON.stringify(reply),
+    });
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+  if (response.ok) return { ok: true };
+  return { ok: false, reason: readFailure(await response.json().catch(() => null)) };
+}
+
+/** Réponse depuis le suivi sans compte : la demande est celle de la session invitée. */
+export function postSuiviMessage(reply: SuiviReply): Promise<{ ok: true } | { ok: false; reason: SuiviClientFailure }> {
+  return postReply(SUIVI_API_BASE + "/v1/suivi/demande/messages", reply);
+}
+
+/** Réponse depuis « Mes demandes » : Iris revérifie que la demande est de la fiche du compte. */
+export function postMaDemandeMessage(
+  requestId: string,
+  reply: SuiviReply,
+): Promise<{ ok: true } | { ok: false; reason: SuiviClientFailure }> {
+  return postReply(SUIVI_API_BASE + "/v1/compte/demandes/" + encodeURIComponent(requestId) + "/messages", reply);
 }
 
 /**

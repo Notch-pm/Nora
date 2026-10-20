@@ -11,7 +11,7 @@
  * et que l'accès est ouvert et non expiré : un identifiant forgé de ce côté-ci
  * ne lirait rien. Tout refus est un « non » unique (`suivi_refused`).
  */
-import { type SuiviAccess, type SuiviDemande, type SuiviFailure, toSuiviDemande } from "../domain/suivi.ts";
+import { type SuiviAccess, type SuiviDemande, type SuiviFailure, type SuiviReply, toSuiviDemande } from "../domain/suivi.ts";
 import type { IrisClient, IrisReply } from "./irisClient.ts";
 
 export type SuiviResult<T> = { ok: true; value: T } | { ok: false; reason: SuiviFailure };
@@ -55,6 +55,32 @@ export async function verifyAccess(access: SuiviAccess, iris: IrisClient): Promi
     ? body!.access_version as number
     : null;
   return { ok: true, value: { requestId: id, version } };
+}
+
+/**
+ * L'usager répond sur SA demande (Iris 2.9.0, lot L4b). `headers` : le jeton
+ * court, comme pour la lire — Iris revérifie que la demande est la sienne.
+ */
+export async function postMessage(
+  requestId: string,
+  reply: SuiviReply,
+  iris: IrisClient,
+  headers: Record<string, string>,
+): Promise<{ ok: true } | { ok: false; reason: SuiviFailure }> {
+  if (!UUID_RE.test(requestId)) return { ok: false, reason: "suivi_refused" };
+  const sent = await iris.post(
+    `/v1/citizen/requests/${requestId}/messages`,
+    { body: reply.texte, attachments: reply.pieces.map((upload_id) => ({ upload_id })) },
+    headers,
+  );
+  if (sent.kind === "ok") return { ok: true };
+  if (sent.kind === "rejected") {
+    if (sent.status === 409) return { ok: false, reason: "suivi_closed" };
+    if (sent.status === 429) return { ok: false, reason: "suivi_too_many_attempts" };
+    // 400 : une pièce expirée ou déjà utilisée, un texte refusé — l'usager recommence.
+    return { ok: false, reason: "bad_request" };
+  }
+  return { ok: false, reason: failureOf(sent) };
 }
 
 /**

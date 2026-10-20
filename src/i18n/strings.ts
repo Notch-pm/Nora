@@ -4195,8 +4195,64 @@ export const STRINGS = {
     en: "Archived",
   },
   "suivi.waiting": {
-    fr: "La collectivité attend une réponse de votre part : consultez le dernier message reçu.",
-    en: "The local authority is waiting for a reply from you: please read the latest message received.",
+    fr: "La collectivité attend une réponse de votre part : lisez son dernier message, puis répondez-lui en bas de cette page.",
+    en: "The local authority is waiting for a reply from you: read its latest message, then reply at the bottom of this page.",
+  },
+  "suivi.error.closed": {
+    fr: "Cette demande est close : elle ne reçoit plus de message.",
+    en: "This request is closed: it no longer accepts messages.",
+  },
+  "suivi.reply.title": {
+    fr: "Répondre",
+    en: "Reply",
+  },
+  "suivi.reply.label": {
+    fr: "Votre message",
+    en: "Your message",
+  },
+  "suivi.reply.help": {
+    fr: "{max} caractères au plus. Ne communiquez pas de mot de passe ni de coordonnées bancaires.",
+    en: "{max} characters at most. Never share a password or bank details.",
+  },
+  "suivi.reply.pieces": {
+    fr: "Pièces jointes (PDF, JPEG ou PNG, {max} au plus, 20 Mo chacune)",
+    en: "Attachments (PDF, JPEG or PNG, up to {max}, 20 MB each)",
+  },
+  "suivi.reply.uploading": {
+    fr: "Envoi de la pièce…",
+    en: "Uploading the file…",
+  },
+  "suivi.reply.attached": {
+    fr: "Pièces jointes à votre message",
+    en: "Files attached to your message",
+  },
+  "suivi.reply.remove": {
+    fr: "Retirer {name}",
+    en: "Remove {name}",
+  },
+  "suivi.reply.required": {
+    fr: "Écrivez votre message avant de l'envoyer.",
+    en: "Write your message before sending it.",
+  },
+  "suivi.reply.tooManyPieces": {
+    fr: "Vous avez atteint le nombre maximal de pièces pour ce message.",
+    en: "You have reached the maximum number of files for this message.",
+  },
+  "suivi.reply.submit": {
+    fr: "Envoyer ma réponse",
+    en: "Send my reply",
+  },
+  "suivi.reply.sending": {
+    fr: "Envoi…",
+    en: "Sending…",
+  },
+  "suivi.reply.sent": {
+    fr: "Votre message a bien été transmis à la collectivité.",
+    en: "Your message has been sent to the local authority.",
+  },
+  "suivi.reply.yours": {
+    fr: "Votre message",
+    en: "Your message",
   },
   "suivi.closure": {
     fr: "Réponse de la collectivité",
@@ -5052,6 +5108,20 @@ export const PENDING_TRANSLATION_KEYS: readonly StringKey[] = [
   "suivi.status.annulee",
   "suivi.status.archivee",
   "suivi.waiting",
+  "suivi.error.closed",
+  "suivi.reply.title",
+  "suivi.reply.label",
+  "suivi.reply.help",
+  "suivi.reply.pieces",
+  "suivi.reply.uploading",
+  "suivi.reply.attached",
+  "suivi.reply.remove",
+  "suivi.reply.required",
+  "suivi.reply.tooManyPieces",
+  "suivi.reply.submit",
+  "suivi.reply.sending",
+  "suivi.reply.sent",
+  "suivi.reply.yours",
   "suivi.closure",
   "suivi.pieces",
   "suivi.messages",

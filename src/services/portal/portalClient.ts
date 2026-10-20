@@ -554,18 +554,21 @@ const KNOWN_PIECE_FAILURES: readonly PieceUploadFailure[] = [
  * vérifie le contenu réel et le garde en attente vingt-quatre heures ; le
  * navigateur ne retient qu'un identifiant. `demarcheId` et `fieldId` disent à
  * quelle exigence le fichier répond — le serveur en revérifie les formats.
+ * Sans eux (une pièce jointe à une RÉPONSE, L4b), seul Iris juge du contenu.
  */
 export async function uploadPiece(
   file: File,
-  context: { demarcheId: string; fieldId: string },
+  context?: { demarcheId: string; fieldId: string },
 ): Promise<PieceUpload> {
   const baseUrl = import.meta.env.VITE_PORTAL_API_URL;
   if (!baseUrl) return { ok: false, reason: "not_configured" };
 
   const form = new FormData();
   form.append("file", file, file.name);
-  form.append("demarcheId", context.demarcheId);
-  form.append("fieldId", context.fieldId);
+  if (context) {
+    form.append("demarcheId", context.demarcheId);
+    form.append("fieldId", context.fieldId);
+  }
 
   let response: Response;
   try {

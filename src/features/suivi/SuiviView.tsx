@@ -10,10 +10,11 @@
  * Titres : un seul `h1` (la demande), des `h2` par bloc, un `h3` par message.
  */
 import { type ReactNode, useEffect, useRef } from "react";
-import type { SuiviDemande, SuiviPiece } from "@fn/_shared/domain/suivi.ts";
+import { type SuiviDemande, type SuiviPiece, type SuiviReply, suiviCanReply } from "@fn/_shared/domain/suivi.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
-import { suiviPieceHref } from "@/services/portal/suiviClient.ts";
+import { type SuiviClientFailure, suiviPieceHref } from "@/services/portal/suiviClient.ts";
 import { formatDate, formatDateTime, formatSize, STATUS_KEYS } from "./format.ts";
+import { ReplyForm } from "./ReplyForm.tsx";
 
 const H2 = "text-[length:var(--pt-h2)] font-bold text-[color:var(--pt-ink)]";
 
@@ -55,6 +56,7 @@ export function SuiviView({
   onQuit,
   pieceHref = suiviPieceHref,
   back,
+  onReply,
 }: {
   demande: SuiviDemande;
   /** Vient d'ouvrir l'accès : le focus va au titre, pour que le changement d'écran s'annonce. */
@@ -65,6 +67,8 @@ export function SuiviView({
   pieceHref?: (pieceId: string) => string;
   /** Un retour (ex. « Mes demandes »), rendu au-dessus du titre. */
   back?: ReactNode;
+  /** Répondre en ligne (L4b) ; absent = pas de formulaire. Proposé tant que la demande est ouverte. */
+  onReply?: (reply: SuiviReply) => Promise<SuiviClientFailure | null>;
 }) {
   const { lang } = useLanguage();
   const t = useT();
@@ -129,7 +133,6 @@ export function SuiviView({
         </dl>
 
         {demande.status === "en_attente" && (
-          // Répondre en ligne n'existe pas encore : on renvoie au message, sans promettre mieux.
           <p className="rounded-[var(--pt-radius-sm)] border border-[color:var(--brand-primary)] px-4 py-3 text-[length:var(--pt-body)] text-[color:var(--pt-ink)]">
             {t("suivi.waiting")}
           </p>
@@ -167,10 +170,15 @@ export function SuiviView({
             {messages.map((message) => (
               <li
                 key={message.id}
-                className="flex flex-col gap-2 rounded-[var(--pt-radius)] border border-[color:var(--pt-border)] p-5"
+                className={
+                  "flex flex-col gap-2 rounded-[var(--pt-radius)] border p-5 " +
+                  (message.direction === "usager"
+                    ? "border-[color:var(--brand-primary)] bg-[color:var(--pt-surface)]"
+                    : "border-[color:var(--pt-border)]")
+                }
               >
                 <h3 className="text-[length:var(--pt-body)] font-bold text-[color:var(--pt-ink)]">
-                  {message.subject || t("suivi.noSubject")}
+                  {message.direction === "usager" ? t("suivi.reply.yours") : message.subject || t("suivi.noSubject")}
                 </h3>
                 <p className="text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">
                   <time dateTime={message.sentAt}>{formatDateTime(message.sentAt, lang)}</time>
@@ -184,6 +192,8 @@ export function SuiviView({
           </ol>
         )}
       </section>
+
+      {onReply && suiviCanReply(demande.status) && <ReplyForm onSend={onReply} />}
     </div>
   );
 }

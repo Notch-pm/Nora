@@ -15,6 +15,7 @@ const KEYS: Record<SuiviClientFailure, StringKey> = {
   suivi_unavailable: "suivi.error.unavailable",
   not_configured: "suivi.error.notConfigured",
   bad_request: "suivi.error.badRequest",
+  suivi_closed: "suivi.error.closed",
   // Un accès qui n'existe plus : l'usager n'a rien fait de faux, il resaisit.
   session_required: "suivi.error.expired",
   // Un refus de forme qui n'est pas la faute de l'usager : indisponibilité.
