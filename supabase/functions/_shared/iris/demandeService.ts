@@ -51,6 +51,12 @@ export interface SubmitDemandeInput {
    * `null` = Iris renvoie à « la rubrique Suivre une demande » du portail.
    */
   trackingUrl?: string | null;
+  /**
+   * La fiche du Socle du COMPTE connecté (lot L3b), lue dans son espace — jamais
+   * envoyée par le navigateur. Iris rattache alors la demande à cette fiche
+   * sans rapprochement : elle apparaît dans « Mes demandes ».
+   */
+  socleContactId?: string | null;
 }
 
 /**
@@ -114,6 +120,9 @@ export async function submitDemande(
   };
   // Suivi en ligne (contrat Iris 2.6.0) : hors empreinte chez Iris, il ne
   // change rien à l'idempotence du dépôt.
+  if (input.socleContactId) {
+    envelope.socle_contact_id = input.socleContactId;
+  }
   if (submission.guestAccess === true) {
     envelope.guest_access = { tracking_url: input.trackingUrl ?? null };
   }

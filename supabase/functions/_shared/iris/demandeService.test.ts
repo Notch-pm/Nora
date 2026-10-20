@@ -211,3 +211,14 @@ describe("submitDemande — suivi en ligne (lot L2)", () => {
     expect(odd.ok && odd.receipt.accessCode).toBeUndefined();
   });
 });
+
+describe("submitDemande — dépôt d'un compte connecté (lot L3b)", () => {
+  it("rattache à la fiche du compte, et seulement si elle est fournie par le serveur", async () => {
+    const anonyme = fakeIris();
+    await submitDemande(INPUT, anonyme.client);
+    expect(anonyme.calls[0].body).not.toHaveProperty("socle_contact_id");
+    const connecte = fakeIris();
+    await submitDemande({ ...INPUT, socleContactId: "cccccccc-0000-4000-8000-000000000001" }, connecte.client);
+    expect(connecte.calls[0].body.socle_contact_id).toBe("cccccccc-0000-4000-8000-000000000001");
+  });
+});

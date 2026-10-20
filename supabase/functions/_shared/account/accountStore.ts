@@ -45,6 +45,10 @@ export interface AccountStore {
   totpEnable(accountId: string, step: number, tenantId: string, trace: RequestTrace): Promise<StoreResult<boolean>>;
   totpUseStep(accountId: string, step: number): Promise<StoreResult<boolean>>;
   totpDisable(accountId: string, tenantId: string, trace: RequestTrace): Promise<StoreResult<boolean>>;
+  /** La fiche du Socle rattachée à l'espace du compte dans cette collectivité (lot L3b). */
+  spaceContact(accountId: string, tenantId: string): Promise<StoreResult<string | null>>;
+  /** Pose la fiche de l'espace, une seule fois ; `false` si une autre est déjà posée. */
+  setSpaceContact(accountId: string, tenantId: string, contactId: string, trace: RequestTrace): Promise<StoreResult<boolean>>;
 }
 
 export interface AccountStoreConfig {
@@ -175,5 +179,11 @@ export function createAccountStore(config: AccountStoreConfig): AccountStore {
     totpUseStep: (accountId, step) => bool("citizen_totp_use_step", { p_account_id: accountId, p_step: step }),
     totpDisable: (accountId, tenantId, t) =>
       bool("citizen_totp_disable", { p_account_id: accountId, p_tenant_id: tenantId, ...trace(t) }),
+    async spaceContact(accountId, tenantId) {
+      const r = await rpc("citizen_space_contact", { p_account_id: accountId, p_tenant_id: tenantId });
+      return r.ok ? { ok: true, value: typeof r.value === "string" ? r.value : null } : r;
+    },
+    setSpaceContact: (accountId, tenantId, contactId, t) =>
+      bool("citizen_space_set_contact", { p_account_id: accountId, p_tenant_id: tenantId, p_contact_id: contactId, ...trace(t) }),
   };
 }

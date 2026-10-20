@@ -44,8 +44,11 @@ export type IrisReply =
 
 export interface IrisClient {
   post(path: string, body: unknown): Promise<IrisReply>;
-  /** Lecture (vue usager d'une demande, contrat Iris 2.6.0). */
-  get(path: string): Promise<IrisReply>;
+  /**
+   * Lecture (vue usager, contrat Iris 2.6.0+). `headers` porte le jeton court
+   * de la vue usager (`X-Citizen-Token`, contrat 2.7.0).
+   */
+  get(path: string, headers?: Record<string, string>): Promise<IrisReply>;
   /**
    * Dépôt d'un FICHIER (`POST /v1/uploads`, contrat 2.0.0) : les octets
    * partent en `multipart/form-data`, champ `file`, avec leur nom d'origine —
@@ -150,8 +153,8 @@ export function createIrisClient(config: IrisClientConfig): IrisClient {
         body: JSON.stringify(body),
       });
     },
-    get(path: string): Promise<IrisReply> {
-      return send(path, { method: "GET", headers: {} });
+    get(path: string, headers: Record<string, string> = {}): Promise<IrisReply> {
+      return send(path, { method: "GET", headers });
     },
     postMultipart(path: string, file: Blob, fileName: string): Promise<IrisReply> {
       // Pas de Content-Type explicite : fetch pose la frontière multipart lui-même.

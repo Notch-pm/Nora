@@ -149,6 +149,12 @@ function world() {
     async totpDisable(id) {
       return okv(totp.delete(id));
     },
+    async spaceContact() {
+      return okv(null);
+    },
+    async setSpaceContact() {
+      return okv(true);
+    },
   };
 
   const pending: Promise<unknown>[] = [];

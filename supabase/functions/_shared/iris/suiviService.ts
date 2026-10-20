@@ -48,9 +48,17 @@ export async function verifyAccess(access: SuiviAccess, iris: IrisClient): Promi
   return { ok: true, value: id };
 }
 
-export async function readDemande(requestId: string, iris: IrisClient): Promise<SuiviResult<SuiviDemande>> {
+/**
+ * `headers` : le jeton court de la vue usager (`X-Citizen-Token`, contrat
+ * Iris 2.7.0) — invité (`request:`) ou compte connecté (`contact:`).
+ */
+export async function readDemande(
+  requestId: string,
+  iris: IrisClient,
+  headers: Record<string, string> = {},
+): Promise<SuiviResult<SuiviDemande>> {
   if (!UUID_RE.test(requestId)) return { ok: false, reason: "suivi_refused" };
-  const reply = await iris.get(`/v1/citizen/requests/${requestId}`);
+  const reply = await iris.get(`/v1/citizen/requests/${requestId}`, headers);
   if (reply.kind !== "ok") return { ok: false, reason: failureOf(reply) };
   const demande = toSuiviDemande(reply.body);
   if (demande === null) {
@@ -65,9 +73,10 @@ export async function pieceUrl(
   requestId: string,
   pieceId: string,
   iris: IrisClient,
+  headers: Record<string, string> = {},
 ): Promise<SuiviResult<string>> {
   if (!UUID_RE.test(requestId) || !UUID_RE.test(pieceId)) return { ok: false, reason: "suivi_refused" };
-  const reply = await iris.get(`/v1/citizen/requests/${requestId}/attachments/${pieceId}`);
+  const reply = await iris.get(`/v1/citizen/requests/${requestId}/attachments/${pieceId}`, headers);
   if (reply.kind !== "ok") return { ok: false, reason: failureOf(reply) };
   const body = reply.body as Record<string, unknown> | null;
   const url = body && typeof body.url === "string" ? body.url : "";

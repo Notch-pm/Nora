@@ -85,6 +85,18 @@ import { authSecretFrom } from "../_shared/account/secrets.ts";
 import { type SmtpConfig, smtpFromSocle } from "../_shared/account/mail/smtpConfig.ts";
 import { sendAccountMessage } from "../_shared/account/mail/transport.ts";
 import {
+  enregistrerProfil,
+  httpStatusForProfilFailure,
+  lireProfil,
+  PROFIL_MESSAGES,
+  type ProfilDeps,
+  type ProfilFailure,
+  spaceContactId,
+} from "../_shared/account/profilService.ts";
+import { contactsApiUrl, createCitizenContacts } from "../_shared/socle/citizenContacts.ts";
+import { type CitizenTokenSubject, irisTokenSecret, signCitizenToken } from "../_shared/iris/citizenToken.ts";
+import { listMesDemandes } from "../_shared/iris/mesDemandesService.ts";
+import {
   httpStatusForSuiviFailure,
   parseSuiviAccess,
   SUIVI_MESSAGES,
@@ -677,7 +689,9 @@ function irisFor(tenantId: string) {
 async function guestDemande(
   request: Request,
   socle: ReturnType<typeof socleClient>,
-): Promise<{ ok: true; requestId: string; iris: ReturnType<typeof createIrisClient> } | { ok: false; response: Response }> {
+): Promise<
+  { ok: true; requestId: string; tenantId: string; iris: ReturnType<typeof createIrisClient> } | { ok: false; response: Response }
+> {
   const resolved = await tenantOf(request, socle);
   if (!resolved.ok) return resolved;
   const iris = irisFor(resolved.tenant.id);
@@ -693,7 +707,86 @@ async function guestDemande(
   if (session.record.kind !== "guest" || session.record.guestRequestId === null) {
     return { ok: false, response: sessionFailure("session_required") };
   }
-  return { ok: true, requestId: session.record.guestRequestId, iris };
+  return { ok: true, requestId: session.record.guestRequestId, tenantId: resolved.tenant.id, iris };
+}
+
+/**
+ * Le jeton court qu'Iris exige sur la vue usager (contrat 2.7.0), signé APRÈS
+ * les contrôles de session de portal-api. Sans `NORA_IRIS_TOKEN_SECRET`, aucun
+ * en-tête : l'accès invité reste lisible tant qu'Iris ne l'exige pas, les
+ * lectures d'une fiche (compte connecté) ne le sont pas.
+ */
+async function citizenHeaders(tenantId: string, subject: CitizenTokenSubject): Promise<Record<string, string> | null> {
+  const secret = irisTokenSecret(Deno.env.get("NORA_IRIS_TOKEN_SECRET"));
+  if (secret === null) return null;
+  return { "X-Citizen-Token": await signCitizenToken(secret, tenantId, subject, Math.floor(Date.now() / 1000)) };
+}
+
+/**
+ * La fiche du compte connecté sur ce navigateur, pour un dépôt — `null` pour
+ * un visiteur anonyme, une session invitée, un profil pas encore rempli, ou au
+ * moindre doute (un dépôt ne doit jamais échouer pour cela : il part alors
+ * comme un dépôt sans compte).
+ */
+async function depositContactId(request: Request, tenant: Tenant): Promise<string | null> {
+  const context = sessionContext(request, tenant.id);
+  if (context === null) return null;
+  const current = await currentSession(request.headers, context);
+  if (!current.ok || current.session.status !== "active" || current.session.record.kind !== "account") return null;
+  const accountId = current.session.record.accountId;
+  const deps = profilDepsFor(request, tenant);
+  if (accountId === null || deps === null) return null;
+  return (await spaceContactId(deps, accountId)) ?? null;
+}
+
+/** Ce que les routes du profil et de « Mes demandes » partagent : base, GoTrue, Socle (scope citizen). */
+function profilDepsFor(request: Request, tenant: Tenant): ProfilDeps | null {
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const apiKey = Deno.env.get("SOCLE_API_KEY");
+  const contactsUrl = contactsApiUrl(Deno.env.get("SOCLE_CONTACTS_API_URL"), Deno.env.get("SOCLE_API_URL"));
+  if (!url || !serviceKey || !apiKey || contactsUrl === null) return null;
+  return {
+    store: createAccountStore({ url, serviceKey }),
+    identity: createIdentityProvider({ url, serviceKey }),
+    contacts: createCitizenContacts({ baseUrl: contactsUrl, apiKey }),
+    tenantId: tenant.id,
+    trace: traceOf(request.headers, proxyOf(request)),
+  };
+}
+
+function profilFailure(reason: ProfilFailure, champs?: string[]): Response {
+  return json(
+    httpStatusForProfilFailure(reason),
+    { error: { code: reason, message: PROFIL_MESSAGES[reason], ...(champs ? { champs } : {}) } },
+    { "Cache-Control": "no-store" },
+  );
+}
+
+/**
+ * « Mes demandes » : la fiche de l'espace et l'en-tête du jeton `contact:`,
+ * ou la réponse à rendre. `contactId: null` = profil pas encore rempli.
+ */
+async function mesDemandesContext(
+  request: Request,
+  socle: ReturnType<typeof socleClient>,
+): Promise<
+  | { ok: true; contactId: null }
+  | { ok: true; contactId: string; headers: Record<string, string>; iris: ReturnType<typeof createIrisClient> }
+  | { ok: false; response: Response }
+> {
+  const who = await accountSession(request, socle);
+  if (!who.ok) return who;
+  const deps = profilDepsFor(request, who.tenant);
+  const iris = irisFor(who.tenant.id);
+  if (deps === null || iris === null) return { ok: false, response: suiviFailure("not_configured") };
+  const contactId = await spaceContactId(deps, who.accountId);
+  if (contactId === undefined) return { ok: false, response: suiviFailure("suivi_unavailable") };
+  if (contactId === null) return { ok: true, contactId: null };
+  const email = await deps.identity.emailOf(who.accountId);
+  const headers = email === null ? null : await citizenHeaders(who.tenant.id, { kind: "contact", id: contactId, email });
+  if (headers === null) return { ok: false, response: suiviFailure("suivi_unavailable") };
+  return { ok: true, contactId, headers, iris };
 }
 
 /**
@@ -1270,12 +1363,16 @@ Deno.serve(async (request: Request): Promise<Response> => {
     // La clé est PLATEFORME ; c'est l'en-tête qui nomme la collectivité, et
     // Iris refuse (403) si elle n'a pas de source `portail-citoyen` active.
     const iris = createIrisClient({ baseUrl: irisUrl, apiKey: irisKey, socleRootOrganizationId: tenant.id });
+    // Connecté, profil rempli : la demande part rattachée à la fiche du compte
+    // (lot L3b). La fiche vient de la SESSION, jamais du corps de la requête.
+    const socleContactId = await depositContactId(request, tenant);
     const submission = await submitDemande(
       {
         sourceSystem: Deno.env.get("IRIS_SOURCE_SYSTEM") ?? DEFAULT_SOURCE_SYSTEM,
         tenantId: tenant.id,
         demarcheName: demarche.name,
         trackingUrl: trackingUrlFor(tenant.hostname),
+        socleContactId,
         submission: {
           demarcheId,
           organizationId,
@@ -1728,6 +1825,59 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return json(200, { authenticated: false }, { "Cache-Control": "no-store", "Set-Cookie": ended.setCookie });
   }
 
+  // ── /v1/compte/profil — la fiche du Socle de l'usager connecté (lot L3b). ──
+  if (path === "/v1/compte/profil" && (request.method === "GET" || request.method === "POST")) {
+    if (request.method === "POST" && !checkMutation(request.headers, proxyOf(request)).ok) {
+      return sessionFailure("csrf_rejected");
+    }
+    const who = await accountSession(request, socle);
+    if (!who.ok) return who.response;
+    const deps = profilDepsFor(request, who.tenant);
+    if (deps === null) return profilFailure("profil_indisponible");
+    let result;
+    if (request.method === "GET") {
+      result = await lireProfil(deps, who.accountId);
+    } else {
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return profilFailure("profil_invalide");
+      }
+      result = await enregistrerProfil(deps, who.accountId, body);
+    }
+    if (!result.ok) return profilFailure(result.reason, result.champs);
+    return json(200, { profil: result.profil }, { "Cache-Control": "private, no-store" });
+  }
+
+  // ── /v1/compte/demandes[/{id}[/pieces/{id}]] — « Mes demandes » (lot L3b). ─
+  const mesDemandesMatch = path.match(/^\/v1\/compte\/demandes(?:\/([0-9a-f-]{36})(?:\/pieces\/([0-9a-f-]{36}))?)?$/i);
+  if (mesDemandesMatch && request.method === "GET") {
+    const ctx = await mesDemandesContext(request, socle);
+    if (!ctx.ok) return ctx.response;
+    const [, requestId, pieceId] = mesDemandesMatch;
+    if (ctx.contactId === null) {
+      // Profil pas encore rempli : aucune fiche, donc aucune demande — l'écran
+      // invite à compléter « Mes informations ».
+      return requestId
+        ? suiviFailure("suivi_refused")
+        : json(200, { demandes: [], suivante: null, profilRequis: true }, { "Cache-Control": "private, no-store" });
+    }
+    if (!requestId) {
+      const page = await listMesDemandes(ctx.contactId, ctx.iris, ctx.headers, new URL(request.url).searchParams.get("avant"));
+      if (!page.ok) return suiviFailure(page.reason);
+      return json(200, { ...page.value, profilRequis: false }, { "Cache-Control": "private, no-store" });
+    }
+    if (!pieceId) {
+      const demande = await readDemande(requestId, ctx.iris, ctx.headers);
+      if (!demande.ok) return suiviFailure(demande.reason);
+      return json(200, { demande: demande.value }, { "Cache-Control": "private, no-store" });
+    }
+    const url = await pieceUrl(requestId, pieceId, ctx.iris, ctx.headers);
+    if (!url.ok) return suiviFailure(url.reason);
+    return new Response(null, { status: 302, headers: { ...CORS_HEADERS, Location: url.value, "Cache-Control": "no-store" } });
+  }
+
   // ── /v1/compte/* — le compte citoyen (lot L3a). ──────────────────────────
   if (path === "/v1/compte" && request.method === "GET") {
     const who = await accountSession(request, socle);
@@ -1840,7 +1990,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
   if (request.method === "GET" && path === "/v1/suivi/demande") {
     const guest = await guestDemande(request, socle);
     if (!guest.ok) return guest.response;
-    const demande = await readDemande(guest.requestId, guest.iris);
+    const headers = (await citizenHeaders(guest.tenantId, { kind: "request", id: guest.requestId })) ?? {};
+    const demande = await readDemande(guest.requestId, guest.iris, headers);
     if (!demande.ok) return suiviFailure(demande.reason);
     // `private` et `no-store` : une vue personnelle ne se met en cache nulle part.
     return json(200, { demande: demande.value }, { "Cache-Control": "private, no-store" });
@@ -1851,7 +2002,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
   if (request.method === "GET" && suiviPiece) {
     const guest = await guestDemande(request, socle);
     if (!guest.ok) return guest.response;
-    const url = await pieceUrl(guest.requestId, suiviPiece[1], guest.iris);
+    const headers = (await citizenHeaders(guest.tenantId, { kind: "request", id: guest.requestId })) ?? {};
+    const url = await pieceUrl(guest.requestId, suiviPiece[1], guest.iris, headers);
     if (!url.ok) return suiviFailure(url.reason);
     return new Response(null, {
       status: 302,
@@ -1866,6 +2018,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     || path === "/v1/session" || path === "/v1/session/fin"
     || path === "/v1/suivi" || path === "/v1/suivi/demande" || suiviPiece !== null
     || path === "/v1/compte" || ACCOUNT_POST_PATHS.has(path)
+    || path === "/v1/compte/profil" || mesDemandesMatch !== null
   ) {
     return json(405, {
       error: { code: "method_not_allowed", message: "Méthode non autorisée sur cette ressource." },
