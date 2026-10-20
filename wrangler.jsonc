@@ -30,7 +30,9 @@
   },
   "vars": {
     // Racine de portal-api (projet Supabase Nora). Pas un secret.
-    "PORTAL_API_URL": "https://xbullkayqdzqiyrrwbqx.supabase.co/functions/v1/portal-api"
+    "PORTAL_API_URL": "https://xbullkayqdzqiyrrwbqx.supabase.co/functions/v1/portal-api",
+    // Région des bases lues par portal-api (Irlande) — voir worker/proxy.ts.
+    "PORTAL_API_REGION": "eu-west-1"
   },
 
   // Le portail est multi-tenant PAR NOM D'HÔTE : `nantes.edilumen.fr` doit arriver ici sans qu'on

@@ -623,7 +623,8 @@ export async function sendDemande(
   try {
     response = await fetch(baseUrl.replace(/\/+$/, "") + "/v1/demandes", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      // `x-nora-request` : sans lui, le serveur ne rattache pas le dépôt au compte connecté.
+      headers: { "Content-Type": "application/json", "x-nora-request": "1" },
       body: JSON.stringify(challenge ? { ...submission, challenge } : submission),
     });
   } catch {

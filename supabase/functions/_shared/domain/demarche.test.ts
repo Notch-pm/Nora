@@ -186,11 +186,12 @@ describe("villesOf — les organismes qui reçoivent du courrier libre", () => {
 });
 
 describe("accessModeOf (L3c)", () => {
-  it("réservée aux connectés seulement si le Socle le dit", async () => {
+  it("libre seulement si le Socle le dit ou ne dit rien ; une valeur inconnue ferme", async () => {
     const { accessModeOf } = await import("./demarche.ts");
     expect(accessModeOf("authentifie")).toBe("authentifie");
     expect(accessModeOf("libre")).toBe("libre");
     expect(accessModeOf(undefined)).toBe("libre");
-    expect(accessModeOf("autre")).toBe("libre");
+    expect(accessModeOf(null)).toBe("libre");
+    expect(accessModeOf("autre")).toBe("authentifie");
   });
 });

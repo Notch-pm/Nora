@@ -48,6 +48,13 @@ describe("upstreamRequest", () => {
     expect(req.headers.get("authorization")).toBeNull();
   });
 
+  it("épingle la région d'exécution quand elle est configurée, jamais celle du visiteur", () => {
+    const incoming = new Request("https://sceaux.edilumen.fr/api/v1/session", { headers: { "x-region": "us-east-1" } });
+    expect((upstreamRequest(incoming, ENV) as Request).headers.get("x-region")).toBeNull();
+    const pinned = upstreamRequest(incoming, { ...ENV, PORTAL_API_REGION: "eu-west-1" }) as Request;
+    expect(pinned.headers.get("x-region")).toBe("eu-west-1");
+  });
+
   it("relaie le corps d'une écriture et l'en-tête du portail", async () => {
     const incoming = new Request("https://sceaux.edilumen.fr/api/v1/session/fin", {
       method: "POST",

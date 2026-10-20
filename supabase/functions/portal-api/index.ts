@@ -51,6 +51,7 @@ import {
   MAX_COURRIER_FILES,
 } from "../_shared/domain/courrier.ts";
 import { httpStatusForPieceFailure, uploadPiece } from "../_shared/iris/pieceService.ts";
+import { boundRequestBody } from "../_shared/http/boundedBody.ts";
 import { hostnameForRequest } from "../_shared/http/requestHostname.ts";
 import { addressBucket, createRateLimiter, hashKey } from "../_shared/http/rateLimit.ts";
 import { type ProxyContext, readProxyContext, visitorAddress } from "../_shared/http/proxy.ts";
@@ -173,6 +174,16 @@ const MAX_UPLOAD_ID = 64;
 const MAX_PIECE_BYTES = 20 * 1_048_576;
 /** Marge d'enrobage multipart tolérée sur `Content-Length` avant lecture. */
 const MULTIPART_ALLOWANCE = 64 * 1024;
+/** Un corps JSON (dépôt, compte, assistant, suivi) : bien au-delà de l'usage, loin d'une saturation. */
+const MAX_JSON_BODY_BYTES = 1_048_576;
+
+/** La borne du corps d'une route — les envois de fichiers ont la leur. */
+function bodyLimitFor(path: string): number {
+  if (path === "/v1/demandes/pieces") return MAX_PIECE_BYTES + MULTIPART_ALLOWANCE;
+  if (path === "/v1/courriers") return MAX_COURRIER_REQUEST_BYTES;
+  if (path === "/v1/assistant/transcription") return MAX_RECORDING_BYTES + MULTIPART_ALLOWANCE;
+  return MAX_JSON_BODY_BYTES;
+}
 
 /**
  * Frein de confort contre un script maladroit — EN MÉMOIRE D'ISOLAT, donc ni
@@ -732,6 +743,11 @@ async function citizenHeaders(tenantId: string, subject: CitizenTokenSubject): P
  * comme un dépôt sans compte).
  */
 async function depositContactId(request: Request, tenant: Tenant): Promise<string | null> {
+  // L'autorité du cookie ne vaut que pour une requête de même origine : un
+  // site voisin (même domaine parent, donc même « site » pour SameSite=Lax)
+  // ne doit pas déposer au nom de la fiche du visiteur connecté. Refusée, la
+  // requête part comme un dépôt sans compte (relecture de sécurité L3c, M2).
+  if (!checkMutation(request.headers, proxyOf(request)).ok) return null;
   const context = sessionContext(request, tenant.id);
   if (context === null) return null;
   const current = await currentSession(request.headers, context);
@@ -739,7 +755,17 @@ async function depositContactId(request: Request, tenant: Tenant): Promise<strin
   const accountId = current.session.record.accountId;
   const deps = profilDepsFor(request, tenant);
   if (accountId === null || deps === null) return null;
-  return (await spaceContactId(deps, accountId)) ?? null;
+  const contactId = await spaceContactId(deps, accountId);
+  if (contactId == null) return null;
+  // Même contrôle qu'en lecture (« Mes demandes ») : la fiche mémorisée doit
+  // être ENCORE celle que le Socle rattache au compte. Après une correction de
+  // rattachement par un agent, l'espace désignerait la fiche d'un autre, et la
+  // demande apparaîtrait chez lui (relecture de sécurité L3c, I1).
+  if (await ficheConfirmee(deps, accountId, contactId) !== true) {
+    console.error("portal-api : dépôt sans rattachement — la fiche de l'espace n'est plus celle du Socle");
+    return null;
+  }
+  return contactId;
 }
 
 /** Ce que les routes du profil et de « Mes demandes » partagent : base, GoTrue, Socle (scope citizen). */
@@ -848,13 +874,16 @@ function badRequest(message: string): Response {
   );
 }
 
-Deno.serve(async (request: Request): Promise<Response> => {
-  if (request.method === "OPTIONS") {
+Deno.serve(async (incoming: Request): Promise<Response> => {
+  if (incoming.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
-  const url = new URL(request.url);
+  const url = new URL(incoming.url);
   const path = url.pathname.replace(/^\/portal-api/, "") || "/";
+  // Aucun corps n'est lu au-delà de la borne de sa route, même sans
+  // `Content-Length` (voir `_shared/http/boundedBody.ts`).
+  const request = boundRequestBody(incoming, bodyLimitFor(path));
   // La langue SOUHAITÉE par le visiteur. Elle n'est pas encore la langue
   // servie : c'est le tenant, une fois résolu, qui dit ce qu'il a activé.
   const askedLang = url.searchParams.get("lang");
@@ -883,7 +912,18 @@ Deno.serve(async (request: Request): Promise<Response> => {
     // que l'adresse cesse de mentir au visiteur.
     const lang = resolveLang(askedLang, tenant.languages);
 
-    const demarches = await getPublicDemarches(tenant.id, socle, lang);
+    // Les lectures au Socle partent ENSEMBLE : chacune coûte un aller-retour
+    // de fonction à fonction (souvent plus d'une demi-seconde), et les
+    // enchaîner faisait attendre l'accueil quatre à cinq fois ce délai. La
+    // page composée n'est lue que pour l'accueil, la charte de l'organisme
+    // (qui dépend du catalogue) reste lue après.
+    const askedOrganisme = url.searchParams.get("organisme");
+    const [demarches, courrier, tenantBrandingReply, pageReply] = await Promise.all([
+      getPublicDemarches(tenant.id, socle, lang),
+      courrierOrganismes(tenant.id, socle),
+      getBranding(tenant.id, socle),
+      askedOrganisme === null ? getPublishedPage(tenant.id, socle, lang) : Promise.resolve(null),
+    ]);
     if (!demarches.ok) return failure(demarches.reason);
 
     // ── Le périmètre d'un organisme — `?organisme=<slug>`.
@@ -898,10 +938,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
     // « Ma ville ») à un organisme sans démarche publiée, et dire à la page
     // affichée si elle propose d'écrire. Même chemin que l'assistant au Socle,
     // donc la même entrée de cache.
-    const courrier = await courrierOrganismes(tenant.id, socle);
     const villes = villesOf(demarches.demarches, tenant.id, courrierPages(courrier));
 
-    const askedOrganisme = url.searchParams.get("organisme");
     if (askedOrganisme !== null) {
       // Le catalogue d'abord (il porte le logo propre de l'organisme), puis
       // le courrier libre : un organisme qui reçoit du courrier a une page,
@@ -931,7 +969,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       //
       // Le coût est nul en pratique : c'est le même chemin demandé au Socle
       // que pour l'accueil, donc la même entrée de cache.
-      const tenantBranding = await getBranding(tenant.id, socle);
+      const tenantBranding = tenantBrandingReply;
 
       return json(
         200,
@@ -960,12 +998,12 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
     // La page d'accueil telle qu'elle a été publiée. `null` si la collectivité
     // n'a rien composé : le portail rend alors son défaut.
-    const page = await getPublishedPage(tenant.id, socle, lang);
+    const page = pageReply ?? await getPublishedPage(tenant.id, socle, lang);
     if (!page.ok) return failure(page.reason);
 
     // La charte graphique, héritage déjà résolu par le Socle. `null` = le
     // portail garde ses couleurs par défaut ; ce n'est jamais une erreur.
-    const branding = await getBranding(tenant.id, socle);
+    const branding = tenantBrandingReply;
     if (!branding.ok) return failure(branding.reason);
 
     return json(
@@ -1008,16 +1046,20 @@ Deno.serve(async (request: Request): Promise<Response> => {
     const tenant = resolved.tenant;
     const lang = resolveLang(askedLang, tenant.languages);
 
-    const statement = await getAccessibilityStatement(tenant.id, socle);
+    // Lectures indépendantes : en parallèle (voir l'accueil).
+    const [statement, catalogue, courrier, branding] = await Promise.all([
+      getAccessibilityStatement(tenant.id, socle),
+      getPublicDemarches(tenant.id, socle, lang),
+      courrierOrganismes(tenant.id, socle),
+      getBranding(tenant.id, socle),
+    ]);
     if (!statement.ok) return failure(statement.reason);
 
-    const catalogue = await getPublicDemarches(tenant.id, socle, lang);
     const villes = villesOf(
       catalogue.ok ? catalogue.demarches : [],
       tenant.id,
-      courrierPages(await courrierOrganismes(tenant.id, socle)),
+      courrierPages(courrier),
     );
-    const branding = await getBranding(tenant.id, socle);
     const painted = branding.ok ? branding.branding : null;
 
     return json(
@@ -1048,7 +1090,13 @@ Deno.serve(async (request: Request): Promise<Response> => {
     if (!resolved.ok) return resolved.response;
 
     const lang = resolveLang(askedLang, resolved.tenant.languages);
-    const result = await getPublicDemarche(resolved.tenant.id, demarcheId, socle, lang);
+    // Lectures indépendantes : en parallèle (voir l'accueil).
+    const [result, catalogue, courrier, tenantBranding] = await Promise.all([
+      getPublicDemarche(resolved.tenant.id, demarcheId, socle, lang),
+      getPublicDemarches(resolved.tenant.id, socle, lang),
+      courrierOrganismes(resolved.tenant.id, socle),
+      getBranding(resolved.tenant.id, socle),
+    ]);
     if (!result.ok) return failure(result.reason);
 
     // ── Le périmètre d'un organisme, quand l'usager est arrivé par sa page.
@@ -1073,11 +1121,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
     // d'organisme, et un visiteur arrive presque toujours par une page qui l'a
     // déjà réchauffé. Un échec ne bloque rien : la liste est vide, le menu ne
     // s'affiche pas, la démarche se lit quand même.
-    const catalogue = await getPublicDemarches(resolved.tenant.id, socle, lang);
     const villes = villesOf(
       catalogue.ok ? catalogue.demarches : [],
       resolved.tenant.id,
-      courrierPages(await courrierOrganismes(resolved.tenant.id, socle)),
+      courrierPages(courrier),
     );
 
     // La charte voyage avec la démarche : la page doit être aux couleurs de la
@@ -1090,7 +1137,6 @@ Deno.serve(async (request: Request): Promise<Response> => {
     // La MARQUE de l'en-tête, elle, reste celle de la collectivité — voir la
     // page d'un organisme pour le pourquoi. Hors périmètre, les deux appels
     // sont le même chemin, donc la même entrée de cache : rien de plus.
-    const tenantBranding = await getBranding(resolved.tenant.id, socle);
     const branding = organisme === null
       ? tenantBranding
       : await getBranding(organisme.id, socle);
@@ -1436,7 +1482,12 @@ Deno.serve(async (request: Request): Promise<Response> => {
     const tenant = resolved.tenant;
     const lang = resolveLang(askedLang, tenant.languages);
 
-    const organismes = await getCourrierOrganismes(tenant.id, socle);
+    // Lectures indépendantes : en parallèle (voir l'accueil).
+    const [organismes, catalogue, tenantBranding] = await Promise.all([
+      getCourrierOrganismes(tenant.id, socle),
+      getPublicDemarches(tenant.id, socle, lang),
+      getBranding(tenant.id, socle),
+    ]);
     if (!organismes.ok) return failure(organismes.reason);
     const askedOrganisme = url.searchParams.get("organisme");
     const organisme = courrierOrganismeOf(
@@ -1445,13 +1496,11 @@ Deno.serve(async (request: Request): Promise<Response> => {
     );
     if (organisme === null) return failure("courrier_unavailable");
 
-    const catalogue = await getPublicDemarches(tenant.id, socle, lang);
     const villes = villesOf(
       catalogue.ok ? catalogue.demarches : [],
       tenant.id,
       courrierPages(organismes.organismes),
     );
-    const tenantBranding = await getBranding(tenant.id, socle);
     const branding = organisme.isTenant ? tenantBranding : await getBranding(organisme.id, socle);
 
     return json(

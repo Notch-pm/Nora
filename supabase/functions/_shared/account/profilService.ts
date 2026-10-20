@@ -118,6 +118,10 @@ export async function modifierConsentement(deps: ProfilDeps, accountId: string, 
   const contactId = await spaceContactId(deps, accountId);
   if (contactId === undefined) return { ok: false, reason: "profil_indisponible" };
   if (contactId === null) return { ok: false, reason: "profil_invalide" };
+  // Le recueil ne part que sur la fiche que le Socle rattache ENCORE au compte
+  // (même contrôle que la lecture du profil — relecture de sécurité L3c, M4).
+  const confirmee = await ficheConfirmee(deps, accountId, contactId);
+  if (confirmee !== true) return { ok: false, reason: "profil_indisponible" };
   const reply = await deps.contacts.consent(deps.tenantId, accountId, { kind: r.kind, granted: r.granted });
   if (reply.kind === "rejected") return { ok: false, reason: "profil_refuse", message: reply.message };
   if (reply.kind !== "ok") return { ok: false, reason: "profil_indisponible" };

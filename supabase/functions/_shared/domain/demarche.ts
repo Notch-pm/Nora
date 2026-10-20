@@ -84,9 +84,14 @@ import type { UserCommunication } from "./userCommunication.ts";
 
 export type AccessMode = "libre" | "authentifie";
 
-/** `libre` quand le Socle ne dit rien : c'était vrai avant que la colonne existe. */
+/**
+ * `libre` quand le Socle ne dit rien : c'était vrai avant que la colonne existe.
+ * Une valeur INCONNUE (mode futur, faute de saisie) ferme la démarche plutôt
+ * que de l'ouvrir aux invités (relecture de sécurité L3c, M3).
+ */
 export function accessModeOf(value: unknown): AccessMode {
-  return value === "authentifie" ? "authentifie" : "libre";
+  if (value === undefined || value === null || value === "libre") return "libre";
+  return "authentifie";
 }
 
 export interface Demarche {

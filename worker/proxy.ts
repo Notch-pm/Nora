@@ -27,6 +27,14 @@ export interface ProxyEnv {
   PORTAL_API_URL?: string;
   /** Secret partagé avec `portal-api` (`NORA_PROXY_SECRET`). */
   NORA_PROXY_SECRET?: string;
+  /**
+   * Région où exécuter `portal-api` (en-tête `x-region` de Supabase) : celle
+   * des bases qu'elle lit — Nora, Socle, Iris. Sans elle, Supabase choisit la
+   * région la plus proche du Worker (Paris), et chaque lecture en base
+   * traverse la Manche : de 2 à 3 fois plus lent (mesuré le 2026-10-20).
+   * ⚠️ À changer avec la bascule d'hébergement.
+   */
+  PORTAL_API_REGION?: string;
 }
 
 /**
@@ -101,6 +109,8 @@ export function upstreamRequest(request: Request, env: ProxyEnv): Request | Resp
   headers.set("x-nora-host", url.hostname);
   const ip = request.headers.get("cf-connecting-ip");
   if (ip !== null) headers.set("x-nora-client-ip", ip);
+  const region = env.PORTAL_API_REGION?.trim();
+  if (region) headers.set("x-region", region);
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   return new Request(target, {
