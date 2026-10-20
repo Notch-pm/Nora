@@ -1,7 +1,7 @@
 /**
  * Les routes du portail.
  *
- * Six écrans : la page d'accueil composée par la collectivité, la page d'un
+ * Six écrans (plus ceux du compte citoyen, `/compte/*`) : la page d'accueil composée par la collectivité, la page d'un
  * organisme, la présentation d'une démarche, son formulaire, la déclaration
  * d'accessibilité (`/accessibilite`, où mène la mention du pied de page), et
  * l'assistant conversationnel (`/assistant`, réglé par le super administrateur
@@ -32,6 +32,13 @@ import { CourrierLibrePage } from "@/features/courrier/CourrierLibrePage.tsx";
 import { DemarchePage } from "@/features/demarche/DemarchePage.tsx";
 import { FormulairePage } from "@/features/demarche/FormulairePage.tsx";
 import { OrganismePage } from "@/features/organisme/OrganismePage.tsx";
+import { CguPage } from "@/features/compte/CguPage.tsx";
+import { ComptePage } from "@/features/compte/ComptePage.tsx";
+import { ConfirmerPage } from "@/features/compte/ConfirmerPage.tsx";
+import { ConnexionPage } from "@/features/compte/ConnexionPage.tsx";
+import { InscriptionPage } from "@/features/compte/InscriptionPage.tsx";
+import { MotDePasseOubliePage } from "@/features/compte/MotDePasseOubliePage.tsx";
+import { MotDePassePage } from "@/features/compte/MotDePassePage.tsx";
 import { SuiviPage } from "@/features/suivi/SuiviPage.tsx";
 import { PortalPage } from "@/features/portal/PortalPage.tsx";
 import { LanguageLayout } from "@/i18n/LanguageLayout.tsx";
@@ -51,6 +58,23 @@ function ScopedHome() {
   if (path !== "/") return <Navigate to="/" replace />;
   return organisme === null ? <PortalPage /> : <OrganismePage />;
 }
+
+/**
+ * Les écrans du compte citoyen (espace usager L3a), chacun aux trois formes
+ * d'adresse. `compte` est un segment STATIQUE (`ROUTE_SEGMENTS`) : `/compte/cgu`
+ * ne peut pas se lire « organisme + quelque chose ». Comme `/suivi`, le compte
+ * vaut pour la collectivité entière — un périmètre d'organisme ramène à
+ * l'adresse de la collectivité (voir `AccountFrame`).
+ */
+const COMPTE_ROUTES: { path: string; element: JSX.Element }[] = [
+  { path: "/compte", element: <ComptePage /> },
+  { path: "/compte/connexion", element: <ConnexionPage /> },
+  { path: "/compte/inscription", element: <InscriptionPage /> },
+  { path: "/compte/confirmer", element: <ConfirmerPage /> },
+  { path: "/compte/mot-de-passe-oublie", element: <MotDePasseOubliePage /> },
+  { path: "/compte/mot-de-passe", element: <MotDePassePage /> },
+  { path: "/compte/cgu", element: <CguPage /> },
+];
 
 export function App() {
   return (
@@ -79,6 +103,12 @@ export function App() {
           <Route path="/suivi" element={<SuiviPage />} />
           <Route path=":scopeA/suivi" element={<SuiviPage />} />
           <Route path=":scopeA/:scopeB/suivi" element={<SuiviPage />} />
+
+          {COMPTE_ROUTES.flatMap(({ path, element }) => [
+            <Route key={path} path={path} element={element} />,
+            <Route key={":scopeA" + path} path={":scopeA" + path} element={element} />,
+            <Route key={":scopeA/:scopeB" + path} path={":scopeA/:scopeB" + path} element={element} />,
+          ])}
 
           {/* ⚠️ `assistant` est lui aussi un segment STATIQUE (voir
               `ROUTE_SEGMENTS`) : mêmes trois formes que `accessibilite`, et pour

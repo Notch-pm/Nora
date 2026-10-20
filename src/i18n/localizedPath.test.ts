@@ -120,6 +120,13 @@ describe("splitOrganismePath — l'organisme dans l'adresse", () => {
       .toEqual({ lang: "en", organisme: "mairie-d-arles", path: "/courrier" });
   });
 
+  it("⚠️ `/compte` et ses sous-pages sont des écrans, pas un organisme", () => {
+    expect(splitOrganismePath("/compte/connexion")).toEqual({ organisme: null, path: "/compte/connexion" });
+    expect(splitScopedPath("/en/compte")).toEqual({ lang: "en", organisme: null, path: "/compte" });
+    expect(splitScopedPath("/en/mairie-d-arles/compte/cgu"))
+      .toEqual({ lang: "en", organisme: "mairie-d-arles", path: "/compte/cgu" });
+  });
+
   // ⚠️ C'est LA règle qui rend l'adresse lisible sans le serveur, et le Socle
   // en tient l'autre bout : un slug y fait au moins quatre caractères. Un
   // organisme nommé « cae » serait avalé comme un code de langue.

@@ -435,19 +435,6 @@ export const STRINGS = {
     uk: "Увійти",
     zh: "登录",
   },
-  "compte.soon": {
-    fr: "Bientôt disponible",
-    en: "Coming soon",
-    es: "Próximamente",
-    de: "Demnächst verfügbar",
-    it: "Presto disponibile",
-    pt: "Brevemente",
-    ar: "متاح قريبًا",
-    tr: "Yakında",
-    ru: "Скоро",
-    uk: "Незабаром",
-    zh: "即将推出",
-  },
   "empty.search": {
     fr: "Aucune démarche ne correspond à votre recherche.",
     en: "No service matches your search.",
@@ -4205,6 +4192,514 @@ export const STRINGS = {
     fr: "(sans objet)",
     en: "(no subject)",
   },
+
+  // ── Compte citoyen (espace usager L3a, /compte/*) ────────────────────────
+  // ⚠️ fr + en seulement : ces clés sont déclarées dans `PENDING_TRANSLATION_KEYS`
+  // (fin de fichier). Le jour où elles sont traduites, les en retirer.
+  "compte.email": {
+    fr: "Adresse de courriel",
+    en: "Email address",
+  },
+  "compte.password": {
+    fr: "Mot de passe",
+    en: "Password",
+  },
+  "compte.password.new": {
+    fr: "Nouveau mot de passe",
+    en: "New password",
+  },
+  "compte.password.choose": {
+    fr: "Mot de passe",
+    en: "Password",
+  },
+  "compte.password.current": {
+    fr: "Mot de passe actuel",
+    en: "Current password",
+  },
+  "compte.password.confirmation": {
+    fr: "Confirmation du mot de passe",
+    en: "Confirm password",
+  },
+  "compte.password.show": {
+    fr: "Afficher le mot de passe",
+    en: "Show password",
+  },
+  "compte.password.hide": {
+    fr: "Masquer le mot de passe",
+    en: "Hide password",
+  },
+  "compte.password.weak": {
+    fr: "Ce mot de passe ne respecte pas toutes les règles indiquées.",
+    en: "This password does not meet all the rules listed.",
+  },
+  "compte.password.mismatch": {
+    fr: "La confirmation ne correspond pas au mot de passe.",
+    en: "The confirmation does not match the password.",
+  },
+  "compte.rules.intro": {
+    fr: "Votre mot de passe doit contenir :",
+    en: "Your password must contain:",
+  },
+  "compte.rules.met": {
+    fr: "(respectée)",
+    en: "(met)",
+  },
+  "compte.rules.unmet": {
+    fr: "(à respecter)",
+    en: "(not met yet)",
+  },
+  "compte.rule.length": {
+    fr: "au moins 12 caractères",
+    en: "at least 12 characters",
+  },
+  "compte.rule.letter": {
+    fr: "au moins une lettre",
+    en: "at least one letter",
+  },
+  "compte.rule.digit": {
+    fr: "au moins un chiffre",
+    en: "at least one digit",
+  },
+  "compte.rule.special": {
+    fr: "au moins un caractère spécial (par exemple ! ? # @)",
+    en: "at least one special character (for example ! ? # @)",
+  },
+  "compte.rule.tooLong": {
+    fr: "pas plus de 72 octets (raccourcissez le mot de passe)",
+    en: "no more than 72 bytes (please shorten the password)",
+  },
+  "compte.required.email": {
+    fr: "Saisissez votre adresse de courriel.",
+    en: "Enter your email address.",
+  },
+  "compte.required.password": {
+    fr: "Saisissez un mot de passe.",
+    en: "Enter a password.",
+  },
+  "compte.required.currentPassword": {
+    fr: "Saisissez votre mot de passe actuel.",
+    en: "Enter your current password.",
+  },
+  "compte.required.confirmation": {
+    fr: "Confirmez le mot de passe.",
+    en: "Confirm the password.",
+  },
+  "compte.required.code": {
+    fr: "Saisissez le code à 6 chiffres.",
+    en: "Enter the 6-digit code.",
+  },
+  "compte.required.cgu": {
+    fr: "Vous devez accepter les conditions générales d'utilisation pour créer un compte.",
+    en: "You must accept the terms of use to create an account.",
+  },
+  "compte.submitting": {
+    fr: "Envoi…",
+    en: "Sending…",
+  },
+  "compte.back": {
+    fr: "Revenir",
+    en: "Go back",
+  },
+  "compte.cancel": {
+    fr: "Annuler",
+    en: "Cancel",
+  },
+  "compte.newTab": {
+    fr: "(s'ouvre dans un nouvel onglet)",
+    en: "(opens in a new tab)",
+  },
+  "compte.error.badRequest": {
+    fr: "Ces informations n'ont pas pu être lues. Vérifiez votre saisie et réessayez.",
+    en: "This information could not be read. Check what you entered and try again.",
+  },
+  "compte.error.emailInvalid": {
+    fr: "Cette adresse de courriel n'est pas valide.",
+    en: "This email address is not valid.",
+  },
+  "compte.error.passwordWeak": {
+    fr: "Ce mot de passe ne respecte pas les règles indiquées.",
+    en: "This password does not meet the rules listed.",
+  },
+  "compte.error.cguRequired": {
+    fr: "Merci d'accepter les conditions générales d'utilisation.",
+    en: "Please accept the terms of use.",
+  },
+  "compte.error.credentials": {
+    fr: "Adresse de courriel ou mot de passe incorrect.",
+    en: "Incorrect email address or password.",
+  },
+  "compte.error.currentPassword": {
+    fr: "Le mot de passe actuel est incorrect.",
+    en: "The current password is incorrect.",
+  },
+  "compte.error.locked": {
+    fr: "Trop de tentatives : la connexion est suspendue pendant 15 minutes. Réessayez plus tard.",
+    en: "Too many attempts: sign-in is suspended for 15 minutes. Please try again later.",
+  },
+  "compte.error.unconfirmed": {
+    fr: "Votre adresse n'est pas encore confirmée. Utilisez le lien reçu par courriel, ou demandez-en un nouveau.",
+    en: "Your address has not been confirmed yet. Use the link sent by email, or ask for a new one.",
+  },
+  "compte.error.linkInvalid": {
+    fr: "Ce lien n'est plus valable. Vous pouvez en demander un nouveau.",
+    en: "This link is no longer valid. You can ask for a new one.",
+  },
+  "compte.error.mfaExpired": {
+    fr: "La connexion a expiré. Saisissez de nouveau votre mot de passe.",
+    en: "Sign-in has expired. Enter your password again.",
+  },
+  "compte.error.totpInvalid": {
+    fr: "Ce code n'est pas valable. Vérifiez-le dans votre application et réessayez.",
+    en: "This code is not valid. Check it in your app and try again.",
+  },
+  "compte.error.totpNotPending": {
+    fr: "Aucune activation n'est en cours. Recommencez.",
+    en: "No activation is in progress. Please start again.",
+  },
+  "compte.error.mailUnavailable": {
+    fr: "Le courriel n'a pas pu être envoyé : le service est momentanément indisponible. Réessayez plus tard.",
+    en: "The email could not be sent: the service is temporarily unavailable. Please try again later.",
+  },
+  "compte.error.tooManyEmails": {
+    fr: "Trop de courriels envoyés à cette adresse : réessayez dans une heure.",
+    en: "Too many emails sent to this address: please try again in an hour.",
+  },
+  "compte.error.unavailable": {
+    fr: "Le service est momentanément indisponible. Réessayez dans quelques instants.",
+    en: "The service is temporarily unavailable. Please try again in a few moments.",
+  },
+  "compte.error.challenge": {
+    fr: "La vérification de sécurité a échoué. Réessayez.",
+    en: "The security check failed. Please try again.",
+  },
+  "compte.error.sessionRequired": {
+    fr: "Votre session a expiré. Connectez-vous de nouveau.",
+    en: "Your session has expired. Please sign in again.",
+  },
+  "compte.error.network": {
+    fr: "Connexion impossible. Vérifiez votre accès à internet et réessayez.",
+    en: "Unable to connect. Check your internet access and try again.",
+  },
+  "compte.login.title": {
+    fr: "Connexion",
+    en: "Sign in",
+  },
+  "compte.login.intro": {
+    fr: "Connectez-vous à votre compte avec votre adresse de courriel et votre mot de passe.",
+    en: "Sign in to your account with your email address and password.",
+  },
+  "compte.login.submit": {
+    fr: "Me connecter",
+    en: "Sign in",
+  },
+  "compte.login.remember": {
+    fr: "Rester connecté",
+    en: "Stay signed in",
+  },
+  "compte.login.rememberHelp": {
+    fr: "Votre session dure alors 30 jours. Ne cochez pas cette case sur un ordinateur partagé.",
+    en: "Your session will then last 30 days. Do not tick this box on a shared computer.",
+  },
+  "compte.login.forgot": {
+    fr: "Mot de passe oublié ?",
+    en: "Forgot your password?",
+  },
+  "compte.login.noAccount": {
+    fr: "Pas encore de compte ?",
+    en: "No account yet?",
+  },
+  "compte.login.register": {
+    fr: "Créer un compte",
+    en: "Create an account",
+  },
+  "compte.login.resend": {
+    fr: "Recevoir un nouveau lien de confirmation",
+    en: "Receive a new confirmation link",
+  },
+  "compte.login.totpTitle": {
+    fr: "Code de votre application d'authentification",
+    en: "Code from your authenticator app",
+  },
+  "compte.login.totpIntro": {
+    fr: "Ouvrez votre application d'authentification et saisissez le code à 6 chiffres affiché.",
+    en: "Open your authenticator app and enter the 6-digit code it shows.",
+  },
+  "compte.login.totpSubmit": {
+    fr: "Valider le code",
+    en: "Confirm code",
+  },
+  "compte.totp.code": {
+    fr: "Code à 6 chiffres",
+    en: "6-digit code",
+  },
+  "compte.totp.currentCode": {
+    fr: "Code actuel de votre application (6 chiffres)",
+    en: "Current code from your app (6 digits)",
+  },
+  "compte.register.title": {
+    fr: "Créer un compte",
+    en: "Create an account",
+  },
+  "compte.register.intro": {
+    fr: "Indiquez votre adresse de courriel. Nous vous enverrons un lien pour choisir votre mot de passe et activer votre compte.",
+    en: "Enter your email address. We will send you a link to choose your password and activate your account.",
+  },
+  "compte.register.cguPrefix": {
+    fr: "J'accepte les",
+    en: "I accept the",
+  },
+  "compte.register.cguLink": {
+    fr: "conditions générales d'utilisation",
+    en: "terms of use",
+  },
+  "compte.register.identityLater": {
+    fr: "Vos données d'identité (nom, adresse…) ne sont pas demandées maintenant : elles vous seront demandées plus tard, lorsqu'un service en aura besoin.",
+    en: "Your identity details (name, address…) are not requested now: you will be asked for them later, when a service needs them.",
+  },
+  "compte.register.submit": {
+    fr: "Créer mon compte",
+    en: "Create my account",
+  },
+  "compte.register.haveAccount": {
+    fr: "Vous avez déjà un compte ?",
+    en: "Already have an account?",
+  },
+  "compte.register.toLogin": {
+    fr: "Me connecter",
+    en: "Sign in",
+  },
+  "compte.register.doneTitle": {
+    fr: "Vérifiez votre messagerie",
+    en: "Check your email",
+  },
+  "compte.register.sent": {
+    fr: "Si cette adresse peut être utilisée, un courriel vient de vous être envoyé : suivez le lien pour choisir votre mot de passe et activer votre compte (valable une heure).",
+    en: "If this address can be used, an email has just been sent to you: follow the link to choose your password and activate your account (valid for one hour).",
+  },
+  "compte.register.sentHelp": {
+    fr: "Vous ne le voyez pas ? Regardez dans vos courriers indésirables.",
+    en: "Can't see it? Check your spam folder.",
+  },
+  "compte.confirm.title": {
+    fr: "Choisissez votre mot de passe",
+    en: "Choose your password",
+  },
+  "compte.confirm.intro": {
+    fr: "Votre adresse sera confirmée dès que vous aurez choisi un mot de passe.",
+    en: "Your address will be confirmed as soon as you have chosen a password.",
+  },
+  "compte.confirm.submit": {
+    fr: "Activer mon compte",
+    en: "Activate my account",
+  },
+  "compte.confirm.doneTitle": {
+    fr: "Votre adresse est confirmée",
+    en: "Your address is confirmed",
+  },
+  "compte.confirm.done": {
+    fr: "Votre adresse est confirmée et votre compte est activé. Vous pouvez vous connecter.",
+    en: "Your address is confirmed and your account is active. You can now sign in.",
+  },
+  "compte.confirm.toLogin": {
+    fr: "Me connecter",
+    en: "Sign in",
+  },
+  "compte.confirm.invalidTitle": {
+    fr: "Ce lien n'est plus valable",
+    en: "This link is no longer valid",
+  },
+  "compte.confirm.invalid": {
+    fr: "Le lien a expiré ou a déjà été utilisé. Indiquez votre adresse pour recevoir un nouveau lien.",
+    en: "The link has expired or has already been used. Enter your address to receive a new link.",
+  },
+  "compte.resend.title": {
+    fr: "Recevoir un nouveau lien",
+    en: "Receive a new link",
+  },
+  "compte.resend.submit": {
+    fr: "Envoyer un nouveau lien",
+    en: "Send a new link",
+  },
+  "compte.resend.sent": {
+    fr: "Si cette adresse attend une confirmation, un nouveau courriel vient d'être envoyé (lien valable une heure).",
+    en: "If this address is awaiting confirmation, a new email has just been sent (link valid for one hour).",
+  },
+  "compte.forgot.title": {
+    fr: "Mot de passe oublié",
+    en: "Forgot your password",
+  },
+  "compte.forgot.intro": {
+    fr: "Indiquez l'adresse de courriel de votre compte. Nous vous enverrons un lien pour choisir un nouveau mot de passe.",
+    en: "Enter the email address of your account. We will send you a link to choose a new password.",
+  },
+  "compte.forgot.submit": {
+    fr: "Recevoir le lien",
+    en: "Send me the link",
+  },
+  "compte.forgot.doneTitle": {
+    fr: "Vérifiez votre messagerie",
+    en: "Check your email",
+  },
+  "compte.forgot.sent": {
+    fr: "Si cette adresse correspond à un compte, un courriel vient de vous être envoyé : suivez le lien pour choisir un nouveau mot de passe (valable une heure).",
+    en: "If this address matches an account, an email has just been sent to you: follow the link to choose a new password (valid for one hour).",
+  },
+  "compte.forgot.toLogin": {
+    fr: "Revenir à la connexion",
+    en: "Back to sign in",
+  },
+  "compte.reset.title": {
+    fr: "Choisissez un nouveau mot de passe",
+    en: "Choose a new password",
+  },
+  "compte.reset.submit": {
+    fr: "Changer mon mot de passe",
+    en: "Change my password",
+  },
+  "compte.reset.doneTitle": {
+    fr: "Mot de passe modifié",
+    en: "Password changed",
+  },
+  "compte.reset.done": {
+    fr: "Votre mot de passe est modifié. Par sécurité, vous avez été déconnecté partout : connectez-vous avec votre nouveau mot de passe.",
+    en: "Your password has been changed. For security, you have been signed out everywhere: sign in with your new password.",
+  },
+  "compte.reset.invalidTitle": {
+    fr: "Ce lien n'est plus valable",
+    en: "This link is no longer valid",
+  },
+  "compte.reset.invalid": {
+    fr: "Le lien a expiré ou a déjà été utilisé.",
+    en: "The link has expired or has already been used.",
+  },
+  "compte.reset.again": {
+    fr: "Recevoir un nouveau lien",
+    en: "Receive a new link",
+  },
+  "compte.account.title": {
+    fr: "Mon compte",
+    en: "My account",
+  },
+  "compte.account.infos": {
+    fr: "Mes informations",
+    en: "My details",
+  },
+  "compte.account.security": {
+    fr: "Sécurité",
+    en: "Security",
+  },
+  "compte.account.password": {
+    fr: "Mot de passe",
+    en: "Password",
+  },
+  "compte.account.totp": {
+    fr: "Double authentification",
+    en: "Two-step verification",
+  },
+  "compte.account.logout": {
+    fr: "Me déconnecter",
+    en: "Sign out",
+  },
+  "compte.change.submit": {
+    fr: "Changer mon mot de passe",
+    en: "Change my password",
+  },
+  "compte.change.done": {
+    fr: "Votre mot de passe est modifié. Vos autres sessions ont été fermées.",
+    en: "Your password has been changed. Your other sessions have been closed.",
+  },
+  "compte.totp.statusOn": {
+    fr: "La double authentification est activée : un code vous est demandé à chaque connexion.",
+    en: "Two-step verification is on: a code is requested each time you sign in.",
+  },
+  "compte.totp.statusOff": {
+    fr: "La double authentification est désactivée.",
+    en: "Two-step verification is off.",
+  },
+  "compte.totp.help": {
+    fr: "Elle ajoute à votre mot de passe un code à 6 chiffres, généré par une application d'authentification sur votre téléphone.",
+    en: "It adds to your password a 6-digit code, generated by an authenticator app on your phone.",
+  },
+  "compte.totp.enable": {
+    fr: "Activer la double authentification",
+    en: "Turn on two-step verification",
+  },
+  "compte.totp.enableTitle": {
+    fr: "Activer la double authentification",
+    en: "Turn on two-step verification",
+  },
+  "compte.totp.replace": {
+    fr: "Changer d'appareil",
+    en: "Change device",
+  },
+  "compte.totp.replaceTitle": {
+    fr: "Changer d'appareil",
+    en: "Change device",
+  },
+  "compte.totp.disable": {
+    fr: "Retirer la double authentification",
+    en: "Turn off two-step verification",
+  },
+  "compte.totp.disableTitle": {
+    fr: "Retirer la double authentification",
+    en: "Turn off two-step verification",
+  },
+  "compte.totp.disableSubmit": {
+    fr: "Retirer",
+    en: "Turn off",
+  },
+  "compte.totp.continue": {
+    fr: "Continuer",
+    en: "Continue",
+  },
+  "compte.totp.scanTitle": {
+    fr: "Régler votre application d'authentification",
+    en: "Set up your authenticator app",
+  },
+  "compte.totp.scanStep1": {
+    fr: "Dans votre application d'authentification, scannez ce QR code, ou saisissez la clé écrite à côté.",
+    en: "In your authenticator app, scan this QR code, or enter the key written next to it.",
+  },
+  "compte.totp.scanStep2": {
+    fr: "Saisissez ci-dessous le code à 6 chiffres que l'application affiche.",
+    en: "Enter below the 6-digit code the app shows.",
+  },
+  "compte.totp.qrLabel": {
+    fr: "QR code à scanner avec votre application d'authentification. La clé équivalente est écrite à côté.",
+    en: "QR code to scan with your authenticator app. The equivalent key is written next to it.",
+  },
+  "compte.totp.secretIntro": {
+    fr: "Clé à saisir à la main :",
+    en: "Key to enter by hand:",
+  },
+  "compte.totp.secretLabel": {
+    fr: "Clé :",
+    en: "Key:",
+  },
+  "compte.totp.confirm": {
+    fr: "Valider et activer",
+    en: "Confirm and turn on",
+  },
+  "compte.totp.enabledDone": {
+    fr: "La double authentification est activée.",
+    en: "Two-step verification is now on.",
+  },
+  "compte.totp.replacedDone": {
+    fr: "Votre nouvel appareil est enregistré.",
+    en: "Your new device is registered.",
+  },
+  "compte.totp.disabledDone": {
+    fr: "La double authentification est retirée.",
+    en: "Two-step verification has been turned off.",
+  },
+  "compte.cgu.title": {
+    fr: "Conditions générales d'utilisation du compte",
+    en: "Terms of use of the account",
+  },
+  "compte.cgu.version": {
+    fr: "Version {version}",
+    en: "Version {version}",
+  },
 } as const satisfies Record<string, Translated>;
 
 export type StringKey = keyof typeof STRINGS;
@@ -4281,4 +4776,130 @@ export const PENDING_TRANSLATION_KEYS: readonly StringKey[] = [
   "suivi.noMessages",
   "suivi.messagePieces",
   "suivi.noSubject",
+  "compte.email",
+  "compte.password",
+  "compte.password.new",
+  "compte.password.choose",
+  "compte.password.current",
+  "compte.password.confirmation",
+  "compte.password.show",
+  "compte.password.hide",
+  "compte.password.weak",
+  "compte.password.mismatch",
+  "compte.rules.intro",
+  "compte.rules.met",
+  "compte.rules.unmet",
+  "compte.rule.length",
+  "compte.rule.letter",
+  "compte.rule.digit",
+  "compte.rule.special",
+  "compte.rule.tooLong",
+  "compte.required.email",
+  "compte.required.password",
+  "compte.required.currentPassword",
+  "compte.required.confirmation",
+  "compte.required.code",
+  "compte.required.cgu",
+  "compte.submitting",
+  "compte.back",
+  "compte.cancel",
+  "compte.newTab",
+  "compte.error.badRequest",
+  "compte.error.emailInvalid",
+  "compte.error.passwordWeak",
+  "compte.error.cguRequired",
+  "compte.error.credentials",
+  "compte.error.currentPassword",
+  "compte.error.locked",
+  "compte.error.unconfirmed",
+  "compte.error.linkInvalid",
+  "compte.error.mfaExpired",
+  "compte.error.totpInvalid",
+  "compte.error.totpNotPending",
+  "compte.error.mailUnavailable",
+  "compte.error.tooManyEmails",
+  "compte.error.unavailable",
+  "compte.error.challenge",
+  "compte.error.sessionRequired",
+  "compte.error.network",
+  "compte.login.title",
+  "compte.login.intro",
+  "compte.login.submit",
+  "compte.login.remember",
+  "compte.login.rememberHelp",
+  "compte.login.forgot",
+  "compte.login.noAccount",
+  "compte.login.register",
+  "compte.login.resend",
+  "compte.login.totpTitle",
+  "compte.login.totpIntro",
+  "compte.login.totpSubmit",
+  "compte.totp.code",
+  "compte.totp.currentCode",
+  "compte.register.title",
+  "compte.register.intro",
+  "compte.register.cguPrefix",
+  "compte.register.cguLink",
+  "compte.register.identityLater",
+  "compte.register.submit",
+  "compte.register.haveAccount",
+  "compte.register.toLogin",
+  "compte.register.doneTitle",
+  "compte.register.sent",
+  "compte.register.sentHelp",
+  "compte.confirm.title",
+  "compte.confirm.intro",
+  "compte.confirm.submit",
+  "compte.confirm.doneTitle",
+  "compte.confirm.done",
+  "compte.confirm.toLogin",
+  "compte.confirm.invalidTitle",
+  "compte.confirm.invalid",
+  "compte.resend.title",
+  "compte.resend.submit",
+  "compte.resend.sent",
+  "compte.forgot.title",
+  "compte.forgot.intro",
+  "compte.forgot.submit",
+  "compte.forgot.doneTitle",
+  "compte.forgot.sent",
+  "compte.forgot.toLogin",
+  "compte.reset.title",
+  "compte.reset.submit",
+  "compte.reset.doneTitle",
+  "compte.reset.done",
+  "compte.reset.invalidTitle",
+  "compte.reset.invalid",
+  "compte.reset.again",
+  "compte.account.title",
+  "compte.account.infos",
+  "compte.account.security",
+  "compte.account.password",
+  "compte.account.totp",
+  "compte.account.logout",
+  "compte.change.submit",
+  "compte.change.done",
+  "compte.totp.statusOn",
+  "compte.totp.statusOff",
+  "compte.totp.help",
+  "compte.totp.enable",
+  "compte.totp.enableTitle",
+  "compte.totp.replace",
+  "compte.totp.replaceTitle",
+  "compte.totp.disable",
+  "compte.totp.disableTitle",
+  "compte.totp.disableSubmit",
+  "compte.totp.continue",
+  "compte.totp.scanTitle",
+  "compte.totp.scanStep1",
+  "compte.totp.scanStep2",
+  "compte.totp.qrLabel",
+  "compte.totp.secretIntro",
+  "compte.totp.secretLabel",
+  "compte.totp.confirm",
+  "compte.totp.enabledDone",
+  "compte.totp.replacedDone",
+  "compte.totp.disabledDone",
+  "compte.cgu.title",
+  "compte.cgu.version",
 ];

@@ -10,6 +10,7 @@ import {
   homeTitle,
   organismeTitle,
   suiviTitle,
+  compteTitle,
   receiptTitle,
 } from "./pageTitle.ts";
 
@@ -62,6 +63,16 @@ describe("suiviTitle", () => {
 
   it("se préfixe du nombre d'erreurs après une saisie refusée", () => {
     expect(suiviTitle("fr", "Laurentville", 2)).toMatch(/^2 .* — Suivre ma demande — Laurentville$/);
+  });
+});
+
+describe("compteTitle", () => {
+  it("nomme l'écran, puis la collectivité", () => {
+    expect(compteTitle("fr", "Connexion", "Laurentville")).toBe("Connexion — Laurentville");
+  });
+
+  it("se préfixe du nombre d'erreurs après une saisie refusée", () => {
+    expect(compteTitle("fr", "Connexion", "Laurentville", 2)).toMatch(/^2 .* — Connexion — Laurentville$/);
   });
 });
 

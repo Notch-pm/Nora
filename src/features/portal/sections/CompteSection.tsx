@@ -1,10 +1,8 @@
 /**
  * Bandeau « Espace usager ».
  *
- * Le bouton de connexion est volontairement désactivé : ce lot ne livre aucune
- * authentification usager. Un bouton cliquable qui ne mènerait nulle part
- * serait pire qu'un bouton visiblement indisponible — `title` le dit
- * explicitement à qui pose la souris dessus.
+ * Le second lien mène au compte citoyen : `/compte` si l'on y est connecté,
+ * la connexion sinon (`useAccountHref`).
  *
  * À côté, un lien ACTIF « Suivre une demande » : suivre une demande déposée sans
  * compte (`/suivi`) n'a pas besoin d'espace usager.
@@ -13,6 +11,7 @@ import type { CompteSection as CompteSectionData } from "@fn/_shared/domain/page
 import { Link } from "react-router-dom";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { localizedPath } from "@/i18n/localizedPath.ts";
+import { useAccountHref } from "@/features/compte/sessionKind.ts";
 
 function UserIcon() {
   return (
@@ -34,6 +33,7 @@ function UserIcon() {
 export function CompteSection({ section }: { section: CompteSectionData }) {
   const t = useT();
   const { lang } = useLanguage();
+  const account = useAccountHref();
   return (
     <section className="flex flex-col items-stretch gap-4 rounded-[var(--pt-radius)] bg-[color:var(--pt-ink)] p-[var(--pt-pad)] sm:flex-row sm:items-center">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--pt-radius-sm)] bg-[color:var(--pt-primary)]">
@@ -50,15 +50,12 @@ export function CompteSection({ section }: { section: CompteSectionData }) {
         >
           {t("compte.follow")}
         </Link>
-        <button
-          type="button"
-          disabled
-          title={t("compte.soon")}
-          aria-disabled="true"
-          className="shrink-0 cursor-not-allowed whitespace-nowrap rounded-[var(--pt-radius-sm)] bg-white px-4 py-2.5 text-center text-[length:var(--pt-body)] font-bold text-[color:var(--pt-ink)] opacity-60"
+        <Link
+          to={account.href}
+          className="shrink-0 whitespace-nowrap rounded-[var(--pt-radius-sm)] bg-white px-4 py-2.5 text-center text-[length:var(--pt-body)] font-bold text-[color:var(--pt-ink)] hover:opacity-90"
         >
-          {t("compte.signIn")}
-        </button>
+          {t(account.connected ? "header.account" : "compte.signIn")}
+        </Link>
       </div>
     </section>
   );

@@ -67,6 +67,16 @@ export function suiviTitle(lang: string, tenantName: string, errorCount = 0): st
   return errorCount > 0 ? tn(lang, "page.errorsPrefix", errorCount) + SEPARATOR + base : base;
 }
 
+/**
+ * Un écran du compte citoyen : son intitulé (déjà traduit, il change avec
+ * l'étape), puis la collectivité. Préfixé du nombre d'erreurs après une
+ * saisie refusée, comme le formulaire d'une démarche.
+ */
+export function compteTitle(lang: string, screenTitle: string, tenantName: string, errorCount = 0): string {
+  const base = screenTitle + SEPARATOR + tenantName;
+  return errorCount > 0 ? tn(lang, "page.errorsPrefix", errorCount) + SEPARATOR + base : base;
+}
+
 /** La page de l'assistant : son intitulé, puis la collectivité. */
 export function assistantTitle(lang: string, tenantName: string): string {
   return t(lang, "assistant.title") + SEPARATOR + tenantName;

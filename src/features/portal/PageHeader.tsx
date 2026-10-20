@@ -14,8 +14,9 @@
  * vit dans son propre fichier plutôt que dans la composition — et c'est aussi
  * ce qui met le sélecteur de langue sur les quatre écrans d'un coup.
  *
- * « Mon compte » reste décoratif tant que l'espace usager n'existe pas —
- * mieux vaut du gris inerte qu'un lien mort. « Contact » de même. Le premier
+ * « Mon compte » est un vrai lien : le compte si l'on y est connecté, la
+ * connexion sinon (`useAccountHref`). « Contact » reste décoratif — mieux vaut
+ * du gris inerte qu'un lien mort. Le premier
  * élément de la nav, lui, est réellement interactif dès qu'il y a au moins une
  * ville : voir « Ma ville » plus bas.
  */
@@ -26,6 +27,7 @@ import type { Ville } from "@fn/_shared/domain/demarche.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { languageName } from "@/i18n/languageNames.ts";
 import { localizedPath, organismePath, splitScopedPath } from "@/i18n/localizedPath.ts";
+import { useAccountHref } from "@/features/compte/sessionKind.ts";
 
 export function PageHeader({
   tenantName,
@@ -81,6 +83,7 @@ export function PageHeader({
   const { lang, setLang } = useLanguage();
   const t = useT();
   const location = useLocation();
+  const account = useAccountHref();
   const currentOrganisme = splitScopedPath(location.pathname).organisme;
   // La marque ramène à l'accueil de la COLLECTIVITÉ, sur tous les écrans.
   //
@@ -240,8 +243,9 @@ export function PageHeader({
         {languages.length > 1 ? (
           <LanguageSelector languages={languages} value={lang} onChange={setLang} />
         ) : null}
-        <span
-          className="whitespace-nowrap rounded-[var(--pt-radius-sm)] border text-[length:var(--pt-small)] font-bold"
+        <Link
+          to={account.href}
+          className="whitespace-nowrap rounded-[var(--pt-radius-sm)] border text-[length:var(--pt-small)] font-bold hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary)] focus-visible:ring-offset-1"
           style={{
             background: "var(--pt-account-bg)",
             color: "var(--pt-account-fg)",
@@ -250,7 +254,7 @@ export function PageHeader({
           }}
         >
           {t("header.account")}
-        </span>
+        </Link>
         </div>
       </div>
 
