@@ -253,7 +253,7 @@ liste ordonnée de sections typées. Règles de rendu, toutes dans
   conteneur centré, poussé au bord ; la page perd sa marge basse. Sa couleur
   n'entre que sous la forme `#rrggbb`, le texte passe en clair ou en sombre
   selon la luminance.
-- **Le bloc « Espace usager » est décoratif** tant qu'il n'y a pas de compte.
+- **Le bloc « Espace usager » est actif** (`CompteSection.tsx`) : « Suivre une demande » mène à `/suivi` ; le lien de compte mène à `/compte` si l'usager est connecté, à la connexion sinon ; connecté, « Mes demandes » s'ajoute et le sous-titre devient « compte ouvert » (voir « Le compte usager (lot L3) »).
 
 ## Les pages d'organisme
 
@@ -1576,7 +1576,7 @@ portail sert comme avant.
 
 L'analyse de référence est `C:\Users\jacqu\Notch\Sceaux\02-espace-usager.md`, rédigée pour le marché GRU de Sceaux.
 
-Le lot L1 pose le socle de tout le reste : **comment un citoyen reste connecté sans que rien ne fuie**. Il ne livre encore ni l'inscription ni la connexion (lot L3), ni le suivi hors compte (lot L2).
+Le lot L1 pose le socle de tout le reste : **comment un citoyen reste connecté sans que rien ne fuie**. Il ne livre à lui seul ni l'inscription ni la connexion (lot L3), ni le suivi hors compte (lot L2), ni les échanges (lot L4) : ils sont décrits plus bas.
 
 ### Le chemin d'une requête
 
@@ -1622,7 +1622,7 @@ Routes livrées :
 1. **Base** : appliquer `supabase/migrations/` sur le projet Nora.
 2. **Secret partagé** : `supabase secrets set NORA_PROXY_SECRET=…`, puis déployer portal-api. Rien ne change pour le portail public : les appels directs sont inchangés.
 3. **Worker** : `npx wrangler secret put NORA_PROXY_SECRET` (même valeur), puis pousser `wrangler.jsonc` et `worker/`. `/api/*` est alors relayé.
-4. **Interface** : variable de build `VITE_PORTAL_API_URL=/api`, puis rebuild. Le portail passe par le proxy. Pour revenir en arrière, remettre l'URL directe.
+4. **Interface** : variable de build `VITE_PORTAL_API_URL=/api`, puis rebuild. Le portail passe par le proxy. ⚠️ Obligatoire depuis le lot L3 (voir « Le compte usager »).
 5. **Purge** : planifier `citizen_purge_auth_data()` (pg_cron, quotidien).
 6. **Freins partagés** : poser des règles de limitation de débit Cloudflare sur `/api/v1/session*`, et au lot L3 sur la connexion et l'inscription. Les freins de portal-api sont en mémoire d'isolat, donc non partagés.
 
@@ -1652,7 +1652,68 @@ Routes : `POST /v1/suivi`, `GET /v1/suivi/demande`, `GET /v1/suivi/demande/piece
 
 **Mise en service** — Iris d'abord : migration `20261019150000_acces_usager_invite.sql`, secret `IRIS_ACCESS_CODE_PEPPER` (32 caractères au moins), déploiement de `requests-api` et `notifications-mailer`. Puis portal-api, puis le portail (push). Dans l'autre ordre, la case existe mais aucun code ne revient.
 
-**Reste à faire** : répondre en ligne (lot L4), renvoi du code perdu et coupure d'un accès par un agent, traduction des 47 textes dans les 9 autres langues (`PENDING_TRANSLATION_KEYS`).
+**Livré depuis** : code perdu, coupure d'un accès par un agent et réponse en ligne (lot L4, voir « Échanges en ligne »).
+
+**Reste à faire** : traduction des 47 textes dans les 9 autres langues (`PENDING_TRANSLATION_KEYS`).
+
+## Le compte usager (lot L3)
+
+Détail de conception : `C:\Users\jacqu\Notch\Sceaux\02-espace-usager.md` ; état : `03-avancement.md`. En production depuis le 2026-10-20.
+
+**L3a — compte et session.**
+
+- **GoTrue ne sert qu'à vérifier les identifiants** (adresse + mot de passe). Ses jetons ne vont jamais au navigateur : la session reste celle du lot L1 (cookie `__Host-nora_sid`).
+- **Inscription sans mot de passe** : adresse + CGU, le mot de passe se choisit au lien de confirmation (anti pré-inscription). Mêmes réponses qu'un compte existe ou non, durée plancher 900 ms.
+- **Verrous et quotas** : tentatives comptées AVANT vérification (10 / 15 min → verrou 15 min, par adresse) ; 5 courriels / h / adresse ; défi anti-robot sur l'inscription, le renvoi de lien et le mot de passe oublié.
+- **TOTP facultatif** (RFC 6238) : secret chiffré AES-GCM (`NORA_AUTH_SECRET`), code jamais rejoué, changer d'appareil exige le code actuel.
+- **Courriels de compte** (confirmation, réinitialisation, avis de sécurité) : envoyés par le **SMTP de la collectivité**, lu au Socle (scope `smtp`), en différé. ⚠️ Sans serveur d'envoi au Socle, aucun lien ne part.
+- ⚠️ `/compte/cgu` est un **projet** de CGU, à valider par la collectivité et son DPO.
+
+**L3b — fiche du Socle et « Mes demandes ».**
+
+- Scope Socle **`citizen`** : une fiche par usager, sans notes internes. **Rattachement strict** : une fiche existante n'est reprise que si courriel, nom, prénom et code postal concordent (et la date de naissance si la fiche en porte une) ; sinon fiche neuve. La fiche de l'espace est confrontée au Socle à chaque lecture.
+- « Mes informations » dans `/compte` : identité au premier remplissage, ensuite coordonnées seules.
+- « Mes demandes » (`/compte/demandes`, `/compte/demandes/:id`) lit Iris avec un **jeton court `X-Citizen-Token`** (3 min), signé avec `NORA_IRIS_TOKEN_SECRET` (même valeur que `IRIS_CITIZEN_TOKEN_SECRET` chez Iris) et lié à la fiche. ⚠️ Les demandes issues de Clara y restent masquées tant qu'un agent ne les a pas rendues visibles.
+
+**L3c — démarches réservées, préremplissage, consentements, pièces.**
+
+- **Démarche réservée** (Socle `access_mode = authentifie`) : visible au catalogue sans connexion, avec un **cadenas et une infobulle** ; détail et formulaire proposent « Me connecter » ou « Compléter mes informations ». **Garde serveur** : sans compte connecté au profil rempli, le dépôt est refusé (`account_required`). Un mode inconnu vaut « réservée ».
+- **Dépôt connecté** : « Vos informations » préremplies depuis la fiche, **champs repris de la fiche en lecture seule** (lien « Mon compte »), sans écraser une saisie ; la demande part rattachée à la fiche.
+- **Consentements modifiables** (« Mon compte » → « Mes consentements ») : accorder ou retirer ; la phrase consignée est composée par le Socle, source `portail-citoyen`.
+- **Pièces jusqu'à 20 Mo** (10 auparavant).
+
+**Préchargement.** `src/services/portal/earlyFetch.ts` lance la session et les données de la page d'arrivée en même temps que `/v1/bootstrap` (une réponse n'est servie qu'une fois). Gain d'environ une seconde par page.
+
+**Routes** — pages : `/compte`, `/compte/inscription`, `/compte/confirmer`, `/compte/connexion`, `/compte/mot-de-passe-oublie`, `/compte/mot-de-passe`, `/compte/cgu`, `/compte/demandes`, `/compte/demandes/:id`. API (`portal-api`) : `/v1/compte` (GET), `/v1/compte/{inscription, confirmation, confirmation/renvoi, mot-de-passe-oublie, mot-de-passe, mot-de-passe/changement, connexion, connexion/totp, totp/activation, totp/confirmation, totp/desactivation}`, `/v1/compte/profil` (GET, POST), `/v1/compte/consentements` (POST), `/v1/compte/demandes[/{id}[/pieces/{id}]]`.
+
+**Migrations Nora** : `20261020090000_espace_usager_comptes.sql`, `20261020160000_espace_usager_fiche.sql` (puis `20261021090000`, voir L4).
+
+**Secrets** : `NORA_AUTH_SECRET` (32 caractères au moins), `NORA_IRIS_TOKEN_SECRET` (même valeur que chez Iris ; sans lui, « Mes demandes » ne s'ouvre pas), en plus de `NORA_PROXY_SECRET`. Côté Socle : la clé de Nora porte les scopes `read, audience, citizen, smtp`. Côté Auth du projet : inscriptions publiques et OTP / magic link de GoTrue coupés, limites de vérification relevées.
+
+⚠️ **`VITE_PORTAL_API_URL=/api` est désormais obligatoire** (variable de build). Le dépôt connecté, « Mes demandes » et les démarches réservées lisent le cookie de session, qui ne part qu'en même origine. Avec l'URL directe, ces fonctions échouent. (`.env.example` montre encore l'URL directe pour le développement sans relais.)
+
+⚠️ Le Worker épingle portal-api en Irlande (`PORTAL_API_REGION`, `wrangler.jsonc`) : à changer avec la bascule d'hébergement.
+
+**Restent à trancher / faire** : verrouillage d'un compte par un tiers (11 essais), noms non latins jamais rattachés (doublon de fiche), pas de relecture de sécurité dédiée au lot L4.
+
+## Échanges en ligne (lot L4)
+
+**L4a — accès invité.**
+
+- **Code perdu** : `/suivi` → « Code d'accès perdu ? » (référence + adresse déclarée) → `POST /v1/suivi/renvoi` envoie un code NEUF à l'adresse déclarée, l'ancien ne vaut plus. Réponse identique dans tous les cas ; **5 / h** par visiteur (3 / 24 h par demande côté Iris).
+- **Version d'accès** : `citizen_sessions.guest_access_version`. Une coupure par un agent ou un nouveau code **ferme aussi les sessions invitées déjà ouvertes**. Migration `20261021090000_espace_usager_session_invitee_version.sql`.
+- Côté Iris : encart agent « Suivi en ligne sans compte » (couper, renvoyer un code ; le code n'est jamais montré), edge function `request-guest-access`, migration `20261021090000_acces_invite_renvoi_coupure`.
+
+**L4b — l'usager répond en ligne.**
+
+- Formulaire **« Répondre »** (`src/features/suivi/ReplyForm.tsx`) sur `/suivi` et dans « Mes demandes », tant que la demande est ouverte.
+- Routes : `POST /v1/suivi/demande/messages` (session invitée) et `POST /v1/compte/demandes/{id}/messages` (compte).
+- **Limites** : 5 000 caractères, 5 pièces (PDF, JPEG, PNG, 20 Mo, déposées par `/v1/demandes/pieces`), **30 réponses / h** par visiteur. Écriture protégée par l'en-tête anti-CSRF `x-nora-request`.
+- **Demande close ou archivée** : Iris répond 409, Nora renvoie `suivi_closed`.
+- **Chaque canal ne voit que ses messages** (compte ou code) ; chaque message porte une `direction` (agent / usager).
+- Côté Iris : table immuable `request_citizen_messages`, route `POST /v1/citizen/requests/{id}/messages` (contrat 2.9.0), notification `citizen_replied` à l'agent (jamais le texte). Mise en service : Iris d'abord (migration `20261021120000_reponse_usager`), puis portal-api, puis le portail.
+
+**L4c — notifications à l'usager (désactivables) : à faire.**
 
 ## Ce qui n'est pas encore fait
 
@@ -1662,16 +1723,21 @@ ouvertes sont dans `docs/roadmap.md` du Socle, section « Portail usagers » :
 1. les **autres templates** (gabarits de page, autres pages que l'accueil,
    actualités) — le thème, lui, est appliqué depuis le 2026-09-08 ;
 2. ~~les démarches **hors compte** : suivi en ligne~~ — **livré au lot L2** (voir « Suivre
-   une demande sans compte » ci-dessus) ; reste à y répondre en ligne (lot L4) ;
-3. les démarches **avec compte** (fondations livrées au lot L1, voir « L'espace usager »
-   ci-dessus ; espace usager rattaché au référentiel
-   `contacts` du Socle) — dont un « Mon compte » où l'usager **modifie ses
-   consentements** RGPD (le lot 1 du 2026-09-22 ne fait que les recueillir) ;
-4. la **création de compte** ;
-5. les **échanges** usager ↔ agent sur une demande ;
+   une demande sans compte » ci-dessus) ;
+3. ~~les démarches **avec compte**~~ — **livrées aux lots L1 et L3** (voir « Le compte
+   usager »), dont « Mon compte » où l'usager modifie ses consentements RGPD ;
+4. ~~la **création de compte**~~ — **livrée au lot L3a** ;
+5. ~~les **échanges** usager ↔ agent sur une demande~~ — **livrés au lot L4a/L4b** (voir
+   « Échanges en ligne ») ; reste L4c, les **notifications à l'usager** (désactivables) ;
 6. ~~les **pièces jointes**~~ — **livrées le 2026-09-08** (dépôt dès la sélection, formats et
    taille vérifiés par Iris, voir « Les pièces justificatives se déposent » ci-dessus) ;
-7. **FranceConnect** — à instruire (habilitation, périmètre).
+7. **FranceConnect** — lot L5 ; l'habilitation DataPass n'est **pas lancée** (délai
+   administratif) ;
+8. **documents et brouillons** — lot L6 ;
+9. **RGPD** — lot L7.
+
+Le détail de chaque lot est dans `C:\Users\jacqu\Notch\Sceaux\02-espace-usager.md`, l'état
+dans `03-avancement.md`.
 
 Transverse : accessibilité RGAA — la **déclaration** est désormais affichée au
 pied de toutes les pages quand la collectivité l'a écrite. Un **relevé du
