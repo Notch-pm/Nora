@@ -33,6 +33,11 @@ describe("signCitizenToken", () => {
     expect(payload).not.toHaveProperty("e");
   });
 
+  it("jeton d'invité : porte la version de l'accès (`g`, Iris 2.8.0) quand la session la connaît", async () => {
+    expect(payloadOf(await signCitizenToken(SECRET, TENANT, { kind: "request", id: REQUEST, version: 3 }, NOW)).g).toBe(3);
+    expect(payloadOf(await signCitizenToken(SECRET, TENANT, { kind: "request", id: REQUEST, version: null }, NOW))).not.toHaveProperty("g");
+  });
+
   it("signature HMAC-SHA256 : deux secrets, deux signatures ; une charge altérée ne garde pas la sienne", async () => {
     const a = await signCitizenToken(SECRET, TENANT, { kind: "request", id: REQUEST }, NOW);
     const b = await signCitizenToken("j".repeat(48), TENANT, { kind: "request", id: REQUEST }, NOW);

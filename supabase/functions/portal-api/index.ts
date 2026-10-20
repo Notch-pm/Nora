@@ -70,7 +70,7 @@ import {
   traceOf,
 } from "../_shared/session/sessionService.ts";
 import { sessionPolicyFromEnv } from "../_shared/session/sessionPolicy.ts";
-import { pieceUrl, readDemande, verifyAccess } from "../_shared/iris/suiviService.ts";
+import { pieceUrl, readDemande, resendAccess, verifyAccess } from "../_shared/iris/suiviService.ts";
 import {
   ACCOUNT_MESSAGES,
   type AccountFailure,
@@ -104,6 +104,7 @@ import { listMesDemandes } from "../_shared/iris/mesDemandesService.ts";
 import {
   httpStatusForSuiviFailure,
   parseSuiviAccess,
+  parseSuiviRenvoi,
   SUIVI_MESSAGES,
   type SuiviFailure,
 } from "../_shared/domain/suivi.ts";
@@ -661,6 +662,8 @@ async function accountSession(
 
 /** Essais d'accès par visiteur : Iris verrouille aussi la demande après 5 échecs. */
 const suiviLimiter = createRateLimiter({ windowMs: 10 * 60_000, max: 10 });
+/** « Code perdu » par visiteur : Iris limite aussi à 3 renvois par demande et par 24 h. */
+const renvoiLimiter = createRateLimiter({ windowMs: 60 * 60_000, max: 5 });
 
 const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -706,7 +709,8 @@ async function guestDemande(
   request: Request,
   socle: ReturnType<typeof socleClient>,
 ): Promise<
-  { ok: true; requestId: string; tenantId: string; iris: ReturnType<typeof createIrisClient> } | { ok: false; response: Response }
+  | { ok: true; requestId: string; version: number | null; tenantId: string; iris: ReturnType<typeof createIrisClient> }
+  | { ok: false; response: Response }
 > {
   const resolved = await tenantOf(request, socle);
   if (!resolved.ok) return resolved;
@@ -723,7 +727,13 @@ async function guestDemande(
   if (session.record.kind !== "guest" || session.record.guestRequestId === null) {
     return { ok: false, response: sessionFailure("session_required") };
   }
-  return { ok: true, requestId: session.record.guestRequestId, tenantId: resolved.tenant.id, iris };
+  return {
+    ok: true,
+    requestId: session.record.guestRequestId,
+    version: session.record.guestAccessVersion ?? null,
+    tenantId: resolved.tenant.id,
+    iris,
+  };
 }
 
 /**
@@ -2079,7 +2089,8 @@ Deno.serve(async (incoming: Request): Promise<Response> => {
       {
         kind: "guest",
         accountId: null,
-        guestRequestId: verified.value,
+        guestRequestId: verified.value.requestId,
+        guestAccessVersion: verified.value.version,
         amr: ["code"],
         remember: false,
         durations: sessionPolicy().guest,
@@ -2094,11 +2105,38 @@ Deno.serve(async (incoming: Request): Promise<Response> => {
     );
   }
 
+  // ── POST /v1/suivi/renvoi — « code perdu » : un code NEUF part à l'adresse
+  // déclarée au dépôt, si tout concorde (lot L4a). La réponse est la même dans
+  // tous les cas : elle ne dit ni si la demande existe, ni si l'adresse est la
+  // bonne, ni si la limite de renvois est atteinte.
+  if (request.method === "POST" && path === "/v1/suivi/renvoi") {
+    const proxy = proxyOf(request);
+    if (!checkMutation(request.headers, proxy).ok) return sessionFailure("csrf_rejected");
+    if (!renvoiLimiter.allow(await hashKey(addressBucket(visitor(request))))) {
+      return suiviFailure("suivi_too_many_attempts");
+    }
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return suiviFailure("bad_request");
+    }
+    const renvoi = parseSuiviRenvoi(body);
+    if (renvoi === null) return suiviFailure("bad_request");
+    const resolved = await tenantOf(request, socle);
+    if (!resolved.ok) return resolved.response;
+    const iris = irisFor(resolved.tenant.id);
+    if (iris === null) return suiviFailure("not_configured");
+    const sent = await resendAccess(renvoi, iris);
+    if (!sent.ok && sent.reason !== "suivi_refused") return suiviFailure(sent.reason);
+    return json(202, { accepted: true }, { "Cache-Control": "no-store" });
+  }
+
   // ── GET /v1/suivi/demande — la demande que tient la session invitée.
   if (request.method === "GET" && path === "/v1/suivi/demande") {
     const guest = await guestDemande(request, socle);
     if (!guest.ok) return guest.response;
-    const headers = (await citizenHeaders(guest.tenantId, { kind: "request", id: guest.requestId })) ?? {};
+    const headers = (await citizenHeaders(guest.tenantId, { kind: "request", id: guest.requestId, version: guest.version })) ?? {};
     const demande = await readDemande(guest.requestId, guest.iris, headers);
     if (!demande.ok) return suiviFailure(demande.reason);
     // `private` et `no-store` : une vue personnelle ne se met en cache nulle part.
@@ -2110,7 +2148,7 @@ Deno.serve(async (incoming: Request): Promise<Response> => {
   if (request.method === "GET" && suiviPiece) {
     const guest = await guestDemande(request, socle);
     if (!guest.ok) return guest.response;
-    const headers = (await citizenHeaders(guest.tenantId, { kind: "request", id: guest.requestId })) ?? {};
+    const headers = (await citizenHeaders(guest.tenantId, { kind: "request", id: guest.requestId, version: guest.version })) ?? {};
     const url = await pieceUrl(guest.requestId, suiviPiece[1], guest.iris, headers);
     if (!url.ok) return suiviFailure(url.reason);
     return new Response(null, {
@@ -2124,7 +2162,7 @@ Deno.serve(async (incoming: Request): Promise<Response> => {
     || path === "/v1/audience" || path.startsWith("/v1/demarches/")
     || path === "/v1/courrier" || path === "/v1/courriers"
     || path === "/v1/session" || path === "/v1/session/fin"
-    || path === "/v1/suivi" || path === "/v1/suivi/demande" || suiviPiece !== null
+    || path === "/v1/suivi" || path === "/v1/suivi/renvoi" || path === "/v1/suivi/demande" || suiviPiece !== null
     || path === "/v1/compte" || ACCOUNT_POST_PATHS.has(path)
     || path === "/v1/compte/profil" || mesDemandesMatch !== null || path === "/v1/compte/consentements"
   ) {

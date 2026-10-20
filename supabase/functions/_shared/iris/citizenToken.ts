@@ -23,7 +23,10 @@ function toBase64Url(bytes: Uint8Array): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-export type CitizenTokenSubject = { kind: "request"; id: string } | { kind: "contact"; id: string; email: string };
+export type CitizenTokenSubject =
+  // `version` : celle de l'accès invité à l'ouverture de la session (`g`, Iris 2.8.0).
+  | { kind: "request"; id: string; version?: number | null }
+  | { kind: "contact"; id: string; email: string };
 
 export async function signCitizenToken(
   secret: string,
@@ -38,6 +41,7 @@ export async function signCitizenToken(
     exp: nowSeconds + TOKEN_SECONDS,
   };
   if (subject.kind === "contact") payload.e = subject.email;
+  if (subject.kind === "request" && typeof subject.version === "number") payload.g = subject.version;
   const body = toBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
     "sign",

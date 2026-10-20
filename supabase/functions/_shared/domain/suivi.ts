@@ -129,6 +129,16 @@ export function parseSuiviAccess(body: unknown): SuiviAccess | null {
   return { reference, email, code };
 }
 
+/** « Code perdu » (lot L4a) : la référence et l'adresse déclarée au dépôt, bornées. */
+export function parseSuiviRenvoi(body: unknown): { reference: string; email: string } | null {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
+  const record = body as Record<string, unknown>;
+  const reference = text(record.reference, 40);
+  const email = text(record.email, 320);
+  if (reference === null || email === null || !email.includes("@")) return null;
+  return { reference, email };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

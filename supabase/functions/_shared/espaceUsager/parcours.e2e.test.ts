@@ -237,6 +237,66 @@ describe("profil, dépôt connecté et « Mes demandes »", () => {
   });
 });
 
+describe("accès invité : coupure, nouveau code, code perdu (L4a)", () => {
+  async function guestSession() {
+    const reply = await world.browser().send("/v1/demandes", { json: depot({ guestAccess: true }) });
+    const reference = reply.body.receipt.reference as string;
+    const visitor = world.browser(SCEAUX, "198.51.100.61");
+    const opened = await visitor.send("/v1/suivi", { json: { reference, email: "visiteur@example.org", code: "ABCD-EFGH-JK" } });
+    expect(opened.status).toBe(200);
+    const request = [...world.iris.requests.values()].find((r) => r.reference === reference)!;
+    return { visitor, reference, request };
+  }
+
+  it("le jeton de la session invitée porte la version de l'accès rendue par Iris", async () => {
+    const { visitor } = await guestSession();
+    expect((await visitor.send("/v1/suivi/demande")).status).toBe(200);
+    const token = world.iris.tokensSeen.at(-1)!;
+    expect(JSON.parse(atob(token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/"))).g).toBe(1);
+  });
+
+  it("coupure par un agent : la session DÉJÀ ouverte ne lit plus rien, et le code ne rouvre rien", async () => {
+    const { visitor, reference, request } = await guestSession();
+    world.iris.revoke(request);
+    expect((await visitor.send("/v1/suivi/demande")).status).not.toBe(200);
+    const again = world.browser(SCEAUX, "198.51.100.62");
+    expect((await again.send("/v1/suivi", { json: { reference, email: "visiteur@example.org", code: "ABCD-EFGH-JK" } })).status).toBe(404);
+  });
+
+  it("nouveau code : l'ancienne session est fermée, le nouveau code en ouvre une qui lit", async () => {
+    const { visitor, reference, request } = await guestSession();
+    world.iris.reissue(request, "ZZZZ-YYYY-XX");
+    expect((await visitor.send("/v1/suivi/demande")).status).not.toBe(200);
+    const fresh = world.browser(SCEAUX, "198.51.100.63");
+    expect((await fresh.send("/v1/suivi", { json: { reference, email: "visiteur@example.org", code: "ABCD-EFGH-JK" } })).status).toBe(404);
+    expect((await fresh.send("/v1/suivi", { json: { reference, email: "visiteur@example.org", code: "ZZZZ-YYYY-XX" } })).status).toBe(200);
+    expect((await fresh.send("/v1/suivi/demande")).status).toBe(200);
+  });
+
+  it("code perdu : 202 que la demande existe ou non ; seuls la référence et l'adresse partent chez Iris", async () => {
+    const browser = world.browser(SCEAUX, "198.51.100.64");
+    const known = await browser.send("/v1/suivi/renvoi", { json: { reference: "DEM-2026-000001", email: "visiteur@example.org" } });
+    const unknown = await browser.send("/v1/suivi/renvoi", { json: { reference: "DEM-1999-999999", email: "personne@example.org", extra: "x" } });
+    expect([known.status, unknown.status]).toEqual([202, 202]);
+    expect(known.body).toEqual(unknown.body);
+    expect(world.iris.resends).toEqual([
+      { reference: "DEM-2026-000001", email: "visiteur@example.org" },
+      { reference: "DEM-1999-999999", email: "personne@example.org" },
+    ]);
+  });
+
+  it("code perdu : saisie illisible refusée sans appeler Iris ; 5 demandes par visiteur et par heure, saisies illisibles comprises", async () => {
+    const browser = world.browser(SCEAUX, "198.51.100.65");
+    expect((await browser.send("/v1/suivi/renvoi", { json: { reference: "DEM-2026-000001", email: "sans-arobase" } })).status).toBe(400);
+    expect(world.iris.resends).toHaveLength(0);
+    const statuses = [];
+    for (let i = 0; i < 6; i++) {
+      statuses.push((await browser.send("/v1/suivi/renvoi", { json: { reference: "DEM-2026-000001", email: "v@example.org" } })).status);
+    }
+    expect(statuses).toEqual([202, 202, 202, 202, 429, 429]);
+  });
+});
+
 describe("démarche réservée (account_required)", () => {
   it("refusée sans compte, sans profil, et en session invitée ; acceptée connecté avec profil", async () => {
     const anon = await world.browser().send("/v1/demandes", { json: depot({}, PROC_RESERVEE.id) });

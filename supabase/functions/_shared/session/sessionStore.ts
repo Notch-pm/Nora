@@ -15,6 +15,8 @@ export interface SessionRecord {
   kind: "account" | "guest";
   accountId: string | null;
   guestRequestId: string | null;
+  /** Session invitée : version de l'accès d'Iris à l'ouverture (contrat 2.8.0, lot L4a) ; `null` avant. */
+  guestAccessVersion?: number | null;
   amr: string[];
   remember: boolean;
   /** Fin de vie absolue (ISO 8601). */
@@ -28,6 +30,8 @@ export interface OpenSessionInput {
   kind: "account" | "guest";
   accountId: string | null;
   guestRequestId: string | null;
+  /** Session invitée : version de l'accès d'Iris à l'ouverture (contrat 2.8.0, lot L4a) ; `null` avant. */
+  guestAccessVersion?: number | null;
   tenantId: string;
   amr: string[];
   remember: boolean;
@@ -82,6 +86,7 @@ export function parseSessionRow(row: unknown): SessionRecord | null {
     kind,
     accountId,
     guestRequestId,
+    guestAccessVersion: Number.isInteger(row.guest_access_version) ? (row.guest_access_version as number) : null,
     amr: Array.isArray(row.amr) ? row.amr.filter((v): v is string => typeof v === "string") : [],
     remember: row.remember === true,
     expiresAt: row.expires_at,
@@ -137,6 +142,7 @@ export function createSessionStore(config: SessionStoreConfig): SessionStore {
         p_lifetime_seconds: input.lifetimeSeconds,
         p_ip: trace.ip,
         p_user_agent: trace.userAgent,
+        p_guest_access_version: input.guestAccessVersion ?? null,
       });
       if (!result.ok || typeof result.value !== "string") return { ok: false };
       return { ok: true, value: result.value };

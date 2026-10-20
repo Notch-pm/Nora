@@ -21,6 +21,7 @@ describe("parseSessionRow", () => {
       kind: "account",
       accountId: ROW.account_id,
       guestRequestId: null,
+      guestAccessVersion: null,
       amr: ["pwd"],
       remember: false,
       expiresAt: ROW.expires_at,

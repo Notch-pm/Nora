@@ -39,11 +39,12 @@ const open = (idHash: string, accountId: string, tenant = T1, remember = false, 
   q("select public.citizen_session_open($1,'account',$2,null,$3,'{pwd}',$4,$5,$6,'203.0.113.9','FF')", [idHash, accountId, tenant, remember, idle, life]);
 
 describe("les migrations", () => {
-  it("sont trois, dans l'ordre, et se rejouent sur une base vierge sans erreur", () => {
+  it("sont quatre, dans l'ordre, et se rejouent sur une base vierge sans erreur", () => {
     expect(espaceUsagerMigrations()).toEqual([
       "20261019120000_espace_usager_sessions.sql",
       "20261020090000_espace_usager_comptes.sql",
       "20261020160000_espace_usager_fiche.sql",
+      "20261021090000_espace_usager_session_invitee_version.sql",
     ]);
   });
 });

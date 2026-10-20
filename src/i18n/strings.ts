@@ -4041,6 +4041,26 @@ export const STRINGS = {
     fr: "Suivre une demande",
     en: "Follow a request",
   },
+  "suivi.lost.title": {
+    fr: "Code d'accès perdu ?",
+    en: "Lost your access code?",
+  },
+  "suivi.lost.intro": {
+    fr: "Saisissez la référence de votre demande et l'adresse de courriel indiquée lors du dépôt : un nouveau code vous sera envoyé à cette adresse. Il remplacera l'ancien.",
+    en: "Enter your request reference and the email address you gave when submitting it: a new code will be sent to that address. It will replace the old one.",
+  },
+  "suivi.lost.submit": {
+    fr: "Recevoir un nouveau code",
+    en: "Get a new code",
+  },
+  "suivi.lost.submitting": {
+    fr: "Envoi…",
+    en: "Sending…",
+  },
+  "suivi.lost.sent": {
+    fr: "Si ces informations correspondent à une demande suivie en ligne, un nouveau code vient d'être envoyé à l'adresse indiquée lors du dépôt. Il peut mettre quelques minutes à arriver ; pensez à vérifier vos courriers indésirables.",
+    en: "If these details match a request followed online, a new code has just been sent to the address given when it was submitted. It may take a few minutes to arrive; check your spam folder.",
+  },
   "suivi.title": {
     fr: "Suivre ma demande",
     en: "Follow my request",
@@ -4994,6 +5014,11 @@ export const PENDING_TRANSLATION_KEYS: readonly StringKey[] = [
   "receipt.follow",
   "compte.follow",
   "suivi.title",
+  "suivi.lost.title",
+  "suivi.lost.intro",
+  "suivi.lost.submit",
+  "suivi.lost.submitting",
+  "suivi.lost.sent",
   "suivi.intro",
   "suivi.reference",
   "suivi.email",

@@ -134,8 +134,9 @@ export function createIrisClient(config: IrisClientConfig): IrisClient {
     }
 
     // 200 = la demande existait déjà (rejeu), 201 = elle vient d'être créée.
-    // Les deux sont des succès : l'usager doit voir le même accusé.
-    if (response.status === 200 || response.status === 201) {
+    // Les deux sont des succès : l'usager doit voir le même accusé. 202 = prise
+    // en compte sans résultat à dire (« code perdu », Iris 2.8.0).
+    if (response.status === 200 || response.status === 201 || response.status === 202) {
       return parsed === null ? { kind: "unexpected" } : { kind: "ok", body: parsed };
     }
     if (response.status === 404) return { kind: "not_found" };

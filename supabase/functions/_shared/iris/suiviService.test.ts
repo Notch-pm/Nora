@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { IrisClient, IrisReply } from "./irisClient.ts";
-import { pieceUrl, readDemande, verifyAccess } from "./suiviService.ts";
+import { pieceUrl, readDemande, resendAccess, verifyAccess } from "./suiviService.ts";
 import { parseSuiviAccess, suiviStatusOf, toSuiviDemande } from "../domain/suivi.ts";
 
 const REQUEST_ID = "11111111-1111-4111-8111-111111111111";
@@ -44,9 +44,14 @@ const VIEW = {
 describe("verifyAccess", () => {
   const access = { reference: "DEM-2026-000042", email: "a@b.fr", code: "ABCD-EFGH-JK" };
 
-  it("rend l'identifiant de la demande", async () => {
-    const iris = fakeIris({ kind: "ok", body: { request_id: REQUEST_ID } });
-    expect(await verifyAccess(access, iris.client)).toEqual({ ok: true, value: REQUEST_ID });
+  it("rend l'identifiant de la demande, et la version de l'accès (Iris 2.8.0)", async () => {
+    const iris = fakeIris({ kind: "ok", body: { request_id: REQUEST_ID, access_version: 3 } });
+    expect(await verifyAccess(access, iris.client)).toEqual({ ok: true, value: { requestId: REQUEST_ID, version: 3 } });
+    // Une Iris d'avant 2.8.0, ou une version illisible : pas de version, la session s'ouvre quand même.
+    for (const access_version of [undefined, 0, "3", 1.5]) {
+      expect(await verifyAccess(access, fakeIris({ kind: "ok", body: { request_id: REQUEST_ID, access_version } }).client))
+        .toEqual({ ok: true, value: { requestId: REQUEST_ID, version: null } });
+    }
     expect(iris.calls[0]).toEqual({ method: "POST", path: "/v1/citizen/access", body: access });
   });
 
@@ -119,5 +124,20 @@ describe("domaine du suivi", () => {
 
   it("refuse une vue sans référence", () => {
     expect(toSuiviDemande({ request: { status: "a_traiter" } })).toBeNull();
+  });
+});
+
+describe("resendAccess (code perdu, Iris 2.8.0)", () => {
+  const input = { reference: "DEM-2026-000001", email: "camille@example.org" };
+
+  it("transmet la référence et l'adresse, rien d'autre", async () => {
+    const iris = fakeIris({ kind: "ok", body: null });
+    expect(await resendAccess(input, iris.client)).toEqual({ ok: true });
+    expect(iris.calls[0]).toEqual({ method: "POST", path: "/v1/citizen/access/resend", body: input });
+  });
+
+  it("une panne d'Iris n'est pas un refus", async () => {
+    expect(await resendAccess(input, fakeIris({ kind: "unreachable" }).client)).toEqual({ ok: false, reason: "suivi_unavailable" });
+    expect(await resendAccess(input, fakeIris({ kind: "not_found" }).client)).toEqual({ ok: false, reason: "suivi_refused" });
   });
 });

@@ -99,6 +99,8 @@ export interface OpenSessionRequest {
   kind: "account" | "guest";
   accountId: string | null;
   guestRequestId: string | null;
+  /** Session invitée : version de l'accès d'Iris à l'ouverture (contrat 2.8.0, lot L4a) ; `null` avant. */
+  guestAccessVersion?: number | null;
   amr: string[];
   remember: boolean;
   durations: SessionDurations;
@@ -123,6 +125,7 @@ export async function openSession(
       kind: request.kind,
       accountId: request.accountId,
       guestRequestId: request.guestRequestId,
+      guestAccessVersion: request.guestAccessVersion ?? null,
       tenantId: context.tenantId,
       amr: request.amr,
       remember: request.remember,

@@ -24,6 +24,7 @@ import { localizedPath, servedLanguage, splitScopedPath } from "@/i18n/localized
 import { errorPageTitle, suiviTitle } from "@/i18n/pageTitle.ts";
 import { useDocumentTitle } from "@/i18n/useDocumentTitle.ts";
 import { suiviFailureKey, suiviFailureRetryable } from "./failureMessage.ts";
+import { CodePerdu } from "./CodePerdu.tsx";
 import { SuiviForm } from "./SuiviForm.tsx";
 import { SuiviView } from "./SuiviView.tsx";
 import { useSuivi } from "./useSuivi.ts";
@@ -138,6 +139,7 @@ export function SuiviPage() {
           <h1 className={TITLE}>{t("suivi.title")}</h1>
           <p className="mt-3 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">{t("suivi.intro")}</p>
           <SuiviForm expired={state.expired} onSubmit={open} onErrorCount={setFormErrors} />
+          <CodePerdu />
         </>
       )}
 

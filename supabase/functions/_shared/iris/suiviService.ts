@@ -36,7 +36,13 @@ function failureOf(reply: Exclude<IrisReply, { kind: "ok" }>): SuiviFailure {
   }
 }
 
-export async function verifyAccess(access: SuiviAccess, iris: IrisClient): Promise<SuiviResult<string>> {
+/** La demande ouverte, et la version de son accès (Iris 2.8.0 ; `null` d'une Iris d'avant). */
+export interface VerifiedAccess {
+  requestId: string;
+  version: number | null;
+}
+
+export async function verifyAccess(access: SuiviAccess, iris: IrisClient): Promise<SuiviResult<VerifiedAccess>> {
   const reply = await iris.post("/v1/citizen/access", access);
   if (reply.kind !== "ok") return { ok: false, reason: failureOf(reply) };
   const body = reply.body as Record<string, unknown> | null;
@@ -45,7 +51,23 @@ export async function verifyAccess(access: SuiviAccess, iris: IrisClient): Promi
     console.error("portal-api : réponse d'accès invité sans identifiant de demande.");
     return { ok: false, reason: "suivi_unavailable" };
   }
-  return { ok: true, value: id };
+  const version = Number.isInteger(body?.access_version) && (body!.access_version as number) >= 1
+    ? body!.access_version as number
+    : null;
+  return { ok: true, value: { requestId: id, version } };
+}
+
+/**
+ * « Code perdu » (Iris 2.8.0) : Iris tire un code neuf et l'envoie à l'adresse
+ * déclarée, si tout concorde. Sa réponse ne dit rien de l'issue ; celle du
+ * portail non plus.
+ */
+export async function resendAccess(
+  input: { reference: string; email: string },
+  iris: IrisClient,
+): Promise<{ ok: true } | { ok: false; reason: SuiviFailure }> {
+  const reply = await iris.post("/v1/citizen/access/resend", input);
+  return reply.kind === "ok" ? { ok: true } : { ok: false, reason: failureOf(reply) };
 }
 
 /**

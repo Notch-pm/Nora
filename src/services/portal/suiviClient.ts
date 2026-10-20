@@ -56,6 +56,26 @@ export function readFailure(body: unknown): SuiviClientFailure {
 export type SuiviOpen = { ok: true } | { ok: false; reason: SuiviClientFailure };
 
 /**
+ * « Code perdu » (L4a) : référence + courriel déclaré. Le serveur répond de la
+ * même façon que tout concorde ou non : `ok` veut dire « la demande est
+ * partie », pas « un code est parti ».
+ */
+export async function resendSuiviCode(input: { reference: string; email: string }): Promise<SuiviOpen> {
+  let response: Response;
+  try {
+    response = await fetch(SUIVI_API_BASE + "/v1/suivi/renvoi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...REQUEST_HEADER },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    return { ok: false, reason: "network" };
+  }
+  if (response.ok) return { ok: true };
+  return { ok: false, reason: readFailure(await response.json().catch(() => null)) };
+}
+
+/**
  * Ouvre l'accès : référence + courriel + code. Le serveur pose le cookie ; la
  * réponse n'est lue que pour savoir si c'est ouvert.
  */

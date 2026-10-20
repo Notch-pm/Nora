@@ -365,6 +365,9 @@ export interface IrisRequest {
   declaredEmail: string | null;
   codeHash: string | null;
   failures: number;
+  /** Version de l'accès (Iris 2.8.0) : +1 à chaque nouveau code ou coupure. */
+  accessVersion: number;
+  revoked: boolean;
   emails: { id: string; to: string; subject: string; body: string; sentAt: string }[];
   attachments: { id: string; fileName: string; kind: "demande" | "instruction_interne" }[];
 }
@@ -382,6 +385,20 @@ export class FakeIris {
   uploads: { name: string; size: number }[] = [];
   /** Jetons reçus sur les lectures `/v1/citizen/*`. */
   tokensSeen: (string | null)[] = [];
+  /** « Code perdu » reçus (Iris 2.8.0). */
+  resends: { reference: string; email: string }[] = [];
+
+  /** Ce que fait l'agent dans Iris : couper l'accès, ou envoyer un nouveau code (lot L4a). */
+  revoke(r: IrisRequest): void {
+    r.revoked = true;
+    r.accessVersion += 1;
+  }
+  reissue(r: IrisRequest, code: string): void {
+    r.codeHash = code;
+    r.revoked = false;
+    r.failures = 0;
+    r.accessVersion += 1;
+  }
 
   addRequest(partial: Partial<IrisRequest> & Pick<IrisRequest, "tenantId">): IrisRequest {
     this.counter += 1;
@@ -404,6 +421,8 @@ export class FakeIris {
       declaredEmail: null,
       codeHash: null,
       failures: 0,
+      accessVersion: 1,
+      revoked: false,
       emails: [],
       attachments: [],
       ...partial,
@@ -421,7 +440,10 @@ export class FakeIris {
   }
 
   /** Équivalent de `verifyCitizenToken` d'Iris : signature, tenant, expiration, durée maximale de 3 minutes. */
-  private async subject(token: string | null, tenantId: string): Promise<{ kind: "request" | "contact"; id: string; email: string | null } | null> {
+  private async subject(
+    token: string | null,
+    tenantId: string,
+  ): Promise<{ kind: "request" | "contact"; id: string; email: string | null; version: number | null } | null> {
     if (this.tokenSecret === null || !token) return null;
     const [body, mac] = token.split(".");
     if (!body || !mac || (await this.hmac(body)) !== mac) return null;
@@ -436,7 +458,12 @@ export class FakeIris {
     if (payload.exp <= now || payload.exp > now + 180) return null;
     const [kind, id] = String(payload.sub).split(":");
     if (kind !== "request" && kind !== "contact") return null;
-    return { kind, id, email: typeof payload.e === "string" ? payload.e.toLowerCase() : null };
+    return {
+      kind,
+      id,
+      email: typeof payload.e === "string" ? payload.e.toLowerCase() : null,
+      version: Number.isInteger(payload.g) ? (payload.g as number) : null,
+    };
   }
 
   async handle(method: string, url: URL, headers: Record<string, string>, body: unknown, tenantIdOf: (root: string) => boolean): Promise<Response> {
@@ -477,12 +504,18 @@ export class FakeIris {
       if (!r || r.codeHash === null || (r.declaredEmail ?? "").toLowerCase() !== String(email).toLowerCase()) {
         return json(404, { error: { code: "not_found" } });
       }
-      if (r.failures >= 5) return json(404, { error: { code: "not_found" } });
+      if (r.failures >= 5 || r.revoked) return json(404, { error: { code: "not_found" } });
       if (code !== r.codeHash) {
         r.failures += 1;
         return json(404, { error: { code: "not_found" } });
       }
-      return json(200, { request_id: r.id });
+      return json(200, { request_id: r.id, access_version: r.accessVersion });
+    }
+
+    if (method === "POST" && path === "/v1/citizen/access/resend") {
+      const { reference, email } = body as Record<string, string>;
+      this.resends.push({ reference, email });
+      return json(202, { accepted: true });
     }
 
     const one = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})$/i);
@@ -506,7 +539,10 @@ export class FakeIris {
       if (!r || r.tenantId !== tenantId) return json(404, { error: { code: "not_found" } });
       let own = false;
       if (subject?.kind === "contact") own = r.contactId === subject.id && r.citizenVisible;
-      else if (subject?.kind === "request") own = subject.id === r.id && r.source === "portail-citoyen" && r.codeHash !== null;
+      else if (subject?.kind === "request") {
+        own = subject.id === r.id && r.source === "portail-citoyen" && r.codeHash !== null && !r.revoked
+          && (subject.version === null || subject.version === r.accessVersion);
+      }
       if (!own) return json(404, { error: { code: "not_found" } });
       if (file) {
         const a = r.attachments.find((x) => x.id === file[2]);
