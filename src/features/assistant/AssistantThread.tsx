@@ -709,6 +709,7 @@ export function AssistantThread({
                 submitFailureMessage={
                   collect.submitFailure !== null ? errorMessageFor(collect.submitFailure, lang) : null
                 }
+                needsAccount={collect.submitFailure === "account_required"}
                 onModifyField={collect.reopenField}
                 onModifyOrganization={collect.reopenOrganization}
                 onModifyIdentity={collect.reopenIdentity}

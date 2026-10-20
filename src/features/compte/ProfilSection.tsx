@@ -45,7 +45,16 @@ type State =
   | { status: "ready"; profil: Profil | null }
   | { status: "error"; reason: ProfilClientFailure };
 
-export function ProfilSection({ tenantName, onSessionLost }: { tenantName: string; onSessionLost: () => void }) {
+export function ProfilSection({
+  tenantName,
+  onSessionLost,
+  onProfil,
+}: {
+  tenantName: string;
+  onSessionLost: () => void;
+  /** Le profil connu (rempli ou `null`), à chaque lecture et à chaque enregistrement — pour les sections qui en dépendent. */
+  onProfil?: (profil: Profil | null) => void;
+}) {
   const t = useT();
   const [state, setState] = useState<State>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -66,6 +75,10 @@ export function ProfilSection({ tenantName, onSessionLost }: { tenantName: strin
       current = false;
     };
   }, [attempt, onSessionLost]);
+
+  useEffect(() => {
+    if (state.status === "ready") onProfil?.(state.profil);
+  }, [state, onProfil]);
 
   // Fermer le formulaire des coordonnées : le focus revient au bouton qui l'a ouvert.
   useEffect(() => {

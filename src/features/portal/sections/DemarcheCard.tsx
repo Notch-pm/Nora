@@ -12,8 +12,10 @@
 import { Link } from "react-router-dom";
 import { useLanguage, useT, useTn } from "@/i18n/LanguageLayout.tsx";
 import { localizedPath } from "@/i18n/localizedPath.ts";
+import { useSessionKind } from "@/features/compte/sessionKind.ts";
 import { organizationChips } from "../composition.ts";
 import { CategoryIcon } from "../CategoryIcon.tsx";
+import { TooltipBubble, useTooltip } from "../Tooltip.tsx";
 
 import type { Demarche } from "@fn/_shared/domain/demarche.ts";
 
@@ -36,8 +38,16 @@ export function DemarcheCard({
   const t = useT();
   const tn = useTn();
   const chips = organizationChips(demarche.organizations);
+  // Une démarche réservée aux connectés reste au catalogue, avec un verrou : le
+  // visiteur sans compte connecté apprend ici ce qu'elle demande. Le droit de
+  // la déposer se décide au serveur (`account_required`).
+  const session = useSessionKind();
+  const locked = demarche.accessMode === "authentifie" && session !== "account";
+  const tip = useTooltip();
   return (
-    <li className="relative flex flex-col gap-2 rounded-[var(--pt-radius)] border border-[color:var(--pt-border)] bg-white p-[var(--pt-card-pad)] shadow-[var(--pt-shadow)] transition hover:shadow-md">
+    <li
+      {...(locked ? tip.zoneProps : {})}
+      className="relative flex flex-col gap-2 rounded-[var(--pt-radius)] border border-[color:var(--pt-border)] bg-white p-[var(--pt-card-pad)] shadow-[var(--pt-shadow)] transition hover:shadow-md">
       <div className="flex items-start justify-between gap-2">
         <span
           className="flex size-10 shrink-0 items-center justify-center rounded-[var(--pt-radius-sm)] text-[color:var(--pt-primary)]"
@@ -45,6 +55,27 @@ export function DemarcheCard({
         >
           <CategoryIcon icon={demarche.category?.icon ?? null} />
         </span>
+        {locked && (
+          // Décoratif : la phrase, elle, est lue par le lien (aria-describedby)
+          // et affichée au survol et au focus.
+          <span className="ms-auto flex items-center text-[color:var(--pt-muted)]">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <rect x="4" y="11" width="16" height="10" rx="2" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+          </span>
+        )}
         {pinned && (
           <span className="flex items-center gap-1 whitespace-nowrap rounded-full bg-[color:var(--pt-accent)] px-2 py-0.5 text-[length:var(--pt-tiny)] font-extrabold text-[color:var(--pt-accent-ink)]">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -62,6 +93,7 @@ export function DemarcheCard({
       <h3 className="text-[length:var(--pt-body)] font-bold leading-tight text-[color:var(--pt-ink)]">
         <Link
           to={localizedPath(lang, basePath + "/" + encodeURIComponent(demarche.id))}
+          aria-describedby={locked ? tip.id : undefined}
           className="after:absolute after:inset-0 hover:underline focus-visible:underline"
         >
           {demarche.name}
@@ -132,6 +164,11 @@ export function DemarcheCard({
           </svg>
         </span>
       </div>
+      {locked && (
+        <TooltipBubble tip={tip} className="bottom-full end-3 mb-1">
+          {t("card.reserved.tip")}
+        </TooltipBubble>
+      )}
     </li>
   );
 }

@@ -35,6 +35,9 @@ import { MAX_ORGANIZATION_CHIPS } from "@/features/portal/composition.ts";
 import { errorMessageFor } from "@/features/portal/errorMessages.ts";
 import { Markdown } from "@/features/portal/Markdown.tsx";
 import { AUDIENCE_KEY } from "@/features/portal/sections/AudienceFilter.tsx";
+import { useConnectedProfil } from "@/features/compte/useConnectedProfil.ts";
+import { AccessNotice } from "./AccessNotice.tsx";
+import { accessGate } from "./accessGate.ts";
 import { DemarcheError, DemarcheLoading, DemarcheShell } from "./DemarcheShell.tsx";
 import { piecesPresentation } from "./pieces.ts";
 import { responseDelayText } from "./responseDelay.ts";
@@ -301,6 +304,9 @@ export function DemarchePage() {
   const tn = useTn();
   const { state, retry } = useDemarche(demarcheId, lang, organisme);
   const essentialsId = useId();
+  // Démarche réservée aux connectés : la garde d'affichage (le serveur reste juge).
+  const reserved = state.status === "ready" && state.snapshot.demarche.accessMode === "authentifie";
+  const connected = useConnectedProfil(reserved);
 
   // Le serveur a tranché la langue : l'adresse s'y aligne (voir `PortalPage`).
   // ⚠️ ON N'ALIGNE L'ADRESSE QUE SUR UNE RÉPONSE À JOUR. Un état « prêt » qui
@@ -347,6 +353,7 @@ export function DemarchePage() {
       ? null
       : ([...demarche.organizations, ...villes].find((org) => org.slug?.toLowerCase() === wanted)?.name ?? null);
 
+  const gate = accessGate({ accessMode: demarche.accessMode, session: connected.session, profil: connected.status });
   const formPath = organismePath(
     lang,
     organisme,
@@ -413,8 +420,15 @@ export function DemarchePage() {
               <p className="rounded-[var(--pt-radius-sm)] border border-dashed border-[color:var(--pt-field-border)] px-4 py-4 text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
                 {t("demarche.notOnline")}
               </p>
-            ) : (
+            ) : gate === "open" ? (
               <StartLink to={formPath} block />
+            ) : gate === "pending" ? (
+              <p role="status" className={NOTE_CLASS}>
+                {t("page.loading")}
+              </p>
+            ) : (
+              // Réservée : l'encart remplace le bouton de dépôt.
+              <AccessNotice gate={gate} block />
             )}
 
             {/* Ouvre la BULLE avec cette démarche en contexte — sans quitter
@@ -559,7 +573,7 @@ export function DemarchePage() {
             {/* Le second bouton, pour qui a tout lu : sans lui, il faudrait
                 remonter le chercher. Absent quand la page n'a rien d'autre
                 à lire — il doublerait celui de l'essentiel, juste au-dessus. */}
-            {demarche.form !== null && (
+            {demarche.form !== null && gate === "open" && (
               <section
                 className="flex flex-wrap items-center justify-between gap-4 rounded-[var(--pt-radius)] border p-[var(--pt-pad)]"
                 style={{

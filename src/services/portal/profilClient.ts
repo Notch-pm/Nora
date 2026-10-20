@@ -8,6 +8,7 @@
  *
  * `profil: null` = jamais rempli (premier remplissage : l'identité complète).
  */
+import type { ConsentKind } from "@fn/_shared/domain/consents.ts";
 import type { Profil, ProfilChamp, ProfilCoordonnees, ProfilIdentite } from "@fn/_shared/domain/profil.ts";
 import { ACCOUNT_API_BASE } from "./accountClient.ts";
 
@@ -84,11 +85,15 @@ function readConsent(raw: unknown, kind: "traitement" | "partage"): { accorde: b
   return v && typeof v.accorde === "boolean" && typeof v.le === "string" ? { accorde: v.accorde, le: v.le } : null;
 }
 
-async function call(method: "GET" | "POST", body: object | null): Promise<ProfilCall<Profil | null>> {
+async function call(
+  method: "GET" | "POST",
+  body: object | null,
+  path = "/v1/compte/profil",
+): Promise<ProfilCall<Profil | null>> {
   let response: Response;
   try {
     response = await fetch(
-      ACCOUNT_API_BASE + "/v1/compte/profil",
+      ACCOUNT_API_BASE + path,
       method === "GET"
         ? undefined
         : { method, headers: { "Content-Type": "application/json", "x-nora-request": "1" }, body: JSON.stringify(body ?? {}) },
@@ -117,6 +122,17 @@ export async function saveIdentite(identite: ProfilIdentite): Promise<ProfilCall
 /** Ensuite : SEULES les coordonnées. */
 export async function saveCoordonnees(coordonnees: ProfilCoordonnees): Promise<ProfilCall<Profil>> {
   const result = await call("POST", coordonnees);
+  if (!result.ok) return result;
+  return result.value === null ? { ok: false, reason: "profil_indisponible" } : { ok: true, value: result.value };
+}
+
+/**
+ * L'usager accorde ou retire UN consentement du catalogue (`traitement` /
+ * `partage`). Le navigateur n'envoie que `kind` et `granted` : la phrase
+ * consignée est composée côté serveur. Rend le profil à jour (trois états).
+ */
+export async function saveConsentement(kind: ConsentKind, granted: boolean): Promise<ProfilCall<Profil>> {
+  const result = await call("POST", { kind, granted }, "/v1/compte/consentements");
   if (!result.ok) return result;
   return result.value === null ? { ok: false, reason: "profil_indisponible" } : { ok: true, value: result.value };
 }

@@ -1,6 +1,6 @@
 /** Le profil parle au relais de MÊME ORIGINE, avec l'en-tête anti-CSRF sur l'écriture. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchProfil, saveCoordonnees, saveIdentite } from "./profilClient.ts";
+import { fetchProfil, saveConsentement, saveCoordonnees, saveIdentite } from "./profilClient.ts";
 
 function respond(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -77,5 +77,33 @@ describe("saveIdentite / saveCoordonnees", () => {
   it("un profil null après une écriture est une indisponibilité", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => respond({ profil: null })));
     expect(await saveCoordonnees({ ville: "X" })).toEqual({ ok: false, reason: "profil_indisponible" });
+  });
+});
+
+describe("saveConsentement", () => {
+  it("poste kind et granted seulement, avec x-nora-request, et rend le profil à jour", async () => {
+    const accorde = { ...PROFIL, consentements: { traitement: { accorde: true, le: "2026-10-20T08:00:00Z" }, partage: null } };
+    const fetchMock = vi.fn(async () => respond({ profil: accorde }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await saveConsentement("traitement", true)).toEqual({ ok: true, value: accorde });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as Call;
+    expect(url).toBe("/api/v1/compte/consentements");
+    expect(init?.method).toBe("POST");
+    expect((init?.headers as Record<string, string>)["x-nora-request"]).toBe("1");
+    expect(JSON.parse(init?.body as string)).toEqual({ kind: "traitement", granted: true });
+  });
+
+  it("garde les trois états du retrait (refusé, daté)", async () => {
+    const retire = { ...PROFIL, consentements: { traitement: null, partage: { accorde: false, le: "2026-10-21T08:00:00Z" } } };
+    vi.stubGlobal("fetch", vi.fn(async () => respond({ profil: retire })));
+    const result = await saveConsentement("partage", false);
+    expect(result).toEqual({ ok: true, value: retire });
+  });
+
+  it("session_required reste lisible ; un profil null est une indisponibilité", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => respond({ error: { code: "session_required" } }, 401)));
+    expect(await saveConsentement("partage", true)).toEqual({ ok: false, reason: "session_required" });
+    vi.stubGlobal("fetch", vi.fn(async () => respond({ profil: null })));
+    expect(await saveConsentement("partage", true)).toEqual({ ok: false, reason: "profil_indisponible" });
   });
 });

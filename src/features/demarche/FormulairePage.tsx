@@ -41,6 +41,11 @@ import { errorMessageFor } from "@/features/portal/errorMessages.ts";
 import { challengeToSolve } from "@/services/portal/depositChallenge.ts";
 import { fetchDepositChallenge, sendDemande, type PortalLoadFailure } from "@/services/portal/portalClient.ts";
 import { readAndClearPrefill } from "@/features/assistant/prefill.ts";
+import { useConnectedProfil } from "@/features/compte/useConnectedProfil.ts";
+import { requesterValuesFromProfil } from "@fn/_shared/domain/profil.ts";
+import { AccessNotice } from "./AccessNotice.tsx";
+import { accessGate, gateAfterRefusal } from "./accessGate.ts";
+import { hasPrefillFor, mergePrefill } from "./profilPrefill.ts";
 import { DemarcheError, DemarcheLoading, DemarcheShell } from "./DemarcheShell.tsx";
 import { ErrorSummary } from "./ErrorSummary.tsx";
 import { FormFieldControl } from "./FormFields.tsx";
@@ -136,11 +141,17 @@ export function FormulairePage() {
     const prefill = readAndClearPrefill(storage, demarche.id);
     if (prefill === null) return;
     setValues(prefill.values);
-    setRequesterValues(prefill.requesterValues);
+    // Fusion, pas remplacement : si le profil du compte a déjà prérempli, la
+    // saisie de l'assistant (plus récente) l'emporte champ par champ.
+    setRequesterValues((previous) => ({ ...previous, ...prefill.requesterValues }));
     setAudience(prefill.audience);
     setOrganizationId(prefill.organizationId);
     setConsents(prefill.consents);
   }, [demarche]);
+
+  // Session et profil du compte (rien pour un visiteur anonyme) : la garde des
+  // démarches réservées et le pré-remplissage « Dites-le nous une fois ».
+  const connected = useConnectedProfil();
 
   const audiences = useMemo(
     () => (demarche === null ? [] : enabledAudiences(demarche.requester)),
@@ -161,7 +172,11 @@ export function FormulairePage() {
   // écarte les champs masqués) : le code d'accès se retrouve par courriel, et
   // le serveur exige l'adresse. Sans cela, la case est absente, et un état
   // coché d'un public précédent ne part pas (`guestAccess` ci-dessous).
-  const canFollow = currentAudience !== null && requesterFields.some((field) => field.key === "courriel");
+  // Connecté, la demande ira dans « Mes demandes » : le suivi par code d'accès n'a plus de sens.
+  const canFollow =
+    connected.session !== "account" &&
+    currentAudience !== null &&
+    requesterFields.some((field) => field.key === "courriel");
   const guestAccess = canFollow && followUp;
   // Coché, le courriel devient obligatoire : on le déclare tel quel dans le
   // champ, pour que `validateRequester` et l'astérisque de l'étiquette suivent
@@ -173,6 +188,25 @@ export function FormulairePage() {
         : requesterFields,
     [guestAccess, requesterFields],
   );
+
+  // Le profil préremplit « Vos informations » du public citoyen — une fois par
+  // public, jamais sur une saisie déjà faite, et seulement pour les champs que
+  // le paramétrage affiche. `prefillNote` : au moins un champ a été rempli.
+  const prefilledFor = useRef(new Set<string>());
+  const latestRequesterValues = useRef(requesterValues);
+  latestRequesterValues.current = requesterValues;
+  const [prefillNote, setPrefillNote] = useState(false);
+  useEffect(() => {
+    if (connected.profil === null || currentAudience !== "citoyen" || requesterFields.length === 0) return;
+    if (prefilledFor.current.has(currentAudience)) return;
+    prefilledFor.current.add(currentAudience);
+    const fromProfil = requesterValuesFromProfil(connected.profil);
+    const keys = requesterFields.map((field) => field.key);
+    if (!hasPrefillFor(fromProfil, keys)) return;
+    if (mergePrefill(latestRequesterValues.current, fromProfil, keys) === latestRequesterValues.current) return;
+    setRequesterValues((previous) => mergePrefill(previous, fromProfil, keys));
+    setPrefillNote(true);
+  }, [connected.profil, currentAudience, requesterFields]);
 
   // Calculé ici, AVANT les retours anticipés ci-dessous : c'est ce qui permet
   // au titre d'onglet (juste après) et à l'effet de focus (plus bas) de s'en
@@ -281,6 +315,41 @@ export function FormulairePage() {
         >
           {t("demarche.back")}
         </Link>
+      </DemarcheShell>
+    );
+  }
+
+  // Démarche réservée aux connectés (accès direct à l'adresse du formulaire
+  // compris) : l'encart remplace le formulaire.
+  const gate = accessGate({ accessMode: detail.accessMode, session: connected.session, profil: connected.status });
+  if (gate === "login" || gate === "complete" || gate === "pending") {
+    return (
+      <DemarcheShell
+        tenantName={tenant.name}
+        branding={branding}
+        tenantBranding={tenantBranding}
+        theme={tenant.theme}
+        languages={tenant.languages}
+        villes={villes}
+      >
+        <nav className="mb-6">
+          <Link
+            to={backToDemarche}
+            className="text-[length:var(--pt-body)] font-semibold text-[color:var(--brand-primary)] hover:underline"
+          >
+            {t("demarche.back")}
+          </Link>
+        </nav>
+        <h1 className="text-[length:var(--pt-h1)] font-extrabold tracking-tight text-[color:var(--pt-ink)]">{detail.name}</h1>
+        <div className="mt-8 max-w-xl">
+          {gate === "pending" ? (
+            <p role="status" className="text-[color:var(--pt-muted)]">
+              {t("page.loading")}
+            </p>
+          ) : (
+            <AccessNotice gate={gate} />
+          )}
+        </div>
       </DemarcheShell>
     );
   }
@@ -407,7 +476,12 @@ export function FormulairePage() {
       <form onSubmit={submit} noValidate className="mt-8 flex flex-col gap-6">
         {errorCount > 0 && <ErrorSummary ref={errorSummaryRef} count={errorCount} />}
 
-        {sendFailure !== null && (
+        {/* Le serveur refuse une démarche réservée : même encart que la garde, pas une panne. */}
+        {sendFailure === "account_required" && (
+          <AccessNotice gate={gateAfterRefusal(connected.session, connected.status)} alert />
+        )}
+
+        {sendFailure !== null && sendFailure !== "account_required" && (
           <div
             role="alert"
             className="rounded-[var(--pt-radius-sm)] border border-red-300 bg-red-50 px-4 py-3 text-[length:var(--pt-body)] text-red-800"
@@ -508,6 +582,13 @@ export function FormulairePage() {
           consents={consents}
           onConsentChange={setConsent}
           organismName={tenant.name}
+          note={
+            prefillNote && currentAudience === "citoyen" ? (
+              <p role="status" className="text-[length:var(--pt-body)] text-[color:var(--pt-muted)]">
+                {t("form.prefilled")}
+              </p>
+            ) : undefined
+          }
           followUp={
             canFollow
               ? {

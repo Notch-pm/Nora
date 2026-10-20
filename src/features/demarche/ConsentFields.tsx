@@ -19,7 +19,7 @@ import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { errorText } from "@/i18n/t.ts";
 import type { StringKey } from "@/i18n/strings.ts";
 
-const STATEMENT_KEYS: Record<ConsentKind, StringKey> = {
+export const CONSENT_STATEMENT_KEYS: Record<ConsentKind, StringKey> = {
   traitement: "consent.traitement",
   partage: "consent.partage",
 };
@@ -74,7 +74,7 @@ export function ConsentFields({
                   onChange={(event) => onChange(def.kind, event.target.checked)}
                 />
                 <span>
-                  {t(STATEMENT_KEYS[def.kind], { organisme })}
+                  {t(CONSENT_STATEMENT_KEYS[def.kind], { organisme })}
                   {def.required && (
                     <span className="ml-1 text-red-600" aria-hidden="true">
                       *

@@ -4856,6 +4856,97 @@ export const STRINGS = {
     fr: "Version {version}",
     en: "Version {version}",
   },
+
+  // ── Espace usager L3c : démarches réservées, préremplissage, consentements ──
+  // ⚠️ fr + en seulement : clés déclarées dans `PENDING_TRANSLATION_KEYS`.
+  "card.reserved.tip": {
+    fr: "Réservée aux usagers connectés : connectez-vous pour faire cette démarche.",
+    en: "Reserved for signed-in users: sign in to complete this procedure.",
+  },
+  "access.login.title": {
+    fr: "Cette démarche est réservée aux usagers connectés",
+    en: "This procedure is reserved for signed-in users",
+  },
+  "access.login.help": {
+    fr: "Connectez-vous avec votre compte pour la faire : vos informations seront préremplies.",
+    en: "Sign in to your account to complete it: your details will be filled in for you.",
+  },
+  "access.login.submit": {
+    fr: "Me connecter",
+    en: "Sign in",
+  },
+  "access.login.register": {
+    fr: "Créer un compte",
+    en: "Create an account",
+  },
+  "access.complete.title": {
+    fr: "Complétez vos informations pour faire cette démarche",
+    en: "Complete your details to do this procedure",
+  },
+  "access.complete.help": {
+    fr: "Cette démarche demande que votre fiche soit renseignée dans votre compte.",
+    en: "This procedure requires your details to be filled in on your account.",
+  },
+  "access.complete.link": {
+    fr: "Compléter mes informations",
+    en: "Complete my details",
+  },
+  "form.prefilled": {
+    fr: "Informations préremplies depuis votre compte — vous pouvez les modifier pour cette demande.",
+    en: "Details filled in from your account — you can change them for this request.",
+  },
+  "error.account_required.title": {
+    fr: "Cette démarche est réservée aux usagers connectés",
+    en: "This procedure is reserved for signed-in users",
+  },
+  "error.account_required.detail": {
+    fr: "Connectez-vous, ou complétez vos informations si votre compte est déjà ouvert, puis recommencez.",
+    en: "Sign in, or complete your details if you already have an account, then try again.",
+  },
+  "compte.consents.title": {
+    fr: "Mes consentements",
+    en: "My consents",
+  },
+  "compte.consents.intro": {
+    fr: "Vous pouvez accorder ou retirer chacun de ces consentements à tout moment.",
+    en: "You can grant or withdraw each of these consents at any time.",
+  },
+  "compte.consents.granted": {
+    fr: "Accordé le {date}",
+    en: "Granted on {date}",
+  },
+  "compte.consents.refused": {
+    fr: "Refusé le {date}",
+    en: "Declined on {date}",
+  },
+  "compte.consents.never": {
+    fr: "Jamais demandé",
+    en: "Never asked",
+  },
+  "compte.consents.grant": {
+    fr: "Accorder",
+    en: "Grant",
+  },
+  "compte.consents.withdraw": {
+    fr: "Retirer",
+    en: "Withdraw",
+  },
+  "compte.consents.confirmWithdraw": {
+    fr: "Retirer ce consentement n'annule pas vos demandes en cours.",
+    en: "Withdrawing this consent does not cancel your requests in progress.",
+  },
+  "compte.consents.confirmYes": {
+    fr: "Confirmer le retrait",
+    en: "Confirm withdrawal",
+  },
+  "compte.consents.doneGranted": {
+    fr: "Consentement accordé.",
+    en: "Consent granted.",
+  },
+  "compte.consents.doneWithdrawn": {
+    fr: "Consentement retiré.",
+    en: "Consent withdrawn.",
+  },
 } as const satisfies Record<string, Translated>;
 
 export type StringKey = keyof typeof STRINGS;
@@ -5097,4 +5188,26 @@ export const PENDING_TRANSLATION_KEYS: readonly StringKey[] = [
   "compte.totp.disabledDone",
   "compte.cgu.title",
   "compte.cgu.version",
+  "card.reserved.tip",
+  "access.login.title",
+  "access.login.help",
+  "access.login.submit",
+  "access.login.register",
+  "access.complete.title",
+  "access.complete.help",
+  "access.complete.link",
+  "form.prefilled",
+  "error.account_required.title",
+  "error.account_required.detail",
+  "compte.consents.title",
+  "compte.consents.intro",
+  "compte.consents.granted",
+  "compte.consents.refused",
+  "compte.consents.never",
+  "compte.consents.grant",
+  "compte.consents.withdraw",
+  "compte.consents.confirmWithdraw",
+  "compte.consents.confirmYes",
+  "compte.consents.doneGranted",
+  "compte.consents.doneWithdrawn",
 ];

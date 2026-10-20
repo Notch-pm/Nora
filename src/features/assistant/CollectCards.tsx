@@ -14,6 +14,7 @@ import type { Field } from "@fn/_shared/domain/formSchema.ts";
 import type { ConsentKind } from "@fn/_shared/domain/consents.ts";
 import { isFieldRequired, validateForm, type FieldError, type FieldErrors } from "@fn/_shared/domain/formulaire.ts";
 import { enabledAudiences, requesterFieldsFor, type Audience } from "@fn/_shared/domain/requesterConfig.ts";
+import { AccessNotice } from "@/features/demarche/AccessNotice.tsx";
 import { FormFieldControl } from "@/features/demarche/FormFields.tsx";
 import { Receipt } from "@/features/demarche/Receipt.tsx";
 import { RequesterSection } from "@/features/demarche/RequesterSection.tsx";
@@ -419,6 +420,7 @@ export function RecapCard({
   session,
   submitting,
   submitFailureMessage,
+  needsAccount = false,
   onModifyField,
   onModifyOrganization,
   onModifyIdentity,
@@ -427,6 +429,8 @@ export function RecapCard({
   session: CollectSession;
   submitting: boolean;
   submitFailureMessage: { title: string; detail: string } | null;
+  /** Le serveur a répondu `account_required` : démarche réservée aux usagers connectés (lot L3c). */
+  needsAccount?: boolean;
   onModifyField: (fieldId: string) => void;
   onModifyOrganization: () => void;
   onModifyIdentity: () => void;
@@ -535,7 +539,13 @@ export function RecapCard({
 
       <p className="mt-4 text-[length:var(--pt-small)] text-[color:var(--pt-muted)]">{t("assistant.recap.disclaimer")}</p>
 
-      {submitFailureMessage !== null && (
+      {needsAccount && (
+        <div className="mt-3">
+          <AccessNotice gate="login" alert />
+        </div>
+      )}
+
+      {!needsAccount && submitFailureMessage !== null && (
         <div role="alert" className="mt-3 rounded-[var(--pt-radius-sm)] border border-red-300 bg-red-50 px-4 py-3">
           <p className="font-semibold text-red-800">{submitFailureMessage.title}</p>
           <p className="mt-1 text-[length:var(--pt-body)] text-red-800">{submitFailureMessage.detail}</p>

@@ -4,8 +4,8 @@
  * L'adresse du compte, la sécurité (mot de passe, double authentification) et la
  * déconnexion. Tout vient du serveur (`GET /v1/compte`) : sans session de
  * compte il répond `session_required`, et l'écran renvoie à la connexion.
- * « Mes informations » (la fiche du Socle) et le lien « Mes demandes » ouvrent
- * l'espace connecté (L3b). Une
+ * « Mes informations » (la fiche du Socle), « Mes consentements » (L3c) et le
+ * lien « Mes demandes » ouvrent l'espace connecté (L3b). Une
  * session INVITÉE (celle de `/suivi`) n'ouvre pas cette page.
  */
 import { useCallback, useEffect, useState } from "react";
@@ -19,7 +19,9 @@ import {
   fetchAccount,
 } from "@/services/portal/accountClient.ts";
 import { AccountFrame, LINK_CLASS, StepTitle, useScreenTitle } from "./AccountFrame.tsx";
+import type { Profil } from "@fn/_shared/domain/profil.ts";
 import { ChangePasswordForm } from "./ChangePasswordForm.tsx";
+import { ConsentementsSection } from "./ConsentementsSection.tsx";
 import { accountFailureKey } from "./failureMessage.ts";
 import { H2, SECONDARY_BUTTON } from "./form.tsx";
 import { ProfilSection } from "./ProfilSection.tsx";
@@ -45,6 +47,8 @@ function CompteScreen({ tenantName }: { tenantName: string }) {
   const [attempt, setAttempt] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const [leaveFailed, setLeaveFailed] = useState(false);
+  // Le profil rempli (lu par « Mes informations ») : « Mes consentements » en dépend.
+  const [profil, setProfil] = useState<Profil | null>(null);
 
   useScreenTitle(t("compte.account.title"));
 
@@ -124,8 +128,12 @@ function CompteScreen({ tenantName }: { tenantName: string }) {
           <dt className="font-semibold text-[color:var(--pt-ink)]">{t("compte.email")}</dt>
           <dd className="break-all text-[color:var(--pt-ink)]">{state.profile.email}</dd>
         </dl>
-        <ProfilSection tenantName={tenantName} onSessionLost={sessionLost} />
+        <ProfilSection tenantName={tenantName} onSessionLost={sessionLost} onProfil={setProfil} />
       </section>
+
+      {profil !== null && (
+        <ConsentementsSection profil={profil} tenantName={tenantName} onChanged={setProfil} onSessionLost={sessionLost} />
+      )}
 
       <section aria-labelledby="compte-demandes" className="mt-10 flex flex-col gap-3">
         <h2 id="compte-demandes" className={H2}>

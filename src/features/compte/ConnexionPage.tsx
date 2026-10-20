@@ -11,7 +11,7 @@
  * avec l'étape.
  */
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { normalizeEmail } from "@fn/_shared/account/accountService.ts";
 import { useLanguage, useT } from "@/i18n/LanguageLayout.tsx";
 import { localizedPath } from "@/i18n/localizedPath.ts";
@@ -30,6 +30,7 @@ import {
   useFormFeedback,
   useReveal,
 } from "./form.tsx";
+import { safeRetour } from "./retour.ts";
 import { forgetSessionKind, useSessionKind } from "./sessionKind.ts";
 
 type Step = "credentials" | "totp";
@@ -42,6 +43,11 @@ function ConnexionScreen() {
   const t = useT();
   const { lang } = useLanguage();
   const navigate = useNavigate();
+  // `?retour=` : où ramener l'usager une fois connecté (avec ou sans code
+  // TOTP). Uniquement un chemin relatif interne (`safeRetour`, anti
+  // redirection ouverte) ; sinon « Mon compte ».
+  const [params] = useSearchParams();
+  const destination = safeRetour(params.get("retour")) ?? localizedPath(lang, "/compte");
   const [step, setStep] = useState<Step>("credentials");
   // Vrai dès qu'on est revenu à la saisie depuis l'étape du code : le titre reprend le focus.
   const [cameBack, setCameBack] = useState(false);
@@ -60,12 +66,12 @@ function ConnexionScreen() {
   // Déjà connecté : la connexion n'a rien à offrir.
   const kind = useSessionKind();
   useEffect(() => {
-    if (kind === "account") navigate(localizedPath(lang, "/compte"), { replace: true });
-  }, [kind, lang, navigate]);
+    if (kind === "account") navigate(destination, { replace: true });
+  }, [kind, destination, navigate]);
 
   const opened = () => {
     forgetSessionKind();
-    navigate(localizedPath(lang, "/compte"));
+    navigate(destination);
   };
 
   const backToCredentials = () => {
